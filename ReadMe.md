@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](license)
 [![Deploy Anywhere](https://img.shields.io/badge/Deploy-Anywhere-brightgreen.svg)](#deployment-modes)
 
-**From laptop to data center. From single user to entire organization.**<br/>
+**From single container to cluster. From single user to entire organization.**<br/>
 **One platform. Zero cost. Infinite possibilities.**
 
 [Documentation](docs/architecture.md) · [Why EchoMind?](#why-echomind)
@@ -28,7 +28,7 @@
 
 **MIT Licensed. No strings attached.**
 
-From a solo developer to a Fortune 500 enterprise—EchoMind is 100% free. No usage limits. No premium tiers. No vendor lock-in.
+From a single user to a Fortune 500 enterprise—EchoMind is 100% free. No usage limits. No premium tiers. No vendor lock-in.
 
 </td>
 <td width="33%" align="center">
@@ -37,7 +37,7 @@ From a solo developer to a Fortune 500 enterprise—EchoMind is 100% free. No us
 
 **One container. Or a thousand nodes.**
 
-Start with a single Docker container. Scale to a distributed Kubernetes cluster when you're ready. Same codebase, same config.
+Start with a single container. Scale to a distributed Kubernetes cluster when you're ready. Same codebase, same config.
 
 </td>
 <td width="33%" align="center">
@@ -108,7 +108,7 @@ flowchart LR
     AGENT --> PG
 ```
 
-For detailed architecture with Mermaid diagrams, see [docs/architecture.md](docs/architecture.md).
+For detailed architecture, see [docs/architecture.md](docs/architecture.md).
 
 ---
 
