@@ -116,11 +116,11 @@ For detailed architecture, see [docs/architecture.md](docs/architecture.md).
 
 EchoMind adapts to your security requirements:
 
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| **Cloud** | Full SaaS experience with cloud LLMs | Startups, teams without GPU infrastructure |
-| **Hybrid** | Private RAG cluster + optional cloud LLM fallback | Enterprises with sensitive data |
-| **Air-Gapped** | Fully disconnected, zero external dependencies | DoD, SCIF, classified networks |
+| Mode | Description                                              | Use Case |
+|------|----------------------------------------------------------|----------|
+| **Cloud** | Deploy on your Could | Startups, teams without GPU infrastructure |
+| **Hybrid** | Private RAG cluster + optional cloud LLM fallback        | Enterprises with sensitive data |
+| **Air-Gapped** | Fully disconnected, zero external dependencies           | DoD, SCIF, classified networks |
 
 ### Air-Gapped / SCIF Compliance
 
