@@ -22,7 +22,10 @@ flowchart TB
         subgraph Gateway["API Gateway"]
             REST[REST API]
             WS[WebSocket<br/>Streaming]
-            GRPC[gRPC Internal]
+        end
+
+        subgraph Auth["Authentication"]
+            AUTHENTIK[Authentik<br/>Auth Provider]
         end
 
         subgraph Core["Agent Core"]
@@ -39,7 +42,7 @@ flowchart TB
         end
 
         subgraph Storage["Data Layer"]
-            VECTORDB[(Milvus<br/>Vector DB)]
+            VECTORDB[(Qdrant<br/>Vector DB)]
             RELDB[(PostgreSQL<br/>Metadata)]
             OBJSTORE[(MinIO<br/>File Storage)]
             CACHE[(Redis<br/>Cache + Memory)]
@@ -52,17 +55,17 @@ flowchart TB
 
     subgraph Inference["Inference Cluster (Pluggable)"]
         LLM_ROUTER[LLM Router]
-        LOCAL_LLM[Local Models<br/>Ollama/vLLM]
+        PRIVATE_LLM[Private Inference<br/>TGI/vLLM]
         CLOUD_LLM[Cloud APIs<br/>OpenAI/Anthropic]
     end
 
-    subgraph External["External Services"]
-        AUTHENTIK[Authentik<br/>Auth Provider]
-        CONNECTORS_EXT[Data Sources<br/>OneDrive/Teams/etc]
+    subgraph External["External Data Sources"]
+        CONNECTORS_EXT[OneDrive/Teams<br/>GDrive/Slack/etc]
     end
 
     WEB & API_CLIENT & BOT --> REST & WS
-    REST & WS --> ORCHESTRATOR
+    REST & WS --> AUTHENTIK
+    AUTHENTIK --> ORCHESTRATOR
     ORCHESTRATOR --> PLANNER
     ORCHESTRATOR --> EXECUTOR
     ORCHESTRATOR --> MEMORY
@@ -80,10 +83,9 @@ flowchart TB
     EMBEDDER --> VECTORDB
 
     ORCHESTRATOR --> LLM_ROUTER
-    LLM_ROUTER --> LOCAL_LLM
+    LLM_ROUTER --> PRIVATE_LLM
     LLM_ROUTER --> CLOUD_LLM
 
-    REST --> AUTHENTIK
     CONNECTOR --> CONNECTORS_EXT
 ```
 
@@ -177,7 +179,7 @@ flowchart LR
 
     subgraph Storage["Storage"]
         MINIO[(MinIO)]
-        MILVUS[(Milvus)]
+        QDRANT[(Qdrant)]
         PG[(PostgreSQL)]
     end
 
@@ -187,7 +189,7 @@ flowchart LR
     EXTRACT --> MINIO
     EXTRACT --> SPLIT
     SPLIT --> EMBED
-    EMBED --> MILVUS
+    EMBED --> QDRANT
     CONN --> PG
 
     style SPLIT fill:#f96,stroke:#333
@@ -203,7 +205,7 @@ stateDiagram-v2
     Downloading --> Extracting: Content extraction
     Extracting --> Chunking: Semantic split
     Chunking --> Embedding: Generate vectors
-    Embedding --> Complete: Stored in Milvus
+    Embedding --> Complete: Stored in Qdrant
 
     Downloading --> Failed: Download error
     Extracting --> Failed: Parse error
@@ -221,7 +223,7 @@ Per-user, per-group, and per-org collections enable scoped retrieval:
 
 ```mermaid
 flowchart TB
-    subgraph Collections["Milvus Collections"]
+    subgraph Collections["Qdrant Collections"]
         ORG[org_acme_corp]
         GRP1[group_engineering]
         GRP2[group_sales]
@@ -266,13 +268,13 @@ flowchart TB
     subgraph Storage
         REDIS[(Redis)]
         PG[(PostgreSQL)]
-        MILVUS[(Milvus)]
+        QDRANT[(Qdrant)]
     end
 
     CONV --> REDIS
     WORKING --> REDIS
     EPISODIC --> PG
-    SEMANTIC --> MILVUS
+    SEMANTIC --> QDRANT
     PROCEDURAL --> PG
 ```
 
@@ -324,7 +326,7 @@ flowchart TB
     subgraph Infra["Infrastructure"]
         NATS[NATS JetStream]
         PG[(PostgreSQL)]
-        MILVUS[(Milvus)]
+        QDRANT[(Qdrant)]
         REDIS[(Redis)]
         MINIO[(MinIO)]
     end
@@ -337,8 +339,8 @@ flowchart TB
     SEMANTIC_SVC --> NATS
     NATS --> EMBED_SVC
 
-    EMBED_SVC --> MILVUS
-    SEARCH_SVC --> MILVUS
+    EMBED_SVC --> QDRANT
+    SEARCH_SVC --> QDRANT
     CONNECTOR_SVC --> MINIO
     API_SVC --> PG
     AGENT_SVC --> REDIS
@@ -351,44 +353,51 @@ flowchart TB
 | Layer | Technology | Rationale |
 |-------|------------|-----------|
 | **API** | FastAPI + WebSocket | Async, streaming, OpenAPI docs |
-| **Agent Framework** | Custom State Machine | Zero external deps, air-gap safe (see below) |
+| **Agent Framework** | Semantic Kernel | Microsoft's AI orchestration SDK, air-gap compatible, Python native |
 | **Embeddings** | SentenceTransformers | Local, configurable per cluster |
-| **Vector DB** | Milvus | Scalable, HNSW/DiskANN indexes |
+| **Vector DB** | Qdrant | High-performance, HNSW indexes, rich filtering, Rust-based |
 | **Relational DB** | PostgreSQL | Reliable, JSONB support |
 | **Cache/Memory** | Redis | Fast, pub/sub, streams |
 | **Object Storage** | MinIO | S3-compatible, self-hosted |
 | **Message Queue** | NATS JetStream | Lightweight, persistent |
-| **LLM Local** | Ollama / vLLM | Easy deployment, GPU support |
+| **LLM Private** | TGI / vLLM | Production-grade inference, GPU optimized |
 | **LLM Cloud** | OpenAI / Anthropic | Optional, for connected deployments |
-| **Auth** | Authentik | SSO, OIDC, self-hosted |
+| **Auth** | Authentik | SSO, OIDC, self-hosted, inside cluster |
 | **Observability** | OpenTelemetry + Grafana | Traces, metrics, logs |
 
-### Air-Gapped Deployment Requirement
+### Flexible Deployment: Cloud, Hybrid, or Air-Gapped
 
-EchoMind must support **fully disconnected environments** (e.g., DoD classified networks, SCIF, air-gapped data centers). This drives key architectural decisions:
+EchoMind is designed to run anywhere—from public cloud to the most restricted environments. Whether you're deploying in AWS/Azure/GCP, a private data center, or a fully air-gapped SCIF facility, EchoMind adapts to your security requirements.
+
+| Deployment Mode | Description |
+|-----------------|-------------|
+| **Cloud** | Full SaaS experience with cloud LLMs (OpenAI, Anthropic) and managed services |
+| **Hybrid** | Private RAG cluster with optional cloud LLM fallback |
+| **Air-Gapped** | Fully disconnected, meets SCIF standards, zero external dependencies |
+
+#### Air-Gapped Compliance
+
+For classified networks and air-gapped data centers, EchoMind provides:
 
 | Requirement | Solution |
 |-------------|----------|
-| No internet access | All dependencies pre-packaged, offline installers |
-| No telemetry/phone-home | Custom agent framework (no LangChain telemetry) |
-| Local LLM only | Ollama/vLLM with pre-downloaded models |
+| No internet access | All dependencies pre-packaged, offline container images |
+| No telemetry/phone-home | Semantic Kernel runs fully offline, no hidden network calls |
+| Private LLM inference | TGI/vLLM with pre-downloaded models |
 | Local embeddings | SentenceTransformers with cached models |
-| No external auth | Authentik self-hosted, LDAP/AD integration |
-| Audit compliance | Full request/response logging, no data exfil |
+| Self-contained auth | Authentik inside cluster, LDAP/AD integration |
+| Audit compliance | Full request/response logging, no data exfiltration |
 
-### Why Custom Agent Framework (not LangGraph)
+### Why Semantic Kernel
 
-LangGraph is powerful but has concerns for air-gapped:
-- LangChain dependencies can attempt network calls
-- LangSmith integration is opt-out, not opt-in
-- Complex dependency tree harder to audit
-- Version pinning doesn't guarantee no network calls
+[Semantic Kernel](https://github.com/microsoft/semantic-kernel) is Microsoft's open-source AI orchestration SDK:
 
-**EchoMind Agent Core** will be a custom state machine:
-- Pure Python, zero hidden network calls
-- Explicit state transitions, fully auditable
-- Same Think→Act→Observe→Reflect pattern
-- Can be formally verified if needed
+- **Air-gap compatible**: No telemetry, no phone-home, works fully offline
+- **Python native**: First-class Python support alongside C# and Java
+- **Pluggable connectors**: Easy to swap LLM providers (local or cloud)
+- **Memory & planning**: Built-in support for agent memory and multi-step planning
+- **Enterprise-ready**: Backed by Microsoft, used in production at scale
+- **Auditable**: Clean dependency tree, no hidden LangChain-style network calls
 
 ### Embedding Model Configuration
 
@@ -401,7 +410,7 @@ ECHOMIND_EMBEDDING_DIMENSION=768
 ```
 
 **Important**: Changing the embedding model requires:
-1. Delete all vectors from Milvus
+1. Delete all vectors from Qdrant
 2. Mark all documents as `pending`
 3. Re-scan all data sources
 4. Re-embed all documents
@@ -432,7 +441,7 @@ flowchart TB
         AGENT[echomind-agent]
         WORKER[echomind-worker]
         PG[postgres]
-        MILVUS[milvus]
+        QDRANT[qdrant]
         REDIS[redis]
         MINIO[minio]
         NATS[nats]
@@ -452,7 +461,7 @@ flowchart TB
 
         subgraph StatefulSets
             PG[PostgreSQL]
-            MILVUS[Milvus]
+            QDRANT[Qdrant]
             REDIS[Redis]
         end
 
@@ -495,7 +504,7 @@ echomind/
 │   │   └── file/
 │   ├── db/                  # Database clients
 │   │   ├── postgres.py
-│   │   ├── milvus.py
+│   │   ├── qdrant.py
 │   │   ├── redis.py
 │   │   └── minio.py
 │   ├── models/              # Pydantic models
@@ -526,16 +535,20 @@ echomind/
 
 ## Decisions Made
 
-- [x] **Agent framework**: Custom state machine (air-gap requirement)
+- [x] **Agent framework**: Semantic Kernel (Microsoft's AI orchestration SDK, air-gap compatible)
+- [x] **Vector database**: Qdrant (high-performance, HNSW, rich filtering)
 - [x] **Embedding model**: Cluster-wide config via env vars, requires re-index on change
 - [x] **Deployment targets**: Single container, Docker Compose, Kubernetes
-- [x] **LLM strategy**: Local-first (Ollama/vLLM), cloud optional for connected envs
-- [x] **Auth**: Authentik (self-hosted, OIDC/LDAP)
+- [x] **Deployment modes**: Cloud, Hybrid, or Air-Gapped (SCIF compliant)
+- [x] **LLM strategy**: Private inference (TGI/vLLM), cloud optional for connected envs
+- [x] **Auth**: Authentik (self-hosted, OIDC/LDAP, inside RAG cluster)
 - [x] **Tenancy**: Single-tenant with per-user/group/org vector collections
 
 ## Open Questions
 
-- [ ] Memory persistence strategy (how long to retain episodic memory?)
-- [ ] Tool sandboxing approach (code execution in air-gapped environments)
-- [ ] Model packaging strategy (how to ship Ollama models for air-gap?)
-- [ ] Offline dependency bundling (pip wheels, Docker images)
+- [ ] Memory persistence strategy (how long to retain episodic memory?) — **TBD**
+
+## Resolved
+
+- [x] **Offline dependency bundling**: Docker images from authorized container registries, deployable to [Iron Bank (Platform One)](https://p1.dso.mil/iron-bank)
+- [x] **Connector priority for v1**: Microsoft Teams, Google Drive
