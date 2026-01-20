@@ -12,7 +12,7 @@
 **From laptop to data center. From single user to entire organization.**<br/>
 **One platform. Zero cost. Infinite possibilities.**
 
-[Get Started](#quick-start) · [Documentation](docs/architecture.md) · [Why EchoMind?](#why-echomind)
+[Documentation](docs/architecture.md) · [Why EchoMind?](#why-echomind)
 
 </div>
 
@@ -37,7 +37,7 @@ From a solo developer to a Fortune 500 enterprise—EchoMind is 100% free. No us
 
 **One container. Or a thousand nodes.**
 
-Start on your laptop with a single Docker container. Scale to a distributed Kubernetes cluster when you're ready. Same codebase, same config.
+Start with a single Docker container. Scale to a distributed Kubernetes cluster when you're ready. Same codebase, same config.
 
 </td>
 <td width="33%" align="center">
@@ -62,8 +62,6 @@ EchoMind is an **Agentic Retrieval-Augmented Generation (RAG)** platform that go
 - **Plans** multi-step retrieval strategies across multiple data sources
 - **Uses tools** to execute actions, call APIs, and process data
 - **Remembers** context across conversations with short-term and long-term memory
-
-> New to RAG? [Watch this explainer video](https://www.youtube.com/watch?v=u47GtXwePms)
 
 ---
 
@@ -169,65 +167,6 @@ echomind/
 ├── config/                  # Configuration files
 └── tests/
 ```
-
----
-
-## Quick Start
-
-Choose your deployment size:
-
-### Single Container (Laptop/Dev)
-
-```bash
-docker run -p 8080:8080 echomind/echomind:latest
-```
-
-### Docker Compose (Team/Small Org)
-
-```bash
-git clone https://github.com/gen-mind/echomind.git
-cd echomind/deployment/docker
-docker-compose up -d
-```
-
-### Kubernetes (Enterprise/Production)
-
-```bash
-kubectl apply -f deployment/k8s/
-```
-
-> **That's it.** Your AI-powered knowledge platform is running. Open `http://localhost:8080` and start connecting your data sources.
-
----
-
-## Roadmap
-
-### Phase 1: Core Infrastructure
-- [ ] API Gateway with Authentik integration
-- [ ] Database connections (PostgreSQL, Qdrant, Redis)
-- [ ] Basic project scaffolding
-
-### Phase 2: Document Ingestion
-- [ ] Microsoft Teams connector
-- [ ] Google Drive connector
-- [ ] Semantic chunking pipeline
-- [ ] Embedding service
-
-### Phase 3: Basic RAG
-- [ ] Vector search
-- [ ] LLM integration (TGI/vLLM)
-- [ ] Streaming responses
-
-### Phase 4: Agentic Capabilities
-- [ ] Semantic Kernel integration
-- [ ] Multi-step planning
-- [ ] Memory (short-term + long-term)
-- [ ] Tool execution
-
-### Phase 5: Production Hardening
-- [ ] Observability (OpenTelemetry + Grafana)
-- [ ] Iron Bank container certification
-- [ ] Performance optimization
 
 ---
 
