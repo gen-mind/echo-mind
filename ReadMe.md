@@ -64,7 +64,7 @@ EchoMind is an **Agentic Retrieval-Augmented Generation (RAG)** platform that go
 - **Remembers** context across conversations with short-term and long-term memory
 
 ---
-
+ 
 ## Key Features
 
 | Feature | Description |
