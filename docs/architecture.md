@@ -19,13 +19,13 @@ flowchart TB
     end
 
     subgraph EchoMind["EchoMind RAG Cluster"]
+        subgraph Auth["Authentication Layer"]
+            AUTHENTIK[Authentik<br/>OIDC Provider]
+        end
+
         subgraph Gateway["API Gateway"]
             REST[REST API]
             WS[WebSocket<br/>Streaming]
-        end
-
-        subgraph Auth["Authentication"]
-            AUTHENTIK[Authentik<br/>Auth Provider]
         end
 
         subgraph Core["Agent Core"]
@@ -63,9 +63,9 @@ flowchart TB
         CONNECTORS_EXT[OneDrive/Teams<br/>GDrive/Slack/etc]
     end
 
-    WEB & API_CLIENT & BOT --> REST & WS
-    REST & WS --> AUTHENTIK
-    AUTHENTIK --> ORCHESTRATOR
+    WEB & API_CLIENT & BOT --> AUTHENTIK
+    AUTHENTIK -->|JWT Token| REST & WS
+    REST & WS -->|Validated Request| ORCHESTRATOR
     ORCHESTRATOR --> PLANNER
     ORCHESTRATOR --> EXECUTOR
     ORCHESTRATOR --> MEMORY
@@ -88,6 +88,8 @@ flowchart TB
 
     CONNECTOR --> CONNECTORS_EXT
 ```
+
+> **Authentication Flow**: Clients authenticate with Authentik (OIDC) first, receive a JWT token, then include it in requests to the API Gateway. The gateway validates the token before forwarding to backend services. This follows the [OAuth 2.0 Resource Server pattern](https://www.solo.io/topics/api-gateway/api-gateway-authentication).
 
 ---
 
@@ -358,12 +360,26 @@ flowchart TB
 | **Vector DB** | Qdrant | High-performance, HNSW indexes, rich filtering, Rust-based |
 | **Relational DB** | PostgreSQL | Reliable, JSONB support |
 | **Cache/Memory** | Redis | Fast, pub/sub, streams |
-| **Object Storage** | MinIO | S3-compatible, self-hosted |
+| **Object Storage** | MinIO ⚠️ | S3-compatible, self-hosted (see warning below) |
 | **Message Queue** | NATS JetStream | Lightweight, persistent |
 | **LLM Private** | TGI / vLLM | Production-grade inference, GPU optimized |
 | **LLM Cloud** | OpenAI / Anthropic | Optional, for connected deployments |
 | **Auth** | Authentik | SSO, OIDC, self-hosted, inside cluster |
 | **Observability** | OpenTelemetry + Grafana | Traces, metrics, logs |
+
+### ⚠️ Object Storage Warning: MinIO
+
+> **Warning**: MinIO is currently under maintenance mode and is not accepting new changes. This may impact long-term support and security updates.
+
+**Recommended Alternative**: [RustFS](https://github.com/rustfs/rustfs) - A high-performance, S3-compatible object storage written in Rust. Benefits:
+- Active development
+- Rust-based (memory safe, high performance)
+- S3-compatible API
+- Better suited for air-gapped deployments
+
+**Decision**: Evaluate RustFS as primary object storage. If not mature enough for v1, use MinIO with migration path to RustFS planned.
+
+---
 
 ### Flexible Deployment: Cloud, Hybrid, or Air-Gapped
 
@@ -547,6 +563,8 @@ echomind/
 ## Open Questions
 
 - [ ] Memory persistence strategy (how long to retain episodic memory?) — **TBD**
+- [ ] Reranker strategy (cross-encoder model selection, when to apply reranking?) — **TBD**
+- [ ] Object storage selection: MinIO (maintenance mode) vs [RustFS](https://github.com/rustfs/rustfs) — **Evaluate**
 
 ## Resolved
 
