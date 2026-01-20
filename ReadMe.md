@@ -3,14 +3,54 @@
 
 # EchoMind
 
-**Agentic RAG for Enterprise**
+### Your Organization's AI Adoption Starts Now. For Free.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](license)
+[![Deploy Anywhere](https://img.shields.io/badge/Deploy-Anywhere-brightgreen.svg)](#deployment-modes)
 
-*An AI platform that reasons, retrieves, and responds—deployable anywhere from public cloud to air-gapped SCIF facilities.*
+**From laptop to data center. From single user to entire organization.**<br/>
+**One platform. Zero cost. Infinite possibilities.**
+
+[Get Started](#quick-start) · [Documentation](docs/architecture.md) · [Why EchoMind?](#why-echomind)
 
 </div>
+
+---
+
+## Why EchoMind?
+
+<table>
+<tr>
+<td width="33%" align="center">
+
+### 🆓 Free Forever
+
+**MIT Licensed. No strings attached.**
+
+From a solo developer to a Fortune 500 enterprise—EchoMind is 100% free. No usage limits. No premium tiers. No vendor lock-in.
+
+</td>
+<td width="33%" align="center">
+
+### 🚀 Deploy Your Way
+
+**One container. Or a thousand nodes.**
+
+Start on your laptop with a single Docker container. Scale to a distributed Kubernetes cluster when you're ready. Same codebase, same config.
+
+</td>
+<td width="33%" align="center">
+
+### ⚡ AI in Seconds
+
+**Your org's AI journey starts today.**
+
+Stop waiting for budget approvals and vendor negotiations. Deploy EchoMind now and give your team AI-powered knowledge retrieval before your next meeting.
+
+</td>
+</tr>
+</table>
 
 ---
 
@@ -49,7 +89,6 @@ flowchart LR
     end
 
     subgraph EchoMind["EchoMind RAG Cluster"]
-        AUTH[Authentik]
         API[API Gateway]
         AGENT[Agent Core<br/>Semantic Kernel]
         PROC[Doc Processing]
@@ -130,6 +169,34 @@ echomind/
 ├── config/                  # Configuration files
 └── tests/
 ```
+
+---
+
+## Quick Start
+
+Choose your deployment size:
+
+### Single Container (Laptop/Dev)
+
+```bash
+docker run -p 8080:8080 echomind/echomind:latest
+```
+
+### Docker Compose (Team/Small Org)
+
+```bash
+git clone https://github.com/gen-mind/echomind.git
+cd echomind/deployment/docker
+docker-compose up -d
+```
+
+### Kubernetes (Enterprise/Production)
+
+```bash
+kubectl apply -f deployment/k8s/
+```
+
+> **That's it.** Your AI-powered knowledge platform is running. Open `http://localhost:8080` and start connecting your data sources.
 
 ---
 
