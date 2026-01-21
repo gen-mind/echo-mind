@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package echomind.public;
+
+option go_package = "echomind/proto/public";
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// User profile
+message User {
+  int32 id = 1;
+  string user_name = 2;
+  string email = 3;
+  string first_name = 4;
+  string last_name = 5;
+  repeated string roles = 6;
+  repeated string groups = 7;
+  UserPreferences preferences = 8;
+  bool is_active = 9;
+  google.protobuf.Timestamp creation_date = 10;
+  google.protobuf.Timestamp last_update = 11;
+  google.protobuf.Timestamp last_login = 12;
+}
+
+// User preferences stored as JSON in DB
+message UserPreferences {
+  optional int32 default_assistant_id = 1;
+  string theme = 2;  // "light", "dark", "system"
+  map<string, string> custom = 3;  // Additional custom preferences
+}
+
+// Request to update current user's profile
+message UpdateUserRequest {
+  optional string first_name = 1;
+  optional string last_name = 2;
+  optional UserPreferences preferences = 3;
+}
+
+// Response for GET /users/me
+message GetCurrentUserResponse {
+  User user = 1;
+}
+
+// Response for GET /users (admin only)
+message ListUsersRequest {
+  echomind.common.PaginationRequest pagination = 1;
+  optional bool is_active = 2;  // Filter by active status
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  echomind.common.PaginationResponse pagination = 2;
+}

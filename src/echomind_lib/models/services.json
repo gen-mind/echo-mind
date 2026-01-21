@@ -1,0 +1,16 @@
+{
+    "EmbedService": {
+        "Embed": {
+            "input_type": ".echomind.internal.EmbedRequest",
+            "output_type": ".echomind.internal.EmbedResponse",
+            "streaming_type": "unary",
+            "method_full_name": "/echomind.internal.EmbedService/Embed"
+        },
+        "GetDimension": {
+            "input_type": ".echomind.internal.DimensionRequest",
+            "output_type": ".echomind.internal.DimensionResponse",
+            "streaming_type": "unary",
+            "method_full_name": "/echomind.internal.EmbedService/GetDimension"
+        }
+    }
+}

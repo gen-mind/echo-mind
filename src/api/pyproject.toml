@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "echomind-api"
+version = "0.1.0"
+description = "EchoMind API Service"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "EchoMind Team"}
+]
+
+dependencies = [
+    # Shared library (provides all base dependencies)
+    # Install echomind_lib first: cd src/echomind_lib && pip install -e ".[dev]"
+    "echomind-lib",
+    # API-specific dependencies
+    "fastapi==0.128.0",
+    "uvicorn[standard]==0.40.0",
+]
+
+[project.scripts]
+echomind-api = "api.main:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["api*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["../../tests"]
+addopts = "-v --cov=api --cov-report=term-missing"

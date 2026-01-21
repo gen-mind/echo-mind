@@ -211,16 +211,6 @@ data/
 excluded/
 deployment/data
 .idea/
-sample/
 
-
-training-loop/datasets
-training-loop/checkpoints
-training-loop/loss_curve.png
-browser-inference/cnn/datasets
-browser-inference/cnn/checkpoints
-browser-inference/cnn/models
-browser-inference/cnn/models_onnx
-browser-inference/cnn/*.png
-posts-excluded/
-/sample
+/.claude/
+/sample/

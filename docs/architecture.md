@@ -523,8 +523,10 @@ echomind/
 │   │   ├── qdrant.py
 │   │   ├── redis.py
 │   │   └── minio.py
-│   ├── models/              # Pydantic models
-│   ├── proto/               # gRPC definitions
+│   ├── proto/               # Protocol Buffer definitions (source of truth)
+│   │   ├── public/          # Client-facing API objects
+│   │   └── internal/        # Internal service objects
+│   ├── models/              # Generated Pydantic models (from proto)
 │   └── lib/                 # Shared utilities
 ├── deployment/
 │   ├── docker/

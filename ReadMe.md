@@ -5,7 +5,7 @@
 
 ### Your Organization's AI Adoption Starts Now. For Free.
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](license)
 [![Deploy Anywhere](https://img.shields.io/badge/Deploy-Anywhere-brightgreen.svg)](#deployment-modes)
 
@@ -160,13 +160,18 @@ echomind/
 │   ├── agent/               # Semantic Kernel agent core
 │   ├── services/            # Background workers
 │   ├── connectors/          # Data source connectors
-│   └── db/                  # Database clients
+│   ├── db/                  # Database clients
+│   └── proto/               # Protocol Buffer definitions
+│       ├── public/          # API objects (client-facing)
+│       └── internal/        # Internal service objects
 ├── deployment/
 │   ├── docker/              # Docker Compose files
 │   └── k8s/                 # Kubernetes manifests
 ├── config/                  # Configuration files
 └── tests/
 ```
+
+> **Schema-First Development**: Proto definitions in `src/proto/` are the source of truth. CI generates TypeScript types (for clients) and Pydantic models (for Python) automatically.
 
 ---
 

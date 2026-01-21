@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package echomind.internal;
+
+option go_package = "echomind/proto/internal";
+
+import "google/protobuf/struct.proto";
+
+// Agent memory types
+enum MemoryType {
+  MEMORY_TYPE_UNSPECIFIED = 0;
+  MEMORY_TYPE_EPISODIC = 1;    // Past interactions
+  MEMORY_TYPE_SEMANTIC = 2;    // Learned facts
+  MEMORY_TYPE_PROCEDURAL = 3;  // Successful patterns
+}
+
+// Agent memory entry
+message AgentMemory {
+  int32 id = 1;
+  int32 user_id = 2;
+  MemoryType memory_type = 3;
+  string content = 4;
+  optional string embedding_id = 5;
+  double importance_score = 6;
+  int32 access_count = 7;
+}
+
+// Tool call made by agent
+message ToolCall {
+  string tool_name = 1;
+  google.protobuf.Struct parameters = 2;
+  google.protobuf.Struct result = 3;
+  int32 duration_ms = 4;
+}
+
+// Agent planning step
+message PlanStep {
+  string action = 1;       // "retrieve", "tool", "generate"
+  string description = 2;
+  bool completed = 3;
+  optional google.protobuf.Struct result = 4;
+}
+
+// Agent orchestration request
+message AgentRequest {
+  int32 session_id = 1;
+  int32 user_id = 2;
+  string query = 3;
+  repeated AgentMemory relevant_memories = 4;
+}
+
+// Agent orchestration response
+message AgentResponse {
+  string response = 1;
+  repeated ToolCall tool_calls = 2;
+  repeated PlanStep plan = 3;
+  int32 tokens_used = 4;
+}

@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package echomind.common;
+
+option go_package = "echomind/proto/common";
+
+import "google/protobuf/timestamp.proto";
+
+// Pagination request parameters
+message PaginationRequest {
+  int32 page = 1;       // Page number (1-indexed)
+  int32 limit = 2;      // Items per page (default: 20, max: 100)
+}
+
+// Pagination response metadata
+message PaginationResponse {
+  int32 page = 1;       // Current page number
+  int32 limit = 2;      // Items per page
+  int32 total = 3;      // Total number of items
+  int32 pages = 4;      // Total number of pages
+}
+
+// Standard error response
+message ErrorResponse {
+  string code = 1;      // Error code (e.g., "VALIDATION_ERROR", "NOT_FOUND")
+  string message = 2;   // Human-readable error message
+  repeated FieldError details = 3;  // Field-level errors for validation
+}
+
+// Field-level validation error
+message FieldError {
+  string field = 1;     // Field name (e.g., "config.folder_id")
+  string message = 2;   // Error message for this field
+}
+
+// Audit fields included in all entities
+message AuditInfo {
+  google.protobuf.Timestamp creation_date = 1;
+  google.protobuf.Timestamp last_update = 2;
+  optional int32 user_id_last_update = 3;
+}
+
+// Empty request/response for endpoints that don't need parameters
+message Empty {}
+
+// Generic ID wrapper
+message IdRequest {
+  int32 id = 1;
+}
+
+// Generic success response
+message SuccessResponse {
+  bool success = 1;
+  string message = 2;
+}

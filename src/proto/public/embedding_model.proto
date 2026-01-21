@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package echomind.public;
+
+option go_package = "echomind/proto/public";
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// Embedding model configuration
+message EmbeddingModel {
+  int32 id = 1;
+  string model_id = 2;      // e.g., "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+  string model_name = 3;    // Display name
+  int32 model_dimension = 4; // Vector dimension (e.g., 768)
+  optional string endpoint = 5;  // Optional external embedding service URL
+  bool is_active = 6;
+  google.protobuf.Timestamp creation_date = 7;
+  google.protobuf.Timestamp last_update = 8;
+}
+
+// Request to create a new embedding model config
+message CreateEmbeddingModelRequest {
+  string model_id = 1;
+  string model_name = 2;
+  int32 model_dimension = 3;
+  optional string endpoint = 4;
+}
+
+// Response for GET /embedding-models
+message ListEmbeddingModelsResponse {
+  repeated EmbeddingModel models = 1;
+}
+
+// Response for GET /embedding-models/active
+message GetActiveEmbeddingModelResponse {
+  EmbeddingModel model = 1;
+}
+
+// Response for PUT /embedding-models/{id}/activate
+message ActivateEmbeddingModelResponse {
+  bool success = 1;
+  string message = 2;
+  bool requires_reindex = 3;  // True if documents need to be re-indexed
+  int32 documents_affected = 4;
+}

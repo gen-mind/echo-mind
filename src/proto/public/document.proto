@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package echomind.public;
+
+option go_package = "echomind/proto/public";
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// Document processing status
+enum DocumentStatus {
+  DOCUMENT_STATUS_UNSPECIFIED = 0;
+  DOCUMENT_STATUS_PENDING = 1;
+  DOCUMENT_STATUS_PROCESSING = 2;
+  DOCUMENT_STATUS_COMPLETED = 3;
+  DOCUMENT_STATUS_FAILED = 4;
+}
+
+// Document metadata
+message Document {
+  int64 id = 1;
+  optional int64 parent_id = 2;
+  int32 connector_id = 3;
+  string source_id = 4;
+  optional string url = 5;
+  optional string original_url = 6;
+  optional string title = 7;
+  optional string content_type = 8;
+  DocumentStatus status = 9;
+  optional string status_message = 10;
+  int32 chunk_count = 11;
+  google.protobuf.Timestamp creation_date = 12;
+  google.protobuf.Timestamp last_update = 13;
+}
+
+// Response for GET /documents
+message ListDocumentsRequest {
+  echomind.common.PaginationRequest pagination = 1;
+  optional int32 connector_id = 2;
+  optional DocumentStatus status = 3;
+}
+
+message ListDocumentsResponse {
+  repeated Document documents = 1;
+  echomind.common.PaginationResponse pagination = 2;
+}
+
+// Response for GET /documents/{id}
+message GetDocumentResponse {
+  Document document = 1;
+}
+
+// Request for GET /documents/search
+message SearchDocumentsRequest {
+  string query = 1;
+  optional int32 connector_id = 2;
+  int32 limit = 3;  // Max results (default: 10)
+  double min_score = 4;  // Minimum relevance score (0-1)
+}
+
+// Search result with relevance score
+message DocumentSearchResult {
+  Document document = 1;
+  string chunk_id = 2;
+  string chunk_content = 3;
+  double score = 4;
+}
+
+message SearchDocumentsResponse {
+  repeated DocumentSearchResult results = 1;
+}

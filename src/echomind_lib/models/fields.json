@@ -1,0 +1,453 @@
+{
+    "PaginationRequest": {
+        "page": "",
+        "limit": ""
+    },
+    "PaginationResponse": {
+        "page": "",
+        "limit": "",
+        "total": "",
+        "pages": ""
+    },
+    "ErrorResponse": {
+        "code": "",
+        "message": "",
+        "details": ""
+    },
+    "FieldError": {
+        "field": "",
+        "message": ""
+    },
+    "AuditInfo": {
+        "creation_date": "",
+        "last_update": "",
+        "user_id_last_update": ""
+    },
+    "Empty": {},
+    "IdRequest": {
+        "id": ""
+    },
+    "SuccessResponse": {
+        "success": "",
+        "message": ""
+    },
+    "Connector": {
+        "id": "",
+        "name": "",
+        "type": "",
+        "config": "",
+        "state": "",
+        "refresh_freq_minutes": "",
+        "user_id": "",
+        "scope": "",
+        "scope_id": "",
+        "status": "",
+        "status_message": "",
+        "last_sync_at": "",
+        "docs_analyzed": "",
+        "creation_date": "",
+        "last_update": ""
+    },
+    "CreateConnectorRequest": {
+        "name": "",
+        "type": "",
+        "config": "",
+        "refresh_freq_minutes": "",
+        "scope": "",
+        "scope_id": ""
+    },
+    "UpdateConnectorRequest": {
+        "id": "",
+        "name": "",
+        "config": "",
+        "refresh_freq_minutes": "",
+        "scope": "",
+        "scope_id": ""
+    },
+    "ListConnectorsRequest": {
+        "pagination": "",
+        "type": "",
+        "status": ""
+    },
+    "ListConnectorsResponse": {
+        "connectors": "",
+        "pagination": ""
+    },
+    "GetConnectorResponse": {
+        "connector": ""
+    },
+    "TriggerSyncResponse": {
+        "success": "",
+        "message": ""
+    },
+    "GetConnectorStatusResponse": {
+        "status": "",
+        "status_message": "",
+        "last_sync_at": "",
+        "docs_analyzed": "",
+        "docs_pending": ""
+    },
+    "Document": {
+        "id": "",
+        "parent_id": "",
+        "connector_id": "",
+        "source_id": "",
+        "url": "",
+        "original_url": "",
+        "title": "",
+        "content_type": "",
+        "status": "",
+        "status_message": "",
+        "chunk_count": "",
+        "creation_date": "",
+        "last_update": ""
+    },
+    "ListDocumentsRequest": {
+        "pagination": "",
+        "connector_id": "",
+        "status": ""
+    },
+    "ListDocumentsResponse": {
+        "documents": "",
+        "pagination": ""
+    },
+    "GetDocumentResponse": {
+        "document": ""
+    },
+    "SearchDocumentsRequest": {
+        "query": "",
+        "connector_id": "",
+        "limit": "",
+        "min_score": ""
+    },
+    "DocumentSearchResult": {
+        "document": "",
+        "chunk_id": "",
+        "chunk_content": "",
+        "score": ""
+    },
+    "SearchDocumentsResponse": {
+        "results": ""
+    },
+    "Assistant": {
+        "id": "",
+        "name": "",
+        "description": "",
+        "llm_id": "",
+        "system_prompt": "",
+        "task_prompt": "",
+        "starter_messages": "",
+        "is_default": "",
+        "is_visible": "",
+        "display_priority": "",
+        "created_by": "",
+        "creation_date": "",
+        "last_update": ""
+    },
+    "CreateAssistantRequest": {
+        "name": "",
+        "description": "",
+        "llm_id": "",
+        "system_prompt": "",
+        "task_prompt": "",
+        "starter_messages": "",
+        "is_default": "",
+        "is_visible": "",
+        "display_priority": ""
+    },
+    "UpdateAssistantRequest": {
+        "id": "",
+        "name": "",
+        "description": "",
+        "llm_id": "",
+        "system_prompt": "",
+        "task_prompt": "",
+        "starter_messages": "",
+        "is_default": "",
+        "is_visible": "",
+        "display_priority": ""
+    },
+    "ListAssistantsRequest": {
+        "pagination": "",
+        "is_visible": ""
+    },
+    "ListAssistantsResponse": {
+        "assistants": "",
+        "pagination": ""
+    },
+    "GetAssistantResponse": {
+        "assistant": ""
+    },
+    "EmbeddingModel": {
+        "id": "",
+        "model_id": "",
+        "model_name": "",
+        "model_dimension": "",
+        "endpoint": "",
+        "is_active": "",
+        "creation_date": "",
+        "last_update": ""
+    },
+    "CreateEmbeddingModelRequest": {
+        "model_id": "",
+        "model_name": "",
+        "model_dimension": "",
+        "endpoint": ""
+    },
+    "ListEmbeddingModelsResponse": {
+        "models": ""
+    },
+    "GetActiveEmbeddingModelResponse": {
+        "model": ""
+    },
+    "ActivateEmbeddingModelResponse": {
+        "success": "",
+        "message": "",
+        "requires_reindex": "",
+        "documents_affected": ""
+    },
+    "ChatSession": {
+        "id": "",
+        "user_id": "",
+        "assistant_id": "",
+        "title": "",
+        "mode": "",
+        "message_count": "",
+        "creation_date": "",
+        "last_update": "",
+        "last_message_at": ""
+    },
+    "ChatMessage": {
+        "id": "",
+        "chat_session_id": "",
+        "role": "",
+        "content": "",
+        "token_count": "",
+        "parent_message_id": "",
+        "rephrased_query": "",
+        "retrieval_context": "",
+        "tool_calls": "",
+        "error": "",
+        "creation_date": ""
+    },
+    "MessageSource": {
+        "document_id": "",
+        "chunk_id": "",
+        "score": "",
+        "title": "",
+        "snippet": ""
+    },
+    "MessageFeedback": {
+        "id": "",
+        "chat_message_id": "",
+        "user_id": "",
+        "is_positive": "",
+        "feedback_text": "",
+        "creation_date": ""
+    },
+    "CreateChatSessionRequest": {
+        "assistant_id": "",
+        "title": "",
+        "mode": ""
+    },
+    "ListChatSessionsRequest": {
+        "pagination": "",
+        "assistant_id": ""
+    },
+    "ListChatSessionsResponse": {
+        "sessions": "",
+        "pagination": ""
+    },
+    "GetChatSessionResponse": {
+        "session": "",
+        "messages": ""
+    },
+    "ListMessagesRequest": {
+        "session_id": "",
+        "pagination": ""
+    },
+    "ListMessagesResponse": {
+        "messages": "",
+        "pagination": ""
+    },
+    "GetMessageResponse": {
+        "message": ""
+    },
+    "GetMessageSourcesResponse": {
+        "sources": ""
+    },
+    "SubmitFeedbackRequest": {
+        "message_id": "",
+        "is_positive": "",
+        "feedback_text": ""
+    },
+    "SubmitFeedbackResponse": {
+        "feedback": ""
+    },
+    "WsChatStart": {
+        "session_id": "",
+        "query": "",
+        "mode": ""
+    },
+    "WsChatCancel": {
+        "session_id": ""
+    },
+    "WsRetrievalStart": {
+        "session_id": "",
+        "query": "",
+        "rephrased_query": ""
+    },
+    "WsRetrievalComplete": {
+        "session_id": "",
+        "sources": ""
+    },
+    "WsGenerationToken": {
+        "session_id": "",
+        "token": ""
+    },
+    "WsGenerationComplete": {
+        "session_id": "",
+        "message_id": "",
+        "token_count": ""
+    },
+    "WsError": {
+        "code": "",
+        "message": ""
+    },
+    "LLM": {
+        "id": "",
+        "name": "",
+        "provider": "",
+        "model_id": "",
+        "endpoint": "",
+        "has_api_key": "",
+        "max_tokens": "",
+        "temperature": "",
+        "is_default": "",
+        "is_active": "",
+        "creation_date": "",
+        "last_update": ""
+    },
+    "CreateLLMRequest": {
+        "name": "",
+        "provider": "",
+        "model_id": "",
+        "endpoint": "",
+        "api_key": "",
+        "max_tokens": "",
+        "temperature": "",
+        "is_default": "",
+        "is_active": ""
+    },
+    "UpdateLLMRequest": {
+        "id": "",
+        "name": "",
+        "provider": "",
+        "model_id": "",
+        "endpoint": "",
+        "api_key": "",
+        "max_tokens": "",
+        "temperature": "",
+        "is_default": "",
+        "is_active": ""
+    },
+    "ListLLMsRequest": {
+        "pagination": "",
+        "is_active": ""
+    },
+    "ListLLMsResponse": {
+        "llms": "",
+        "pagination": ""
+    },
+    "GetLLMResponse": {
+        "llm": ""
+    },
+    "TestLLMResponse": {
+        "success": "",
+        "message": "",
+        "latency_ms": ""
+    },
+    "User": {
+        "id": "",
+        "user_name": "",
+        "email": "",
+        "first_name": "",
+        "last_name": "",
+        "roles": "",
+        "groups": "",
+        "preferences": "",
+        "is_active": "",
+        "creation_date": "",
+        "last_update": "",
+        "last_login": ""
+    },
+    "UserPreferences": {
+        "default_assistant_id": "",
+        "theme": "",
+        "custom": ""
+    },
+    "UpdateUserRequest": {
+        "first_name": "",
+        "last_name": "",
+        "preferences": ""
+    },
+    "GetCurrentUserResponse": {
+        "user": ""
+    },
+    "ListUsersRequest": {
+        "pagination": "",
+        "is_active": ""
+    },
+    "ListUsersResponse": {
+        "users": "",
+        "pagination": ""
+    },
+    "EmbedRequest": {
+        "texts": ""
+    },
+    "EmbedResponse": {
+        "embeddings": ""
+    },
+    "Embedding": {
+        "vector": "",
+        "dimension": ""
+    },
+    "DimensionRequest": {},
+    "DimensionResponse": {
+        "dimension": "",
+        "model_id": ""
+    },
+    "AgentMemory": {
+        "id": "",
+        "user_id": "",
+        "memory_type": "",
+        "content": "",
+        "embedding_id": "",
+        "importance_score": "",
+        "access_count": ""
+    },
+    "ToolCall": {
+        "tool_name": "",
+        "parameters": "",
+        "result": "",
+        "duration_ms": ""
+    },
+    "PlanStep": {
+        "action": "",
+        "description": "",
+        "completed": "",
+        "result": ""
+    },
+    "AgentRequest": {
+        "session_id": "",
+        "user_id": "",
+        "query": "",
+        "relevant_memories": ""
+    },
+    "AgentResponse": {
+        "response": "",
+        "tool_calls": "",
+        "plan": "",
+        "tokens_used": ""
+    }
+}

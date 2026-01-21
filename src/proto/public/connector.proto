@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package echomind.public;
+
+option go_package = "echomind/proto/public";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "common.proto";
+
+// Connector types supported in v1
+enum ConnectorType {
+  CONNECTOR_TYPE_UNSPECIFIED = 0;
+  CONNECTOR_TYPE_TEAMS = 1;
+  CONNECTOR_TYPE_GOOGLE_DRIVE = 2;
+  CONNECTOR_TYPE_ONEDRIVE = 3;
+  CONNECTOR_TYPE_WEB = 4;
+  CONNECTOR_TYPE_FILE = 5;
+}
+
+// Connector status
+enum ConnectorStatus {
+  CONNECTOR_STATUS_UNSPECIFIED = 0;
+  CONNECTOR_STATUS_PENDING = 1;
+  CONNECTOR_STATUS_SYNCING = 2;
+  CONNECTOR_STATUS_ACTIVE = 3;
+  CONNECTOR_STATUS_ERROR = 4;
+  CONNECTOR_STATUS_DISABLED = 5;
+}
+
+// Connector scope for vector collection routing
+enum ConnectorScope {
+  CONNECTOR_SCOPE_UNSPECIFIED = 0;
+  CONNECTOR_SCOPE_USER = 1;
+  CONNECTOR_SCOPE_GROUP = 2;
+  CONNECTOR_SCOPE_ORG = 3;
+}
+
+// Data source connector
+message Connector {
+  int32 id = 1;
+  string name = 2;
+  ConnectorType type = 3;
+  google.protobuf.Struct config = 4;  // Connector-specific configuration
+  google.protobuf.Struct state = 5;   // Sync state (cursors, tokens, etc.)
+  optional int32 refresh_freq_minutes = 6;
+  int32 user_id = 7;
+  ConnectorScope scope = 8;
+  optional string scope_id = 9;  // Group name if scope=GROUP
+  ConnectorStatus status = 10;
+  optional string status_message = 11;
+  optional google.protobuf.Timestamp last_sync_at = 12;
+  int64 docs_analyzed = 13;
+  google.protobuf.Timestamp creation_date = 14;
+  google.protobuf.Timestamp last_update = 15;
+}
+
+// Request to create a new connector
+message CreateConnectorRequest {
+  string name = 1;
+  ConnectorType type = 2;
+  google.protobuf.Struct config = 3;
+  optional int32 refresh_freq_minutes = 4;
+  ConnectorScope scope = 5;
+  optional string scope_id = 6;
+}
+
+// Request to update a connector
+message UpdateConnectorRequest {
+  int32 id = 1;
+  optional string name = 2;
+  optional google.protobuf.Struct config = 3;
+  optional int32 refresh_freq_minutes = 4;
+  optional ConnectorScope scope = 5;
+  optional string scope_id = 6;
+}
+
+// Response for GET /connectors
+message ListConnectorsRequest {
+  echomind.common.PaginationRequest pagination = 1;
+  optional ConnectorType type = 2;
+  optional ConnectorStatus status = 3;
+}
+
+message ListConnectorsResponse {
+  repeated Connector connectors = 1;
+  echomind.common.PaginationResponse pagination = 2;
+}
+
+// Response for GET /connectors/{id}
+message GetConnectorResponse {
+  Connector connector = 1;
+}
+
+// Response for POST /connectors/{id}/sync
+message TriggerSyncResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Response for GET /connectors/{id}/status
+message GetConnectorStatusResponse {
+  ConnectorStatus status = 1;
+  optional string status_message = 2;
+  optional google.protobuf.Timestamp last_sync_at = 3;
+  int64 docs_analyzed = 4;
+  int32 docs_pending = 5;
+}

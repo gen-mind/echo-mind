@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package echomind.internal;
+
+option go_package = "echomind/proto/internal";
+
+// Embedding request for text
+message EmbedRequest {
+  repeated string texts = 1;
+}
+
+// Embedding response with vectors
+message EmbedResponse {
+  repeated Embedding embeddings = 1;
+}
+
+// Single embedding vector
+message Embedding {
+  repeated float vector = 1;
+  int32 dimension = 2;
+}
+
+// gRPC service for embedding
+service EmbedService {
+  rpc Embed(EmbedRequest) returns (EmbedResponse);
+  rpc GetDimension(DimensionRequest) returns (DimensionResponse);
+}
+
+message DimensionRequest {}
+
+message DimensionResponse {
+  int32 dimension = 1;
+  string model_id = 2;
+}

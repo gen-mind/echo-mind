@@ -1,0 +1,2829 @@
+{
+    "PaginationRequest": {
+        "page": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "limit": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "PaginationResponse": {
+        "page": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "limit": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "total": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "pages": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "ErrorResponse": {
+        "code": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "message": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "details": {
+            "type": "FieldError",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "FieldError": {
+        "field": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "message": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "AuditInfo": {
+        "creation_date": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "last_update": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "user_id_last_update": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "Empty": {},
+    "IdRequest": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "SuccessResponse": {
+        "success": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "message": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "Connector": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "type": {
+            "type": "ConnectorType",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorType(0)"
+            },
+            "description": ""
+        },
+        "config": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "state": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "refresh_freq_minutes": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "user_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "scope": {
+            "type": "ConnectorScope",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorScope(0)"
+            },
+            "description": ""
+        },
+        "scope_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "status": {
+            "type": "ConnectorStatus",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorStatus(0)"
+            },
+            "description": ""
+        },
+        "status_message": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "last_sync_at": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "docs_analyzed": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "creation_date": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "last_update": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        }
+    },
+    "CreateConnectorRequest": {
+        "name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "type": {
+            "type": "ConnectorType",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorType(0)"
+            },
+            "description": ""
+        },
+        "config": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "refresh_freq_minutes": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "scope": {
+            "type": "ConnectorScope",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorScope(0)"
+            },
+            "description": ""
+        },
+        "scope_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "UpdateConnectorRequest": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "config": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "refresh_freq_minutes": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "scope": {
+            "type": "ConnectorScope",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorScope(0)"
+            },
+            "description": ""
+        },
+        "scope_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "ListConnectorsRequest": {
+        "pagination": {
+            "type": "PaginationRequest",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "type": {
+            "type": "ConnectorType",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorType(0)"
+            },
+            "description": ""
+        },
+        "status": {
+            "type": "ConnectorStatus",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorStatus(0)"
+            },
+            "description": ""
+        }
+    },
+    "ListConnectorsResponse": {
+        "connectors": {
+            "type": "Connector",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "pagination": {
+            "type": "PaginationResponse",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "GetConnectorResponse": {
+        "connector": {
+            "type": "Connector",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "TriggerSyncResponse": {
+        "success": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "message": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "GetConnectorStatusResponse": {
+        "status": {
+            "type": "ConnectorStatus",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorStatus(0)"
+            },
+            "description": ""
+        },
+        "status_message": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "last_sync_at": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "docs_analyzed": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "docs_pending": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "Document": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "parent_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "connector_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "source_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "url": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "original_url": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "title": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "content_type": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "status": {
+            "type": "DocumentStatus",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "DocumentStatus(0)"
+            },
+            "description": ""
+        },
+        "status_message": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "chunk_count": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "creation_date": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "last_update": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        }
+    },
+    "ListDocumentsRequest": {
+        "pagination": {
+            "type": "PaginationRequest",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "connector_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "status": {
+            "type": "DocumentStatus",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "DocumentStatus(0)"
+            },
+            "description": ""
+        }
+    },
+    "ListDocumentsResponse": {
+        "documents": {
+            "type": "Document",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "pagination": {
+            "type": "PaginationResponse",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "GetDocumentResponse": {
+        "document": {
+            "type": "Document",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "SearchDocumentsRequest": {
+        "query": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "connector_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "limit": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "min_score": {
+            "type": "float",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0.0"
+            },
+            "description": ""
+        }
+    },
+    "DocumentSearchResult": {
+        "document": {
+            "type": "Document",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "chunk_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "chunk_content": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "score": {
+            "type": "float",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0.0"
+            },
+            "description": ""
+        }
+    },
+    "SearchDocumentsResponse": {
+        "results": {
+            "type": "DocumentSearchResult",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "Assistant": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "description": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "llm_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "system_prompt": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "task_prompt": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "starter_messages": {
+            "type": "str",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "is_default": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "is_visible": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "display_priority": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "created_by": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "creation_date": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "last_update": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        }
+    },
+    "CreateAssistantRequest": {
+        "name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "description": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "llm_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "system_prompt": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "task_prompt": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "starter_messages": {
+            "type": "str",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "is_default": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "is_visible": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "display_priority": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "UpdateAssistantRequest": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "description": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "llm_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "system_prompt": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "task_prompt": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "starter_messages": {
+            "type": "str",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "is_default": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "is_visible": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "display_priority": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "ListAssistantsRequest": {
+        "pagination": {
+            "type": "PaginationRequest",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "is_visible": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        }
+    },
+    "ListAssistantsResponse": {
+        "assistants": {
+            "type": "Assistant",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "pagination": {
+            "type": "PaginationResponse",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "GetAssistantResponse": {
+        "assistant": {
+            "type": "Assistant",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "EmbeddingModel": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "model_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "model_name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "model_dimension": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "endpoint": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "is_active": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "creation_date": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "last_update": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        }
+    },
+    "CreateEmbeddingModelRequest": {
+        "model_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "model_name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "model_dimension": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "endpoint": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "ListEmbeddingModelsResponse": {
+        "models": {
+            "type": "EmbeddingModel",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "GetActiveEmbeddingModelResponse": {
+        "model": {
+            "type": "EmbeddingModel",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "ActivateEmbeddingModelResponse": {
+        "success": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "message": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "requires_reindex": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "documents_affected": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "ChatSession": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "user_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "assistant_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "title": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "mode": {
+            "type": "ChatMode",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ChatMode(0)"
+            },
+            "description": ""
+        },
+        "message_count": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "creation_date": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "last_update": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "last_message_at": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        }
+    },
+    "ChatMessage": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "chat_session_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "role": {
+            "type": "MessageRole",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "MessageRole(0)"
+            },
+            "description": ""
+        },
+        "content": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "token_count": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "parent_message_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "rephrased_query": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "retrieval_context": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "tool_calls": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "error": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "creation_date": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        }
+    },
+    "MessageSource": {
+        "document_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "chunk_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "score": {
+            "type": "float",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0.0"
+            },
+            "description": ""
+        },
+        "title": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "snippet": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "MessageFeedback": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "chat_message_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "user_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "is_positive": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "feedback_text": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "creation_date": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        }
+    },
+    "CreateChatSessionRequest": {
+        "assistant_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "title": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "mode": {
+            "type": "ChatMode",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ChatMode(0)"
+            },
+            "description": ""
+        }
+    },
+    "ListChatSessionsRequest": {
+        "pagination": {
+            "type": "PaginationRequest",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "assistant_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "ListChatSessionsResponse": {
+        "sessions": {
+            "type": "ChatSession",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "pagination": {
+            "type": "PaginationResponse",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "GetChatSessionResponse": {
+        "session": {
+            "type": "ChatSession",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "messages": {
+            "type": "ChatMessage",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "ListMessagesRequest": {
+        "session_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "pagination": {
+            "type": "PaginationRequest",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "ListMessagesResponse": {
+        "messages": {
+            "type": "ChatMessage",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "pagination": {
+            "type": "PaginationResponse",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "GetMessageResponse": {
+        "message": {
+            "type": "ChatMessage",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "GetMessageSourcesResponse": {
+        "sources": {
+            "type": "MessageSource",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "SubmitFeedbackRequest": {
+        "message_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "is_positive": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "feedback_text": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "SubmitFeedbackResponse": {
+        "feedback": {
+            "type": "MessageFeedback",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "WsChatStart": {
+        "session_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "query": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "mode": {
+            "type": "ChatMode",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ChatMode(0)"
+            },
+            "description": ""
+        }
+    },
+    "WsChatCancel": {
+        "session_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "WsRetrievalStart": {
+        "session_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "query": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "rephrased_query": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "WsRetrievalComplete": {
+        "session_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "sources": {
+            "type": "MessageSource",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "WsGenerationToken": {
+        "session_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "token": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "WsGenerationComplete": {
+        "session_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "message_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "token_count": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "WsError": {
+        "code": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "message": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "LLM": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "provider": {
+            "type": "LLMProvider",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "LLMProvider(0)"
+            },
+            "description": ""
+        },
+        "model_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "endpoint": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "has_api_key": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "max_tokens": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "temperature": {
+            "type": "float",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0.0"
+            },
+            "description": ""
+        },
+        "is_default": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "is_active": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "creation_date": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "last_update": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        }
+    },
+    "CreateLLMRequest": {
+        "name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "provider": {
+            "type": "LLMProvider",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "LLMProvider(0)"
+            },
+            "description": ""
+        },
+        "model_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "endpoint": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "api_key": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "max_tokens": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "temperature": {
+            "type": "float",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0.0"
+            },
+            "description": ""
+        },
+        "is_default": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "is_active": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        }
+    },
+    "UpdateLLMRequest": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "provider": {
+            "type": "LLMProvider",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "LLMProvider(0)"
+            },
+            "description": ""
+        },
+        "model_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "endpoint": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "api_key": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "max_tokens": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "temperature": {
+            "type": "float",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0.0"
+            },
+            "description": ""
+        },
+        "is_default": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "is_active": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        }
+    },
+    "ListLLMsRequest": {
+        "pagination": {
+            "type": "PaginationRequest",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "is_active": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        }
+    },
+    "ListLLMsResponse": {
+        "llms": {
+            "type": "LLM",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "pagination": {
+            "type": "PaginationResponse",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "GetLLMResponse": {
+        "llm": {
+            "type": "LLM",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "TestLLMResponse": {
+        "success": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "message": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "latency_ms": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "User": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "user_name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "email": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "first_name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "last_name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "roles": {
+            "type": "str",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "groups": {
+            "type": "str",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "preferences": {
+            "type": "UserPreferences",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "is_active": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "creation_date": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "last_update": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "last_login": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        }
+    },
+    "UserPreferences": {
+        "default_assistant_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "theme": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "custom": {
+            "type": "Dict[str, str]",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "UpdateUserRequest": {
+        "first_name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "last_name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "preferences": {
+            "type": "UserPreferences",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "GetCurrentUserResponse": {
+        "user": {
+            "type": "User",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "ListUsersRequest": {
+        "pagination": {
+            "type": "PaginationRequest",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "is_active": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        }
+    },
+    "ListUsersResponse": {
+        "users": {
+            "type": "User",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "pagination": {
+            "type": "PaginationResponse",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "EmbedRequest": {
+        "texts": {
+            "type": "str",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "EmbedResponse": {
+        "embeddings": {
+            "type": "Embedding",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "Embedding": {
+        "vector": {
+            "type": "float",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": "0.0"
+            },
+            "description": ""
+        },
+        "dimension": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "DimensionRequest": {},
+    "DimensionResponse": {
+        "dimension": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "model_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "AgentMemory": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "user_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "memory_type": {
+            "type": "MemoryType",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "MemoryType(0)"
+            },
+            "description": ""
+        },
+        "content": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "embedding_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "importance_score": {
+            "type": "float",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0.0"
+            },
+            "description": ""
+        },
+        "access_count": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "ToolCall": {
+        "tool_name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "parameters": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "result": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "duration_ms": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    },
+    "PlanStep": {
+        "action": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "description": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "completed": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "False"
+            },
+            "description": ""
+        },
+        "result": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "AgentRequest": {
+        "session_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "user_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "query": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "relevant_memories": {
+            "type": "AgentMemory",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        }
+    },
+    "AgentResponse": {
+        "response": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "tool_calls": {
+            "type": "ToolCall",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "plan": {
+            "type": "PlanStep",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "tokens_used": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        }
+    }
+}
