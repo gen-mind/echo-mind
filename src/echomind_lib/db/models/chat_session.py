@@ -39,6 +39,6 @@ class ChatSession(Base):
     last_message_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     deleted_date: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     
-    user: Mapped["User"] = relationship(back_populates="chat_sessions")
+    user: Mapped["User"] = relationship(back_populates="chat_sessions", foreign_keys=[user_id])
     assistant: Mapped["Assistant"] = relationship(back_populates="chat_sessions")
     messages: Mapped[list["ChatMessage"]] = relationship(back_populates="session", cascade="all, delete-orphan")

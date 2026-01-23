@@ -79,6 +79,10 @@ services:
   # ===============================================
   # PostgreSQL - Shared DB (Authentik + API)
   # ===============================================
+  # IMPORTANT: POSTGRES_PASSWORD only works on FIRST initialization!
+  # If you change the password in .env after the volume exists, run:
+  #   ./scripts/fix-postgres-password.sh
+  # This syncs the password inside postgres to match .env
   postgres:
     image: postgres:16.4
     container_name: echomind-postgres
@@ -130,7 +134,15 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.authentik.rule=Host(`${AUTHENTIK_DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=web"
+      - "traefik.http.routers.authentik.middlewares=authentik-cors"
       - "traefik.http.services.authentik.loadbalancer.server.port=9000"
+      # CORS middleware for OIDC endpoints (required for SPA clients)
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowmethods=GET,OPTIONS,POST"
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolalloworiginlist=http://localhost:5173,http://localhost:3000"
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowcredentials=true"
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.authentik-cors.headers.addvaryheader=true"
       # PRODUCTION: Uncomment for HTTPS
       # - "traefik.http.routers.authentik.entrypoints=websecure"
       # - "traefik.http.routers.authentik.tls.certresolver=letsencrypt"
@@ -265,7 +277,11 @@ services:
       - API_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - API_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - API_NATS_URL=nats://nats:4222
-      - API_AUTH_ISSUER=http://authentik-server:9000
+      # Auth - issuer must match JWT's 'iss' claim exactly (external URL)
+      # JWKS URL can use internal hostname for network efficiency
+      - API_AUTH_ISSUER=http://auth.localhost/application/o/echo-mind/
+      - API_AUTH_AUDIENCE=KgfSGS07LFhpniaqeMRKeyydcqy0cQNloCLFZI1f
+      - API_AUTH_JWKS_URL=http://authentik-server:9000/application/o/echo-mind/jwks/
     depends_on:
       - postgres
       - qdrant

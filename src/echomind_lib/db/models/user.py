@@ -45,5 +45,5 @@ class User(Base):
     last_login: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     
     connectors: Mapped[list["Connector"]] = relationship(back_populates="user", foreign_keys="Connector.user_id")
-    chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user")
-    agent_memories: Mapped[list["AgentMemory"]] = relationship(back_populates="user")
+    chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user", foreign_keys="ChatSession.user_id")
+    agent_memories: Mapped[list["AgentMemory"]] = relationship(back_populates="user", foreign_keys="AgentMemory.user_id")

@@ -110,13 +110,13 @@ async def create_connector(
     """
     connector = ConnectorORM(
         name=data.name,
-        type=data.type,
-        config=data.config,
+        type=data.type.name if data.type else None,
+        config=data.config or {},
         state={},
         refresh_freq_minutes=data.refresh_freq_minutes,
         user_id=user.id,
-        scope=data.scope,
-        scope_id=data.scope_id,
+        scope=data.scope.name if data.scope else None,
+        scope_id=data.scope_id or "",
         status="pending",
         user_id_last_update=user.id,
     )

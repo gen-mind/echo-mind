@@ -39,4 +39,4 @@ class AgentMemory(Base):
     user_id_last_update: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     
-    user: Mapped["User"] = relationship(back_populates="agent_memories")
+    user: Mapped["User"] = relationship(back_populates="agent_memories", foreign_keys=[user_id])

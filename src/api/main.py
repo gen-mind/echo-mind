@@ -35,7 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import get_settings
 from api.middleware.error_handler import setup_error_handlers
-from api.routes import assistants, chat, connectors, documents, embedding_models, health, llms, users
+from api.routes import assistants, auth, chat, connectors, documents, embedding_models, health, llms, users
 from api.websocket.chat_handler import ChatHandler
 from echomind_lib.db.connection import close_db, init_db
 from echomind_lib.db.nats_publisher import close_nats_publisher, init_nats_publisher
@@ -349,6 +349,7 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(health.router, tags=["Health"])  # Root level for /health
     app.include_router(health.router, prefix="/api/v1", tags=["Health"])  # Versioned API
+    app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
     app.include_router(assistants.router, prefix="/api/v1/assistants", tags=["Assistants"])
     app.include_router(llms.router, prefix="/api/v1/llms", tags=["LLMs"])

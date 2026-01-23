@@ -135,8 +135,11 @@ start_cluster() {
     
     log_step "Starting EchoMind cluster..."
     echo ""
-    
+
     cd "$SCRIPT_DIR"
+    # Use down + up to ensure env vars from .env are always applied
+    # (--force-recreate alone doesn't always work)
+    docker compose down 2>/dev/null || true
     docker compose up -d
     
     echo ""
@@ -191,13 +194,15 @@ stop_cluster() {
 
 restart_cluster() {
     print_banner
-    
+
     log_step "Restarting EchoMind cluster..."
+    log_info "Using down + up to ensure env vars are refreshed"
     echo ""
-    
+
     cd "$SCRIPT_DIR"
-    docker compose restart
-    
+    docker compose down
+    docker compose up -d
+
     echo ""
     log_success "Cluster restarted successfully!"
     echo ""
@@ -243,14 +248,14 @@ pull_images() {
 
 rebuild_api() {
     print_banner
-    
+
     log_step "Rebuilding API service..."
     echo ""
-    
+
     cd "$SCRIPT_DIR"
     docker compose build --no-cache api
-    docker compose up -d api
-    
+    docker compose up -d --force-recreate api
+
     echo ""
     log_success "API service rebuilt and restarted!"
     echo ""

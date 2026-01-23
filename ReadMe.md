@@ -18,6 +18,25 @@
 
 ---
 
+## 🧠 What is it?
+
+EchoMind is an **agentic RAG platform** that actually *thinks* before it retrieves.
+
+```
+🔄 Think → Act → Observe → Reflect → Evaluate → Answer
+```
+
+> The agent 🤔 **thinks** about what information it needs, 🎯 **acts** by querying sources and tools, 🔍 **observes** the results, and 🤖 **reflects** on whether it has enough context. Before responding, it ⚖️ **evaluates** the quality and completeness of its answer — looping back if needed — then delivers a grounded 💬 **answer**.
+
+|                                   |                                                                             |
+|-----------------------------------|-----------------------------------------------------------------------------|
+| 🔍 **Multi-Step Retrieval**       | Goes beyond "retrieve-then-generate" — reasons across multiple sources      |
+| 🏠 **Private and SaaS LLM Ready** | Run with TGI/vLLM on your own GPU cluster or connected to your favorite LLM API |
+| 🔒 **Air-Gap / SCIF Ready**       | No internet, no telemetry, no phone-home — fully self-contained             |
+| 📦 **Deploy Anywhere**            | Single container to Kubernetes cluster — your choice                        |
+| ⚖️ **MIT Licensed**               | Free and open source, forever                                               |
+
+
 ## Why EchoMind?
 
 <table>
