@@ -7,10 +7,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import DbSession, get_db_session
+from api.dependencies import get_db_session
 from echomind_lib.db.models import User as UserORM
 from echomind_lib.helpers.auth import (
-    TokenUser,
     extract_bearer_token,
     get_jwt_validator,
 )

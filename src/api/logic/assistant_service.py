@@ -4,7 +4,7 @@ Assistant business logic service.
 Handles all assistant-related business operations, keeping routes thin.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,9 +84,6 @@ class AssistantService:
         count_query = select(AssistantORM.id).where(AssistantORM.deleted_date.is_(None))
         if is_visible is not None:
             count_query = count_query.where(AssistantORM.is_visible == is_visible)
-        count_result = await self.db.execute(count_query)
-        total = len(count_result.all())
-
         # Paginate
         query = query.offset((page - 1) * limit).limit(limit)
         result = await self.db.execute(query)
@@ -211,5 +208,5 @@ class AssistantService:
         if not db_assistant:
             raise NotFoundError("Assistant", assistant_id)
 
-        db_assistant.deleted_date = datetime.utcnow()
+        db_assistant.deleted_date = datetime.now(timezone.utc)
         db_assistant.user_id_last_update = deleted_by_user_id

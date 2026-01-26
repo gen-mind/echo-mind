@@ -115,9 +115,6 @@ class UserService:
         count_query = select(UserORM.id)
         if is_active is not None:
             count_query = count_query.where(UserORM.is_active == is_active)
-        count_result = await self.db.execute(count_query)
-        total = len(count_result.all())
-        
         # Paginate
         query = query.offset((page - 1) * limit).limit(limit)
         result = await self.db.execute(query)

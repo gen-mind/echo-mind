@@ -1,6 +1,6 @@
 """Assistant management endpoints."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
@@ -49,9 +49,6 @@ async def list_assistants(
     count_query = select(AssistantORM.id).where(AssistantORM.deleted_date.is_(None))
     if is_visible is not None:
         count_query = count_query.where(AssistantORM.is_visible == is_visible)
-    count_result = await db.execute(count_query)
-    total = len(count_result.all())
-    
     # Paginate
     query = query.offset((page - 1) * limit).limit(limit)
     result = await db.execute(query)
@@ -225,5 +222,5 @@ async def delete_assistant(
             detail="Assistant not found",
         )
     
-    db_assistant.deleted_date = datetime.utcnow()
+    db_assistant.deleted_date = datetime.now(timezone.utc)
     db_assistant.user_id_last_update = user.id

@@ -1,11 +1,12 @@
 """Connector management endpoints."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from api.converters import orm_to_connector
 from api.dependencies import CurrentUser, DbSession
 from echomind_lib.db.models import Connector as ConnectorORM
 from echomind_lib.db.models import Document as DocumentORM
@@ -78,15 +79,12 @@ async def list_connectors(
         count_query = count_query.where(ConnectorORM.type == connector_type)
     if connector_status:
         count_query = count_query.where(ConnectorORM.status == connector_status)
-    count_result = await db.execute(count_query)
-    total = len(count_result.all())
-    
     # Paginate
     query = query.offset((page - 1) * limit).limit(limit)
     result = await db.execute(query)
     db_connectors = result.scalars().all()
     
-    connectors = [Connector.model_validate(c, from_attributes=True) for c in db_connectors]
+    connectors = [orm_to_connector(c) for c in db_connectors]
     
     return ListConnectorsResponse(connectors=connectors)
 
@@ -125,7 +123,7 @@ async def create_connector(
     await db.flush()
     await db.refresh(connector)
     
-    return Connector.model_validate(connector, from_attributes=True)
+    return orm_to_connector(connector)
 
 
 @router.get("/{connector_id}", response_model=Connector)
@@ -162,7 +160,7 @@ async def get_connector(
             detail="Connector not found",
         )
     
-    return Connector.model_validate(db_connector, from_attributes=True)
+    return orm_to_connector(db_connector)
 
 
 @router.put("/{connector_id}", response_model=Connector)
@@ -208,13 +206,13 @@ async def update_connector(
     if data.refresh_freq_minutes:
         db_connector.refresh_freq_minutes = data.refresh_freq_minutes
     if data.scope:
-        db_connector.scope = data.scope
+        db_connector.scope = data.scope.name if hasattr(data.scope, 'name') else str(data.scope)
     if data.scope_id:
         db_connector.scope_id = data.scope_id
     
     db_connector.user_id_last_update = user.id
     
-    return Connector.model_validate(db_connector, from_attributes=True)
+    return orm_to_connector(db_connector)
 
 
 @router.delete("/{connector_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -248,7 +246,7 @@ async def delete_connector(
             detail="Connector not found",
         )
     
-    db_connector.deleted_date = datetime.utcnow()
+    db_connector.deleted_date = datetime.now(timezone.utc)
     db_connector.user_id_last_update = user.id
 
 

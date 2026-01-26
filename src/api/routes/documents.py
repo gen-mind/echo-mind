@@ -4,10 +4,10 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from api.converters import orm_to_document
 from api.dependencies import CurrentUser, DbSession
 from echomind_lib.db.models import Connector as ConnectorORM
 from echomind_lib.db.models import Document as DocumentORM
-from echomind_lib.db.qdrant import get_qdrant
 from echomind_lib.models.public import (
     Document,
     ListDocumentsResponse,
@@ -78,15 +78,12 @@ async def list_documents(
     count_query = select(DocumentORM.id).where(DocumentORM.connector_id.in_(connector_ids))
     if doc_status:
         count_query = count_query.where(DocumentORM.status == doc_status)
-    count_result = await db.execute(count_query)
-    total = len(count_result.all())
-    
     # Paginate
     query = query.offset((page - 1) * limit).limit(limit)
     result = await db.execute(query)
     db_documents = result.scalars().all()
     
-    documents = [Document.model_validate(d, from_attributes=True) for d in db_documents]
+    documents = [orm_to_document(d) for d in db_documents]
     
     return ListDocumentsResponse(documents=documents)
 
@@ -174,7 +171,7 @@ async def get_document(
             detail="Document not found",
         )
     
-    return Document.model_validate(db_document, from_attributes=True)
+    return orm_to_document(db_document)
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

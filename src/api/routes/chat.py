@@ -1,6 +1,6 @@
 """Chat session and message endpoints."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
@@ -65,9 +65,6 @@ async def list_chat_sessions(
     )
     if assistant_id:
         count_query = count_query.where(ChatSessionORM.assistant_id == assistant_id)
-    count_result = await db.execute(count_query)
-    total = len(count_result.all())
-    
     # Paginate
     query = query.offset((page - 1) * limit).limit(limit)
     result = await db.execute(query)
@@ -209,7 +206,7 @@ async def delete_chat_session(
             detail="Chat session not found",
         )
     
-    db_session.deleted_date = datetime.utcnow()
+    db_session.deleted_date = datetime.now(timezone.utc)
     db_session.user_id_last_update = user.id
 
 
@@ -249,12 +246,6 @@ async def list_session_messages(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Chat session not found",
         )
-    
-    # Count total
-    count_result = await db.execute(
-        select(ChatMessageORM.id).where(ChatMessageORM.chat_session_id == session_id)
-    )
-    total = len(count_result.all())
     
     # Get messages
     result = await db.execute(
@@ -412,7 +403,8 @@ async def submit_feedback(
     
     if existing:
         # Update existing feedback
-        existing.is_positive = data.is_positive
+        if data.is_positive is not None:
+            existing.is_positive = data.is_positive
         existing.feedback_text = data.feedback_text
         existing.user_id_last_update = user.id
         return MessageFeedback.model_validate(existing, from_attributes=True)

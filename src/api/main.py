@@ -4,11 +4,46 @@ EchoMind API Service - FastAPI Application.
 Main entry point for the REST API and WebSocket server.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, AsyncGenerator
 
 from dotenv import load_dotenv
+from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+
+from api.config import get_settings
+from api.middleware.error_handler import setup_error_handlers
+from api.routes import (
+    assistants,
+    auth,
+    chat,
+    connectors,
+    documents,
+    embedding_models,
+    health,
+    llms,
+    users,
+)
+from api.websocket.chat_handler import ChatHandler
+from echomind_lib.db.connection import close_db, init_db
+from echomind_lib.db.minio import close_minio, init_minio
+from echomind_lib.db.nats_publisher import close_nats_publisher, init_nats_publisher
+from echomind_lib.db.qdrant import close_qdrant, init_qdrant
+from echomind_lib.helpers.auth import init_jwt_validator
+from echomind_lib.helpers.readiness_probe import (
+    HealthCheckResult,
+    HealthStatus,
+    get_readiness_probe,
+)
+
+if TYPE_CHECKING:
+    from api.config import Settings
 
 # Load environment variables from .env file
 load_dotenv()
@@ -24,39 +59,18 @@ logging.basicConfig(level=log_level, format=log_format)
 logger = logging.getLogger(__name__)
 
 # Suppress noisy NATS library errors
-logging.getLogger('nats.aio.client').setLevel(logging.CRITICAL)
-logging.getLogger('nats.aio.transport').setLevel(logging.CRITICAL)
-
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
-
-from fastapi import FastAPI, WebSocket
-from fastapi.middleware.cors import CORSMiddleware
-
-from api.config import get_settings
-from api.middleware.error_handler import setup_error_handlers
-from api.routes import assistants, auth, chat, connectors, documents, embedding_models, health, llms, users
-from api.websocket.chat_handler import ChatHandler
-from echomind_lib.db.connection import close_db, init_db
-from echomind_lib.db.nats_publisher import close_nats_publisher, init_nats_publisher
-from echomind_lib.db.minio import close_minio, init_minio
-from echomind_lib.db.qdrant import close_qdrant, init_qdrant
-from echomind_lib.db.redis import close_redis, init_redis
-from echomind_lib.helpers.auth import init_jwt_validator
-from echomind_lib.helpers.readiness_probe import (
-    get_readiness_probe,
-    HealthCheckResult,
-    HealthStatus,
-)
+logging.getLogger("nats.aio.client").setLevel(logging.CRITICAL)
+logging.getLogger("nats.aio.transport").setLevel(logging.CRITICAL)
 
 
 async def _check_database() -> HealthCheckResult:
     """Health check for database connection."""
     try:
         from echomind_lib.db.connection import get_db_manager
+
         db = get_db_manager()
         async with db.session() as session:
-            await session.execute("SELECT 1")
+            await session.execute(text("SELECT 1"))
         return HealthCheckResult(
             name="database",
             status=HealthStatus.HEALTHY,
@@ -74,8 +88,12 @@ async def _check_redis() -> HealthCheckResult:
     """Health check for Redis connection."""
     try:
         from echomind_lib.db.redis import get_redis
-        redis = get_redis()
-        await redis.ping()
+
+        redis_client = get_redis()
+        # Access internal client to call ping - justified for health check
+        result = redis_client.client.ping()  # type: ignore[union-attr]
+        if hasattr(result, "__await__"):
+            await result
         return HealthCheckResult(
             name="redis",
             status=HealthStatus.HEALTHY,
@@ -93,8 +111,10 @@ async def _check_qdrant() -> HealthCheckResult:
     """Health check for Qdrant connection."""
     try:
         from echomind_lib.db.qdrant import get_qdrant
+
         qdrant = get_qdrant()
-        await qdrant.get_collections()
+        # Access internal client to check collections - justified for health check
+        await qdrant._client.get_collections()
         return HealthCheckResult(
             name="qdrant",
             status=HealthStatus.HEALTHY,
@@ -111,9 +131,11 @@ async def _check_qdrant() -> HealthCheckResult:
 async def _check_nats() -> HealthCheckResult:
     """Health check for NATS connection."""
     try:
-        from echomind_lib.db.nats_publisher import get_nats
-        nats = get_nats()
-        if nats.is_connected:
+        from echomind_lib.db.nats_publisher import get_nats_publisher
+
+        publisher = get_nats_publisher()
+        # Access internal NATS client to check connection - justified for health check
+        if publisher._nc is not None and publisher._nc.is_connected:
             return HealthCheckResult(
                 name="nats",
                 status=HealthStatus.HEALTHY,
@@ -143,7 +165,7 @@ def _register_health_checks(timeout: float) -> None:
     logger.info("Registered health checks: database, redis, qdrant, nats")
 
 
-async def _retry_db_connection(settings) -> None:
+async def _retry_db_connection(settings: Settings) -> None:
     """Background task to retry database connection."""
     while True:
         await asyncio.sleep(30)
@@ -155,7 +177,7 @@ async def _retry_db_connection(settings) -> None:
             logger.warning(f"⚠️ Database reconnection attempt failed: {e}")
 
 
-async def _retry_qdrant_connection(settings) -> None:
+async def _retry_qdrant_connection(settings: Settings) -> None:
     """Background task to retry Qdrant connection."""
     while True:
         await asyncio.sleep(30)
@@ -171,7 +193,7 @@ async def _retry_qdrant_connection(settings) -> None:
             logger.warning(f"⚠️ Qdrant reconnection attempt failed: {e}")
 
 
-async def _retry_minio_connection(settings) -> None:
+async def _retry_minio_connection(settings: Settings) -> None:
     """Background task to retry MinIO connection."""
     while True:
         await asyncio.sleep(30)
@@ -188,7 +210,7 @@ async def _retry_minio_connection(settings) -> None:
             logger.warning(f"⚠️ MinIO reconnection attempt failed: {e}")
 
 
-async def _retry_nats_connection(settings) -> None:
+async def _retry_nats_connection(settings: Settings) -> None:
     """Background task to retry NATS connection."""
     while True:
         await asyncio.sleep(30)
@@ -208,12 +230,12 @@ async def _retry_nats_connection(settings) -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Application lifespan manager.
-    
+
     Initializes and closes all service connections.
     """
     settings = get_settings()
-    retry_tasks = []
-    
+    retry_tasks: list[asyncio.Task[None]] = []
+
     # Initialize services - non-blocking, app starts even if services unavailable
     try:
         await init_db(settings.database_url, echo=settings.database_echo)
@@ -222,7 +244,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning(f"⚠️ Database initialization failed: {e}")
         logger.info("🔄 Will retry database connection in background...")
         retry_tasks.append(asyncio.create_task(_retry_db_connection(settings)))
-    
+
     # Redis disabled for now
     # try:
     #     await init_redis(
@@ -234,7 +256,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # except Exception as e:
     #     logger.warning(f"⚠️ Redis initialization failed: {e}")
     #     logger.info("🔄 Will retry Redis connection in background...")
-    
+
     try:
         await init_qdrant(
             host=settings.qdrant_host,
@@ -246,7 +268,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning(f"⚠️ Qdrant initialization failed: {e}")
         logger.info("🔄 Will retry Qdrant connection in background...")
         retry_tasks.append(asyncio.create_task(_retry_qdrant_connection(settings)))
-    
+
     try:
         await init_minio(
             endpoint=settings.minio_endpoint,
@@ -259,7 +281,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning(f"⚠️ MinIO initialization failed: {e}")
         logger.info("🔄 Will retry MinIO connection in background...")
         retry_tasks.append(asyncio.create_task(_retry_minio_connection(settings)))
-    
+
     try:
         init_jwt_validator(
             issuer=settings.auth_issuer,
@@ -270,7 +292,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("✅ JWT validator initialized successfully")
     except Exception as e:
         logger.warning(f"⚠️ JWT validator initialization failed: {e}")
-    
+
     try:
         await init_nats_publisher(
             servers=[settings.nats_url],
@@ -282,38 +304,38 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning(f"⚠️ NATS publisher initialization failed: {e}")
         logger.info("🔄 Will retry NATS connection in background...")
         retry_tasks.append(asyncio.create_task(_retry_nats_connection(settings)))
-    
+
     # Register health checks for readiness probe
     _register_health_checks(settings.health_check_timeout)
-    
+
     yield
-    
+
     # Cancel all retry tasks
     for task in retry_tasks:
         task.cancel()
-    
+
     # Cleanup
     try:
         await close_db()
     except Exception:
         pass
-    
+
     # Redis disabled
     # try:
     #     await close_redis()
     # except Exception:
     #     pass
-    
+
     try:
         await close_qdrant()
     except Exception:
         pass
-    
+
     try:
         close_minio()
     except Exception:
         pass
-    
+
     try:
         await close_nats_publisher()
     except Exception:
@@ -323,7 +345,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     settings = get_settings()
-    
+
     app = FastAPI(
         title="EchoMind API",
         description="Agentic RAG Platform API",
@@ -333,10 +355,10 @@ def create_app() -> FastAPI:
         openapi_url="/api/v1/openapi.json",
         lifespan=lifespan,
     )
-    
+
     # Register error handlers
     setup_error_handlers(app)
-    
+
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -345,27 +367,38 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Register routers
     app.include_router(health.router, tags=["Health"])  # Root level for /health
-    app.include_router(health.router, prefix="/api/v1", tags=["Health"])  # Versioned API
+    app.include_router(health.router, prefix="/api/v1", tags=["Health"])  # Versioned
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
-    app.include_router(assistants.router, prefix="/api/v1/assistants", tags=["Assistants"])
+    app.include_router(
+        assistants.router, prefix="/api/v1/assistants", tags=["Assistants"]
+    )
     app.include_router(llms.router, prefix="/api/v1/llms", tags=["LLMs"])
-    app.include_router(embedding_models.router, prefix="/api/v1/embedding-models", tags=["Embedding Models"])
-    app.include_router(connectors.router, prefix="/api/v1/connectors", tags=["Connectors"])
+    app.include_router(
+        embedding_models.router,
+        prefix="/api/v1/embedding-models",
+        tags=["Embedding Models"],
+    )
+    app.include_router(
+        connectors.router, prefix="/api/v1/connectors", tags=["Connectors"]
+    )
     app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
     app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
-    
+
     # WebSocket endpoint
     chat_handler = ChatHandler()
-    
+
     @app.websocket("/api/v1/ws/chat")
-    async def websocket_chat(websocket: WebSocket, token: str | None = None):
+    async def websocket_chat(websocket: WebSocket, token: str | None = None) -> None:
         """WebSocket endpoint for real-time chat."""
+        if token is None:
+            await websocket.close(code=4001, reason="Token required")
+            return
         await chat_handler.handle_connection(websocket, token)
-    
+
     return app
 
 
@@ -374,7 +407,7 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     settings = get_settings()
     uvicorn.run(
         "api.main:app",

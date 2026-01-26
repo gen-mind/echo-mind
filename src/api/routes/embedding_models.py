@@ -48,7 +48,7 @@ async def list_embedding_models(
     
     models = [EmbeddingModel.model_validate(m, from_attributes=True) for m in db_models]
     
-    return ListEmbeddingModelsResponse(embedding_models=models)
+    return ListEmbeddingModelsResponse(models=models)
 
 
 @router.get("/active", response_model=EmbeddingModel)
@@ -71,7 +71,7 @@ async def get_active_embedding_model(
     """
     result = await db.execute(
         select(EmbeddingModelORM)
-        .where(EmbeddingModelORM.is_active == True)
+        .where(EmbeddingModelORM.is_active.is_(True))
         .where(EmbeddingModelORM.deleted_date.is_(None))
     )
     db_model = result.scalar_one_or_none()
@@ -157,7 +157,7 @@ async def activate_embedding_model(
     # Get current active model
     result = await db.execute(
         select(EmbeddingModelORM)
-        .where(EmbeddingModelORM.is_active == True)
+        .where(EmbeddingModelORM.is_active.is_(True))
         .where(EmbeddingModelORM.deleted_date.is_(None))
     )
     current_model = result.scalar_one_or_none()

@@ -1,6 +1,6 @@
 """LLM configuration endpoints."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
@@ -57,15 +57,12 @@ async def list_llms(
     count_query = select(LLMORM.id).where(LLMORM.deleted_date.is_(None))
     if is_active is not None:
         count_query = count_query.where(LLMORM.is_active == is_active)
-    count_result = await db.execute(count_query)
-    total = len(count_result.all())
-    
     # Paginate
     query = query.offset((page - 1) * limit).limit(limit)
     result = await db.execute(query)
     db_llms = result.scalars().all()
     
-    llms = [LLM.model_validate(l, from_attributes=True) for l in db_llms]
+    llms = [LLM.model_validate(llm_obj, from_attributes=True) for llm_obj in db_llms]
     
     return ListLLMsResponse(llms=llms)
 
@@ -181,7 +178,7 @@ async def update_llm(
     if data.name:
         db_llm.name = data.name
     if data.provider:
-        db_llm.provider = data.provider
+        db_llm.provider = data.provider.name if hasattr(data.provider, 'name') else str(data.provider)
     if data.model_id:
         db_llm.model_id = data.model_id
     if data.endpoint:
@@ -232,7 +229,7 @@ async def delete_llm(
             detail="LLM not found",
         )
     
-    db_llm.deleted_date = datetime.utcnow()
+    db_llm.deleted_date = datetime.now(timezone.utc)
     db_llm.user_id_last_update = user.id
 
 

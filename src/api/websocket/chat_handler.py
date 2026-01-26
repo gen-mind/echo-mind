@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
 
 from api.websocket.manager import ConnectionManager, get_connection_manager
-from echomind_lib.helpers.auth import TokenUser, extract_bearer_token, get_jwt_validator
+from echomind_lib.helpers.auth import TokenUser, get_jwt_validator
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +188,7 @@ class ChatHandler:
             await asyncio.sleep(0.5)  # Simulate retrieval
             
             # Send retrieval complete
-            sources = []  # TODO: Get actual sources
+            sources: list[dict[str, Any]] = []  # TODO: Get actual sources
             await self.manager.send_to_user(user.id, {
                 "type": MessageType.RETRIEVAL_COMPLETE,
                 "session_id": session_id,
@@ -215,8 +215,9 @@ class ChatHandler:
             response = "This is a placeholder response. The actual implementation would stream tokens from the LLM."
             token_count = 0
             
+            current_task = asyncio.current_task()
             for word in response.split():
-                if asyncio.current_task().cancelled():
+                if current_task is not None and current_task.cancelled():
                     return
                 
                 await self.manager.send_to_user(user.id, {

@@ -46,11 +46,11 @@ class ConnectionManager:
         manager.disconnect(user_id)
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize connection manager."""
         self._connections: dict[int, Connection] = {}
         self._session_subscribers: dict[int, set[int]] = {}
-        self._lock = asyncio.Lock()
+        self._lock: asyncio.Lock = asyncio.Lock()
     
     async def connect(self, websocket: WebSocket, user_id: int) -> None:
         """
