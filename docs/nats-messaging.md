@@ -18,10 +18,12 @@ EchoMind uses NATS JetStream for asynchronous service communication in the docum
 sequenceDiagram
     participant O as Orchestrator
     participant N as NATS JetStream
+    participant DLQ as NATS DLQ
     participant C as Connector
     participant S as Semantic
     participant V as Voice
     participant I as Vision
+    participant G as Guardian
     participant E as Embedder (gRPC)
     participant DB as PostgreSQL
     participant Q as Qdrant
@@ -67,6 +69,12 @@ sequenceDiagram
 
     S->>DB: Set status = active (success)
     S->>DB: Set status = error (failure)
+
+    Note over N,DLQ: On max retry failures
+    N-->>DLQ: Move to dlq.{subject}
+    DLQ->>G: FailureDetails
+    G->>G: Parse headers, send alerts
+    G->>DLQ: Acknowledge
 ```
 
 ---
@@ -94,6 +102,29 @@ nats stream add ECHOMIND \
 | Max Age | 7 days | Keep failed messages for debugging |
 | Storage | file | Persist across restarts |
 | Replicas | 1 | Single node (increase for HA) |
+
+### ECHOMIND_DLQ Stream
+
+Dead-letter queue for failed messages. Monitored by Guardian service.
+
+```bash
+# Create DLQ stream
+nats stream add ECHOMIND_DLQ \
+  --subjects "dlq.>" \
+  --retention limits \
+  --max-age 30d \
+  --storage file \
+  --replicas 1
+```
+
+| Setting | Value | Rationale |
+|---------|-------|-----------|
+| Subjects | `dlq.>` | Wildcard captures all DLQ subjects |
+| Retention | limits | Keep for audit/debugging |
+| Max Age | 30 days | Long retention for investigation |
+| Storage | file | Persist across restarts |
+
+**Consumer:** `echomind-guardian` monitors this stream and sends alerts.
 
 ---
 
@@ -211,16 +242,46 @@ nats stream add ECHOMIND \
 
 ---
 
+### 5. dlq.{original_subject}
+
+**Purpose:** Failed messages that exceeded max retry attempts.
+
+| Attribute | Value |
+|-----------|-------|
+| **Publisher** | NATS JetStream (automatic) |
+| **Consumer** | echomind-guardian |
+| **Stream** | ECHOMIND_DLQ |
+| **Trigger** | Message exceeds `max_deliver` attempts |
+
+**Headers Added by NATS:**
+
+| Header | Description |
+|--------|-------------|
+| `Nats-Original-Subject` | Original subject (e.g., `document.process`) |
+| `Nats-Original-Stream` | Original stream name |
+| `Nats-Original-Sequence` | Sequence number in original stream |
+| `Nats-Failure-Description` | Error description |
+| `Nats-Num-Delivered` | Number of delivery attempts |
+
+**Guardian Processing:**
+1. Parse failure headers
+2. Extract failure details
+3. Send alerts via configured alerters (Slack, PagerDuty, logging)
+4. Acknowledge message
+
+---
+
 ## Consumer Groups
 
 Each service uses a durable consumer with queue groups for load balancing.
 
-| Service | Consumer Name | Queue Group |
-|---------|---------------|-------------|
-| echomind-connector | `connector-consumer` | `connector-workers` |
-| echomind-semantic | `semantic-consumer` | `semantic-workers` |
-| echomind-voice | `voice-consumer` | `voice-workers` |
-| echomind-vision | `vision-consumer` | `vision-workers` |
+| Service | Consumer Name | Queue Group | Stream |
+|---------|---------------|-------------|--------|
+| echomind-connector | `connector-consumer` | `connector-workers` | ECHOMIND |
+| echomind-semantic | `semantic-consumer` | `semantic-workers` | ECHOMIND |
+| echomind-voice | `voice-consumer` | `voice-workers` | ECHOMIND |
+| echomind-vision | `vision-consumer` | `vision-workers` | ECHOMIND |
+| echomind-guardian | `guardian-consumer` | `guardian-workers` | ECHOMIND_DLQ |
 
 ```python
 # Example consumer configuration
@@ -274,6 +335,25 @@ subscriber = JetStreamEventSubscriber(
     ┌──────────┐
     │ Embedder │ (gRPC, not NATS)
     └──────────┘
+
+    ═══════════════════════════════════════
+    On failure (max retries exceeded):
+
+    ┌─────────────────┐
+    │ Any Consumer    │
+    │ (max_deliver)   │
+    └────────┬────────┘
+             │
+             ▼ dlq.{original_subject}
+    ┌─────────────────┐
+    │  ECHOMIND_DLQ   │
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │    Guardian     │──► Slack/PagerDuty/Logs
+    │  (DLQ Monitor)  │
+    └─────────────────┘
 ```
 
 ---
@@ -291,14 +371,9 @@ subscriber = JetStreamEventSubscriber(
 
 ### Dead Letter Queue
 
-Failed messages after max retries go to DLQ:
+Failed messages after max retries go to the `ECHOMIND_DLQ` stream. The Guardian service monitors this stream for alerting.
 
-```bash
-nats stream add ECHOMIND_DLQ \
-  --subjects "dlq.>" \
-  --retention limits \
-  --max-age 30d
-```
+See [Streams Configuration - ECHOMIND_DLQ](#echomind_dlq-stream) and [Guardian Service](./services/guardian-service.md).
 
 ### Retry Policy
 
@@ -369,6 +444,12 @@ VOICE_NATS_SUBJECTS=audio.transcribe
 
 # Vision
 VISION_NATS_SUBJECTS=image.analyze
+
+# Guardian (DLQ monitoring)
+GUARDIAN_NATS_STREAM=ECHOMIND_DLQ
+GUARDIAN_NATS_SUBJECTS=dlq.>
+GUARDIAN_ALERTERS=logging,slack
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx/yyy/zzz
 ```
 
 ---
@@ -377,4 +458,6 @@ VISION_NATS_SUBJECTS=image.analyze
 
 - [Proto Definitions](./proto-definitions.md) - Message payload schemas
 - [Architecture](./architecture.md) - System overview
+- [Guardian Service](./services/guardian-service.md) - DLQ monitoring and alerting
 - [NATS JetStream Docs](https://docs.nats.io/nats-concepts/jetstream)
+- [NATS JetStream DLQ](https://docs.nats.io/using-nats/developer/develop_jetstream/consumers#dead-letter-queues)
