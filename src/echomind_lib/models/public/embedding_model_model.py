@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   embedding_model_model.py
-@Time    :   2026-01-21 01:53:35
+@Time    :   2026-01-26 18:25:06
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 

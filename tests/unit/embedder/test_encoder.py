@@ -1,21 +1,8 @@
-"""
-Unit tests for the SentenceEncoder.
+"""Unit tests for SentenceEncoder."""
 
-Tests cover:
-- Model caching behavior
-- Encoding functionality
-- Dimension retrieval
-- Error handling
-"""
-
-import os
-import sys
-from unittest.mock import MagicMock, patch
+from unittest import mock
 
 import pytest
-
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
 from embedder.logic.encoder import SentenceEncoder
 from embedder.logic.exceptions import EncodingError, ModelNotFoundError
@@ -24,157 +11,172 @@ from embedder.logic.exceptions import EncodingError, ModelNotFoundError
 class TestSentenceEncoder:
     """Tests for SentenceEncoder class."""
 
-    @pytest.fixture(autouse=True)
-    def reset_encoder(self) -> None:
+    def setup_method(self) -> None:
         """Reset encoder state before each test."""
         SentenceEncoder.clear_cache()
-        SentenceEncoder._cache_limit = 1
         SentenceEncoder._device = None
+        SentenceEncoder._cache_limit = 1
 
     def test_set_cache_limit(self) -> None:
-        """Should set cache limit with minimum of 1."""
+        """Test setting cache limit."""
         SentenceEncoder.set_cache_limit(5)
         assert SentenceEncoder._cache_limit == 5
 
+    def test_set_cache_limit_minimum(self) -> None:
+        """Test that cache limit has minimum of 1."""
         SentenceEncoder.set_cache_limit(0)
-        assert SentenceEncoder._cache_limit == 1  # Minimum 1
+        assert SentenceEncoder._cache_limit == 1
 
-        SentenceEncoder.set_cache_limit(-1)
-        assert SentenceEncoder._cache_limit == 1  # Minimum 1
+        SentenceEncoder.set_cache_limit(-5)
+        assert SentenceEncoder._cache_limit == 1
 
     def test_set_device(self) -> None:
-        """Should set device string."""
-        SentenceEncoder.set_device("cuda:0")
-        assert SentenceEncoder._device == "cuda:0"
-
+        """Test setting device."""
         SentenceEncoder.set_device("cpu")
         assert SentenceEncoder._device == "cpu"
 
-    def test_encode_empty_list_returns_empty(self) -> None:
-        """Should return empty list for empty input."""
-        result = SentenceEncoder.encode(texts=[], model_name="test-model")
+    def test_clear_cache(self) -> None:
+        """Test clearing model cache."""
+        SentenceEncoder._model_cache["test-model"] = mock.MagicMock()
+        assert len(SentenceEncoder._model_cache) == 1
+
+        SentenceEncoder.clear_cache()
+        assert len(SentenceEncoder._model_cache) == 0
+
+    def test_get_cached_models_empty(self) -> None:
+        """Test getting cached models when empty."""
+        models = SentenceEncoder.get_cached_models()
+        assert models == []
+
+    def test_get_cached_models(self) -> None:
+        """Test getting list of cached models."""
+        SentenceEncoder._model_cache["model-a"] = mock.MagicMock()
+        SentenceEncoder._model_cache["model-b"] = mock.MagicMock()
+
+        models = SentenceEncoder.get_cached_models()
+        assert "model-a" in models
+        assert "model-b" in models
+
+    def test_encode_empty_list(self) -> None:
+        """Test encoding empty list returns empty list."""
+        result = SentenceEncoder.encode(
+            texts=[],
+            model_name="any-model",
+        )
         assert result == []
 
-    def test_encode_calls_model_encode(self) -> None:
-        """Should call model.encode with correct parameters."""
-        mock_model = MagicMock()
-        mock_model.encode.return_value = [
-            MagicMock(tolist=lambda: [0.1, 0.2, 0.3]),
-            MagicMock(tolist=lambda: [0.4, 0.5, 0.6]),
-        ]
-        mock_model.get_sentence_embedding_dimension.return_value = 3
+    @mock.patch("embedder.logic.encoder.SentenceTransformer")
+    def test_encode_success(self, mock_transformer_class: mock.MagicMock) -> None:
+        """Test successful encoding."""
+        import numpy as np
 
-        with patch.object(SentenceEncoder, "_get_model", return_value=mock_model):
-            result = SentenceEncoder.encode(
-                texts=["hello", "world"],
-                model_name="test-model",
-                batch_size=16,
-                normalize=True,
-            )
+        mock_model = mock.MagicMock()
+        mock_model.encode.return_value = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
+        mock_model.get_sentence_embedding_dimension.return_value = 3
+        mock_transformer_class.return_value = mock_model
+
+        SentenceEncoder.set_device("cpu")
+
+        result = SentenceEncoder.encode(
+            texts=["hello", "world"],
+            model_name="test-model",
+            batch_size=32,
+        )
+
+        assert len(result) == 2
+        assert result[0] == pytest.approx([0.1, 0.2, 0.3])
+        assert result[1] == pytest.approx([0.4, 0.5, 0.6])
 
         mock_model.encode.assert_called_once_with(
             ["hello", "world"],
-            batch_size=16,
+            batch_size=32,
             normalize_embeddings=True,
             show_progress_bar=False,
         )
-        assert len(result) == 2
 
-    def test_encode_raises_model_not_found_error(self) -> None:
-        """Should raise ModelNotFoundError when model loading fails."""
-        with patch(
-            "embedder.logic.encoder.SentenceTransformer",
-            side_effect=Exception("Model not found"),
-        ):
-            with patch.object(SentenceEncoder, "_get_device", return_value="cpu"):
-                with pytest.raises(ModelNotFoundError) as exc_info:
-                    SentenceEncoder.encode(
-                        texts=["hello"],
-                        model_name="nonexistent-model",
-                    )
+    @mock.patch("embedder.logic.encoder.SentenceTransformer")
+    def test_get_dimension(self, mock_transformer_class: mock.MagicMock) -> None:
+        """Test getting model dimension."""
+        mock_model = mock.MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_transformer_class.return_value = mock_model
 
-        assert "nonexistent-model" in str(exc_info.value)
+        SentenceEncoder.set_device("cpu")
 
-    def test_encode_raises_encoding_error(self) -> None:
-        """Should raise EncodingError when encoding fails."""
-        mock_model = MagicMock()
-        mock_model.encode.side_effect = RuntimeError("GPU OOM")
-        mock_model.get_sentence_embedding_dimension.return_value = 768
+        dim = SentenceEncoder.get_dimension("test-model")
+        assert dim == 384
 
-        with patch.object(SentenceEncoder, "_get_model", return_value=mock_model):
-            with pytest.raises(EncodingError) as exc_info:
-                SentenceEncoder.encode(
-                    texts=["hello", "world"],
-                    model_name="test-model",
-                )
+    @mock.patch("embedder.logic.encoder.SentenceTransformer")
+    def test_model_caching(self, mock_transformer_class: mock.MagicMock) -> None:
+        """Test that models are cached."""
+        mock_model = mock.MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_transformer_class.return_value = mock_model
 
-        assert exc_info.value.texts_count == 2
-        assert "GPU OOM" in str(exc_info.value)
+        SentenceEncoder.set_device("cpu")
 
-    def test_get_dimension_returns_correct_value(self) -> None:
-        """Should return model embedding dimension."""
-        mock_model = MagicMock()
-        mock_model.get_sentence_embedding_dimension.return_value = 768
+        SentenceEncoder.get_dimension("test-model")
+        assert mock_transformer_class.call_count == 1
 
-        with patch.object(SentenceEncoder, "_get_model", return_value=mock_model):
-            dim = SentenceEncoder.get_dimension("test-model")
+        SentenceEncoder.get_dimension("test-model")
+        assert mock_transformer_class.call_count == 1  # Still 1, used cache
 
-        assert dim == 768
+    @mock.patch("embedder.logic.encoder.SentenceTransformer")
+    def test_cache_eviction(self, mock_transformer_class: mock.MagicMock) -> None:
+        """Test that oldest model is evicted when cache is full."""
+        mock_model = mock.MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_transformer_class.return_value = mock_model
 
-    def test_model_caching(self) -> None:
-        """Should cache models and evict oldest when limit reached."""
-        mock_model_1 = MagicMock()
-        mock_model_1.get_sentence_embedding_dimension.return_value = 384
-        mock_model_2 = MagicMock()
-        mock_model_2.get_sentence_embedding_dimension.return_value = 768
-
+        SentenceEncoder.set_device("cpu")
         SentenceEncoder.set_cache_limit(1)
 
-        with patch(
-            "embedder.logic.encoder.SentenceTransformer",
-            side_effect=[mock_model_1, mock_model_2],
-        ):
-            with patch.object(SentenceEncoder, "_get_device", return_value="cpu"):
-                # Load first model
-                SentenceEncoder.get_dimension("model-1")
-                assert "model-1" in SentenceEncoder.get_cached_models()
+        SentenceEncoder.get_dimension("model-a")
+        assert "model-a" in SentenceEncoder.get_cached_models()
 
-                # Load second model (should evict first)
-                SentenceEncoder.get_dimension("model-2")
-                assert "model-2" in SentenceEncoder.get_cached_models()
-                assert "model-1" not in SentenceEncoder.get_cached_models()
+        SentenceEncoder.get_dimension("model-b")
+        assert "model-b" in SentenceEncoder.get_cached_models()
+        assert "model-a" not in SentenceEncoder.get_cached_models()
 
-    def test_clear_cache(self) -> None:
-        """Should clear all cached models."""
-        mock_model = MagicMock()
-        mock_model.get_sentence_embedding_dimension.return_value = 768
+    @mock.patch("embedder.logic.encoder.SentenceTransformer")
+    def test_model_not_found_error(self, mock_transformer_class: mock.MagicMock) -> None:
+        """Test ModelNotFoundError is raised when model fails to load."""
+        mock_transformer_class.side_effect = Exception("Model not found")
+        SentenceEncoder.set_device("cpu")
 
-        with patch(
-            "embedder.logic.encoder.SentenceTransformer",
-            return_value=mock_model,
-        ):
-            with patch.object(SentenceEncoder, "_get_device", return_value="cpu"):
-                SentenceEncoder.get_dimension("test-model")
-                assert len(SentenceEncoder.get_cached_models()) == 1
+        with pytest.raises(ModelNotFoundError) as exc_info:
+            SentenceEncoder.get_dimension("nonexistent-model")
 
-                SentenceEncoder.clear_cache()
-                assert len(SentenceEncoder.get_cached_models()) == 0
+        assert exc_info.value.model_name == "nonexistent-model"
 
-    def test_get_cached_models(self) -> None:
-        """Should return list of cached model names."""
-        mock_model = MagicMock()
-        mock_model.get_sentence_embedding_dimension.return_value = 768
+    @mock.patch("embedder.logic.encoder.SentenceTransformer")
+    def test_encoding_error(self, mock_transformer_class: mock.MagicMock) -> None:
+        """Test EncodingError is raised when encoding fails."""
+        mock_model = mock.MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_model.encode.side_effect = Exception("Encoding failed")
+        mock_transformer_class.return_value = mock_model
 
-        SentenceEncoder.set_cache_limit(2)
+        SentenceEncoder.set_device("cpu")
 
-        with patch(
-            "embedder.logic.encoder.SentenceTransformer",
-            return_value=mock_model,
-        ):
-            with patch.object(SentenceEncoder, "_get_device", return_value="cpu"):
-                SentenceEncoder.get_dimension("model-a")
-                SentenceEncoder.get_dimension("model-b")
+        with pytest.raises(EncodingError) as exc_info:
+            SentenceEncoder.encode(texts=["test"], model_name="test-model")
 
-                cached = SentenceEncoder.get_cached_models()
-                assert "model-a" in cached
-                assert "model-b" in cached
+        assert exc_info.value.texts_count == 1
+
+
+class TestExceptions:
+    """Tests for encoder exceptions."""
+
+    def test_model_not_found_error_message(self) -> None:
+        """Test ModelNotFoundError message format."""
+        error = ModelNotFoundError("my-model")
+        assert error.model_name == "my-model"
+        assert "my-model" in str(error)
+
+    def test_encoding_error_message(self) -> None:
+        """Test EncodingError message format."""
+        error = EncodingError("failed to encode", 5)
+        assert error.texts_count == 5
+        assert "5 texts" in str(error)
+        assert "failed to encode" in str(error)

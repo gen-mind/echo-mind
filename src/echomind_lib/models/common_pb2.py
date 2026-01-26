@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x63ommon.proto\x12\x0f\x65\x63homind.common\x1a\x1fgoogle/protobuf/timestamp.proto\"0\n\x11PaginationRequest\x12\x0c\n\x04page\x18\x01 \x01(\x05\x12\r\n\x05limit\x18\x02 \x01(\x05\"O\n\x12PaginationResponse\x12\x0c\n\x04page\x18\x01 \x01(\x05\x12\r\n\x05limit\x18\x02 \x01(\x05\x12\r\n\x05total\x18\x03 \x01(\x05\x12\r\n\x05pages\x18\x04 \x01(\x05\"\\\n\rErrorResponse\x12\x0c\n\x04\x63ode\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\x12,\n\x07\x64\x65tails\x18\x03 \x03(\x0b\x32\x1b.echomind.common.FieldError\",\n\nFieldError\x12\r\n\x05\x66ield\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\"\xa9\x01\n\tAuditInfo\x12\x31\n\rcreation_date\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blast_update\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12 \n\x13user_id_last_update\x18\x03 \x01(\x05H\x00\x88\x01\x01\x42\x16\n\x14_user_id_last_update\"\x07\n\x05\x45mpty\"\x17\n\tIdRequest\x12\n\n\x02id\x18\x01 \x01(\x05\"3\n\x0fSuccessResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\tB\x17Z\x15\x65\x63homind/proto/commonb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x63ommon.proto\x12\x0f\x65\x63homind.common\x1a\x1fgoogle/protobuf/timestamp.proto\"0\n\x11PaginationRequest\x12\x0c\n\x04page\x18\x01 \x01(\x05\x12\r\n\x05limit\x18\x02 \x01(\x05\"O\n\x12PaginationResponse\x12\x0c\n\x04page\x18\x01 \x01(\x05\x12\r\n\x05limit\x18\x02 \x01(\x05\x12\r\n\x05total\x18\x03 \x01(\x05\x12\r\n\x05pages\x18\x04 \x01(\x05\",\n\nFieldError\x12\r\n\x05\x66ield\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\"\\\n\rErrorResponse\x12\x0c\n\x04\x63ode\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\x12,\n\x07\x64\x65tails\x18\x03 \x03(\x0b\x32\x1b.echomind.common.FieldError\"\xa9\x01\n\tAuditInfo\x12\x31\n\rcreation_date\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blast_update\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12 \n\x13user_id_last_update\x18\x03 \x01(\x05H\x00\x88\x01\x01\x42\x16\n\x14_user_id_last_update\"\x07\n\x05\x45mpty\"\x17\n\tIdRequest\x12\n\n\x02id\x18\x01 \x01(\x05\"3\n\x0fSuccessResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\tB\x17Z\x15\x65\x63homind/proto/commonb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -37,10 +37,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_PAGINATIONREQUEST']._serialized_end=114
   _globals['_PAGINATIONRESPONSE']._serialized_start=116
   _globals['_PAGINATIONRESPONSE']._serialized_end=195
-  _globals['_ERRORRESPONSE']._serialized_start=197
-  _globals['_ERRORRESPONSE']._serialized_end=289
-  _globals['_FIELDERROR']._serialized_start=291
-  _globals['_FIELDERROR']._serialized_end=335
+  _globals['_FIELDERROR']._serialized_start=197
+  _globals['_FIELDERROR']._serialized_end=241
+  _globals['_ERRORRESPONSE']._serialized_start=243
+  _globals['_ERRORRESPONSE']._serialized_end=335
   _globals['_AUDITINFO']._serialized_start=338
   _globals['_AUDITINFO']._serialized_end=507
   _globals['_EMPTY']._serialized_start=509

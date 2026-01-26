@@ -7,22 +7,6 @@
 /* eslint-disable */
 import type { PaginationRequest, PaginationResponse } from "../common";
 
-/** User profile */
-export interface User {
-  id: number;
-  userName: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  roles: string[];
-  groups: string[];
-  preferences?: UserPreferences | undefined;
-  isActive: boolean;
-  creationDate?: Date | undefined;
-  lastUpdate?: Date | undefined;
-  lastLogin?: Date | undefined;
-}
-
 /** User preferences stored as JSON in DB */
 export interface UserPreferences {
   defaultAssistantId?:
@@ -37,6 +21,22 @@ export interface UserPreferences {
 export interface UserPreferences_CustomEntry {
   key: string;
   value: string;
+}
+
+/** User profile */
+export interface User {
+  id: number;
+  userName: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  roles: string[];
+  groups: string[];
+  preferences?: UserPreferences | undefined;
+  isActive: boolean;
+  creationDate?: Date | undefined;
+  lastUpdate?: Date | undefined;
+  lastLogin?: Date | undefined;
 }
 
 /** Request to update current user's profile */

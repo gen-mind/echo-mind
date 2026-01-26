@@ -93,12 +93,13 @@ generate_python() {
     rm -rf "$PYTHON_OUTPUT_DIR/public"/* 2>/dev/null || true
     rm -rf "$PYTHON_OUTPUT_DIR/internal"/* 2>/dev/null || true
 
-    # Step 1: Generate all protobuf stubs and Pydantic models
+    # Step 1: Generate all protobuf stubs, gRPC stubs, and Pydantic models
     echo "Generating protobuf stubs and Pydantic models..."
     python -m grpc_tools.protoc \
         -I"$PROTO_DIR" \
         --python_out="$PYTHON_OUTPUT_DIR" \
         --pyi_out="$PYTHON_OUTPUT_DIR" \
+        --grpc_python_out="$PYTHON_OUTPUT_DIR" \
         --pydantic_out="$PYTHON_OUTPUT_DIR" \
         $ALL_PROTOS
     echo -e "  ${GREEN}✓${NC} Generated"
@@ -106,20 +107,66 @@ generate_python() {
     # Step 2: Move models to proper folders
     echo "Organizing files into public/internal folders..."
 
+    # Move public proto generated files
     for proto in $PUBLIC_PROTOS; do
         base=$(basename "$proto" .proto)
-        if [ -f "$PYTHON_OUTPUT_DIR/${base}_model.py" ]; then
-            mv "$PYTHON_OUTPUT_DIR/${base}_model.py" "$PYTHON_OUTPUT_DIR/public/"
-        fi
+        for suffix in "_model.py" "_pb2.py" "_pb2.pyi" "_pb2_grpc.py"; do
+            if [ -f "$PYTHON_OUTPUT_DIR/${base}${suffix}" ]; then
+                mv "$PYTHON_OUTPUT_DIR/${base}${suffix}" "$PYTHON_OUTPUT_DIR/public/"
+            fi
+        done
     done
 
+    # Move internal proto generated files
     for proto in $INTERNAL_PROTOS; do
         base=$(basename "$proto" .proto)
-        if [ -f "$PYTHON_OUTPUT_DIR/${base}_model.py" ]; then
-            mv "$PYTHON_OUTPUT_DIR/${base}_model.py" "$PYTHON_OUTPUT_DIR/internal/"
-        fi
+        for suffix in "_model.py" "_pb2.py" "_pb2.pyi" "_pb2_grpc.py"; do
+            if [ -f "$PYTHON_OUTPUT_DIR/${base}${suffix}" ]; then
+                mv "$PYTHON_OUTPUT_DIR/${base}${suffix}" "$PYTHON_OUTPUT_DIR/internal/"
+            fi
+        done
     done
     echo -e "  ${GREEN}✓${NC} Files organized"
+
+    # Step 2.5: Fix relative imports in moved files
+    # Generated files have "from .common_model" but common_model.py is in parent dir
+    echo "Fixing import paths..."
+    for f in "$PYTHON_OUTPUT_DIR/public"/*_model.py "$PYTHON_OUTPUT_DIR/internal"/*_model.py; do
+        if [ -f "$f" ]; then
+            # Fix: from .common_model -> from ..common_model
+            sed -i.bak 's/from \.common_model/from ..common_model/g' "$f" && rm -f "$f.bak"
+        fi
+    done
+    echo -e "  ${GREEN}✓${NC} Import paths fixed"
+
+    # Step 2.6: Fix google.protobuf.Struct -> dict[str, Any]
+    # The proto generator doesn't handle Struct properly
+    echo "Fixing Struct types..."
+    for f in "$PYTHON_OUTPUT_DIR"/*_model.py "$PYTHON_OUTPUT_DIR/public"/*_model.py "$PYTHON_OUTPUT_DIR/internal"/*_model.py; do
+        if [ -f "$f" ] && grep -q "Struct" "$f"; then
+            # Replace Struct with dict[str, Any]
+            sed -i.bak 's/: Optional\[Struct\]/: Optional[dict[str, Any]]/g' "$f" && rm -f "$f.bak"
+            sed -i.bak 's/: Struct/: dict[str, Any]/g' "$f" && rm -f "$f.bak"
+            # Add Any to imports if not present
+            if ! grep -q "from typing import.*Any" "$f"; then
+                sed -i.bak 's/from typing import \(.*\)/from typing import \1, Any/g' "$f" && rm -f "$f.bak"
+            fi
+        fi
+    done
+    echo -e "  ${GREEN}✓${NC} Struct types fixed"
+
+    # Step 2.7: Fix gRPC imports
+    # Generated grpc files have "from internal import X_pb2" but should be "from . import X_pb2"
+    echo "Fixing gRPC imports..."
+    for f in "$PYTHON_OUTPUT_DIR/public"/*_pb2_grpc.py "$PYTHON_OUTPUT_DIR/internal"/*_pb2_grpc.py; do
+        if [ -f "$f" ]; then
+            # Fix: from public import X_pb2 -> from . import X_pb2
+            sed -i.bak 's/from public import /from . import /g' "$f" && rm -f "$f.bak"
+            # Fix: from internal import X_pb2 -> from . import X_pb2
+            sed -i.bak 's/from internal import /from . import /g' "$f" && rm -f "$f.bak"
+        fi
+    done
+    echo -e "  ${GREEN}✓${NC} gRPC imports fixed"
 
     # Step 3: Create __init__.py files
     echo "Generating exports..."

@@ -9,15 +9,15 @@ message EmbedRequest {
   repeated string texts = 1;
 }
 
-// Embedding response with vectors
-message EmbedResponse {
-  repeated Embedding embeddings = 1;
-}
-
 // Single embedding vector
 message Embedding {
   repeated float vector = 1;
   int32 dimension = 2;
+}
+
+// Embedding response with vectors
+message EmbedResponse {
+  repeated Embedding embeddings = 1;
 }
 
 // gRPC service for embedding

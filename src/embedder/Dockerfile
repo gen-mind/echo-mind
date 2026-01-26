@@ -4,7 +4,7 @@
 # Supports CUDA for GPU acceleration.
 
 # Stage 1: Build dependencies
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
@@ -69,8 +69,8 @@ EXPOSE 50051 8080
 # Set working directory
 WORKDIR /app/src/embedder
 
-# Health check - start-period extended for initial model download
-HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
+# Health check - model is pre-downloaded so startup is fast
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8080/healthz || exit 1
 
 # Run embedder

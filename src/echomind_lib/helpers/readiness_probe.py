@@ -4,10 +4,13 @@ Kubernetes readiness and liveness probe utilities.
 Provides health check endpoints for container orchestration.
 """
 
+from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from http.server import HTTPServer
 from typing import Any, Callable, Coroutine
 
 
@@ -196,13 +199,18 @@ def get_readiness_probe() -> ReadinessProbe:
     return _readiness_probe
 
 
-class SimpleHealthServer:
+class HealthServer:
     """
-    Simple HTTP health check server for standalone (non-FastAPI) services.
+    HTTP health check server for standalone services (gRPC, NATS consumers).
+
+    Provides /healthz and /readyz endpoints for Kubernetes probes.
 
     Usage:
-        server = SimpleHealthServer(port=8080)
+        server = HealthServer(port=8080)
         threading.Thread(target=server.start, daemon=True).start()
+
+    Attributes:
+        is_ready: Set to True when service is ready to receive traffic.
     """
 
     def __init__(self, port: int = 8080):
@@ -210,28 +218,66 @@ class SimpleHealthServer:
         Initialize health server.
 
         Args:
-            port: HTTP port to listen on
+            port: HTTP port to listen on.
         """
         self._port = port
+        self.is_ready = False
+        self._server: HTTPServer | None = None
+
+    def set_ready(self, ready: bool = True) -> None:
+        """
+        Set service readiness state.
+
+        Args:
+            ready: Whether service is ready for traffic.
+        """
+        self.is_ready = ready
 
     def start(self) -> None:
-        """Start the HTTP health server (blocking)."""
-        import http.server
-        import socketserver
+        """
+        Start the HTTP health server (blocking).
 
-        class HealthHandler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):
+        Call this in a daemon thread.
+        """
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+        import json
+
+        health_server = self
+
+        class HealthHandler(BaseHTTPRequestHandler):
+            """Handler for health check endpoints."""
+
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self) -> None:
+                """Handle GET requests for health endpoints."""
                 if self.path == "/healthz" or self.path == "/":
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self.end_headers()
-                    self.wfile.write(b'{"status": "healthy"}')
+                    self._respond(200, {"status": "healthy"})
+                elif self.path == "/readyz":
+                    if health_server.is_ready:
+                        self._respond(200, {"status": "ready"})
+                    else:
+                        self._respond(503, {"status": "not_ready"})
                 else:
-                    self.send_response(404)
-                    self.end_headers()
+                    self._respond(404, {"error": "not_found"})
 
-            def log_message(self, format, *args):
-                pass  # Suppress access logs
+            def _respond(self, status: int, body: dict[str, str]) -> None:
+                """Send JSON response."""
+                content = json.dumps(body).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
 
-        with socketserver.TCPServer(("", self._port), HealthHandler) as httpd:
-            httpd.serve_forever()
+            def log_message(self, format: str, *args: Any) -> None:
+                """Suppress default access logging."""
+                pass
+
+        self._server = HTTPServer(("0.0.0.0", self._port), HealthHandler)
+        self._server.serve_forever()
+
+    def stop(self) -> None:
+        """Stop the health server."""
+        if self._server:
+            self._server.shutdown()

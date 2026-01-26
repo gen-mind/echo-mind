@@ -1,1 +1,1 @@
-"""Unit tests for the Embedder Service."""
+# Embedder unit tests

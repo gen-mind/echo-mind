@@ -26,6 +26,14 @@ export interface PaginationResponse {
   pages: number;
 }
 
+/** Field-level validation error */
+export interface FieldError {
+  /** Field name (e.g., "config.folder_id") */
+  field: string;
+  /** Error message for this field */
+  message: string;
+}
+
 /** Standard error response */
 export interface ErrorResponse {
   /** Error code (e.g., "VALIDATION_ERROR", "NOT_FOUND") */
@@ -34,14 +42,6 @@ export interface ErrorResponse {
   message: string;
   /** Field-level errors for validation */
   details: FieldError[];
-}
-
-/** Field-level validation error */
-export interface FieldError {
-  /** Field name (e.g., "config.folder_id") */
-  field: string;
-  /** Error message for this field */
-  message: string;
 }
 
 /** Audit fields included in all entities */

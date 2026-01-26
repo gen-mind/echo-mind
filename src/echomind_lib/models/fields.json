@@ -9,14 +9,14 @@
         "total": "",
         "pages": ""
     },
+    "FieldError": {
+        "field": "",
+        "message": ""
+    },
     "ErrorResponse": {
         "code": "",
         "message": "",
         "details": ""
-    },
-    "FieldError": {
-        "field": "",
-        "message": ""
     },
     "AuditInfo": {
         "creation_date": "",
@@ -30,6 +30,104 @@
     "SuccessResponse": {
         "success": "",
         "message": ""
+    },
+    "Connector": {
+        "id": "",
+        "name": "",
+        "type": "",
+        "config": "",
+        "state": "",
+        "refresh_freq_minutes": "",
+        "user_id": "",
+        "scope": "",
+        "scope_id": "",
+        "status": "",
+        "status_message": "",
+        "last_sync_at": "",
+        "docs_analyzed": "",
+        "creation_date": "",
+        "last_update": ""
+    },
+    "CreateConnectorRequest": {
+        "name": "",
+        "type": "",
+        "config": "",
+        "refresh_freq_minutes": "",
+        "scope": "",
+        "scope_id": ""
+    },
+    "UpdateConnectorRequest": {
+        "id": "",
+        "name": "",
+        "config": "",
+        "refresh_freq_minutes": "",
+        "scope": "",
+        "scope_id": ""
+    },
+    "ListConnectorsRequest": {
+        "pagination": "",
+        "type": "",
+        "status": ""
+    },
+    "ListConnectorsResponse": {
+        "connectors": "",
+        "pagination": ""
+    },
+    "GetConnectorResponse": {
+        "connector": ""
+    },
+    "TriggerSyncResponse": {
+        "success": "",
+        "message": ""
+    },
+    "GetConnectorStatusResponse": {
+        "status": "",
+        "status_message": "",
+        "last_sync_at": "",
+        "docs_analyzed": "",
+        "docs_pending": ""
+    },
+    "Document": {
+        "id": "",
+        "parent_id": "",
+        "connector_id": "",
+        "source_id": "",
+        "url": "",
+        "original_url": "",
+        "title": "",
+        "content_type": "",
+        "status": "",
+        "status_message": "",
+        "chunk_count": "",
+        "creation_date": "",
+        "last_update": ""
+    },
+    "ListDocumentsRequest": {
+        "pagination": "",
+        "connector_id": "",
+        "status": ""
+    },
+    "ListDocumentsResponse": {
+        "documents": "",
+        "pagination": ""
+    },
+    "GetDocumentResponse": {
+        "document": ""
+    },
+    "SearchDocumentsRequest": {
+        "query": "",
+        "connector_id": "",
+        "limit": "",
+        "min_score": ""
+    },
+    "DocumentSearchResult": {
+        "document": "",
+        "chunk_id": "",
+        "chunk_content": "",
+        "score": ""
+    },
+    "SearchDocumentsResponse": {
+        "results": ""
     },
     "Assistant": {
         "id": "",
@@ -79,6 +177,34 @@
     },
     "GetAssistantResponse": {
         "assistant": ""
+    },
+    "EmbeddingModel": {
+        "id": "",
+        "model_id": "",
+        "model_name": "",
+        "model_dimension": "",
+        "endpoint": "",
+        "is_active": "",
+        "creation_date": "",
+        "last_update": ""
+    },
+    "CreateEmbeddingModelRequest": {
+        "model_id": "",
+        "model_name": "",
+        "model_dimension": "",
+        "endpoint": ""
+    },
+    "ListEmbeddingModelsResponse": {
+        "models": ""
+    },
+    "GetActiveEmbeddingModelResponse": {
+        "model": ""
+    },
+    "ActivateEmbeddingModelResponse": {
+        "success": "",
+        "message": "",
+        "requires_reindex": "",
+        "documents_affected": ""
     },
     "ChatSession": {
         "id": "",
@@ -188,132 +314,6 @@
         "code": "",
         "message": ""
     },
-    "Connector": {
-        "id": "",
-        "name": "",
-        "type": "",
-        "config": "",
-        "state": "",
-        "refresh_freq_minutes": "",
-        "user_id": "",
-        "scope": "",
-        "scope_id": "",
-        "status": "",
-        "status_message": "",
-        "last_sync_at": "",
-        "docs_analyzed": "",
-        "creation_date": "",
-        "last_update": ""
-    },
-    "CreateConnectorRequest": {
-        "name": "",
-        "type": "",
-        "config": "",
-        "refresh_freq_minutes": "",
-        "scope": "",
-        "scope_id": ""
-    },
-    "UpdateConnectorRequest": {
-        "id": "",
-        "name": "",
-        "config": "",
-        "refresh_freq_minutes": "",
-        "scope": "",
-        "scope_id": ""
-    },
-    "ListConnectorsRequest": {
-        "pagination": "",
-        "type": "",
-        "status": ""
-    },
-    "ListConnectorsResponse": {
-        "connectors": "",
-        "pagination": ""
-    },
-    "GetConnectorResponse": {
-        "connector": ""
-    },
-    "TriggerSyncResponse": {
-        "success": "",
-        "message": ""
-    },
-    "GetConnectorStatusResponse": {
-        "status": "",
-        "status_message": "",
-        "last_sync_at": "",
-        "docs_analyzed": "",
-        "docs_pending": ""
-    },
-    "Document": {
-        "id": "",
-        "parent_id": "",
-        "connector_id": "",
-        "source_id": "",
-        "url": "",
-        "original_url": "",
-        "title": "",
-        "content_type": "",
-        "status": "",
-        "status_message": "",
-        "chunk_count": "",
-        "creation_date": "",
-        "last_update": ""
-    },
-    "ListDocumentsRequest": {
-        "pagination": "",
-        "connector_id": "",
-        "status": ""
-    },
-    "ListDocumentsResponse": {
-        "documents": "",
-        "pagination": ""
-    },
-    "GetDocumentResponse": {
-        "document": ""
-    },
-    "SearchDocumentsRequest": {
-        "query": "",
-        "connector_id": "",
-        "limit": "",
-        "min_score": ""
-    },
-    "DocumentSearchResult": {
-        "document": "",
-        "chunk_id": "",
-        "chunk_content": "",
-        "score": ""
-    },
-    "SearchDocumentsResponse": {
-        "results": ""
-    },
-    "EmbeddingModel": {
-        "id": "",
-        "model_id": "",
-        "model_name": "",
-        "model_dimension": "",
-        "endpoint": "",
-        "is_active": "",
-        "creation_date": "",
-        "last_update": ""
-    },
-    "CreateEmbeddingModelRequest": {
-        "model_id": "",
-        "model_name": "",
-        "model_dimension": "",
-        "endpoint": ""
-    },
-    "ListEmbeddingModelsResponse": {
-        "models": ""
-    },
-    "GetActiveEmbeddingModelResponse": {
-        "model": ""
-    },
-    "ActivateEmbeddingModelResponse": {
-        "success": "",
-        "message": "",
-        "requires_reindex": "",
-        "documents_affected": ""
-    },
     "LLM": {
         "id": "",
         "name": "",
@@ -367,6 +367,11 @@
         "message": "",
         "latency_ms": ""
     },
+    "UserPreferences": {
+        "default_assistant_id": "",
+        "theme": "",
+        "custom": ""
+    },
     "User": {
         "id": "",
         "user_name": "",
@@ -380,11 +385,6 @@
         "creation_date": "",
         "last_update": "",
         "last_login": ""
-    },
-    "UserPreferences": {
-        "default_assistant_id": "",
-        "theme": "",
-        "custom": ""
     },
     "UpdateUserRequest": {
         "first_name": "",
@@ -401,6 +401,21 @@
     "ListUsersResponse": {
         "users": "",
         "pagination": ""
+    },
+    "EmbedRequest": {
+        "texts": ""
+    },
+    "Embedding": {
+        "vector": "",
+        "dimension": ""
+    },
+    "EmbedResponse": {
+        "embeddings": ""
+    },
+    "DimensionRequest": {},
+    "DimensionResponse": {
+        "dimension": "",
+        "model_id": ""
     },
     "AgentMemory": {
         "id": "",
@@ -434,20 +449,5 @@
         "tool_calls": "",
         "plan": "",
         "tokens_used": ""
-    },
-    "EmbedRequest": {
-        "texts": ""
-    },
-    "EmbedResponse": {
-        "embeddings": ""
-    },
-    "Embedding": {
-        "vector": "",
-        "dimension": ""
-    },
-    "DimensionRequest": {},
-    "DimensionResponse": {
-        "dimension": "",
-        "model_id": ""
     }
 }

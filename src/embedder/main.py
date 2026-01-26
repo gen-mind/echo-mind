@@ -15,13 +15,13 @@ Environment Variables:
     EMBEDDER_LOG_LEVEL: Logging level (default: INFO)
 """
 
-import importlib.util
 import logging
 import os
 import sys
 import threading
 import time
 from concurrent import futures
+from types import ModuleType
 
 import grpc
 
@@ -29,48 +29,16 @@ import grpc
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from echomind_lib.helpers.device_checker import DeviceChecker
-from echomind_lib.helpers.readiness_probe import SimpleHealthServer
-
-# Import protobuf files directly to avoid triggering Pydantic model imports
-# from echomind_lib/models/__init__.py which has dependency issues
-_pb2_path = os.path.join(
-    os.path.dirname(__file__), "..", "echomind_lib", "models", "internal", "embedding_pb2.py"
+from echomind_lib.helpers.readiness_probe import HealthServer
+from echomind_lib.models.internal.embedding_pb2 import (
+    DimensionResponse,
+    EmbedResponse,
+    Embedding,
 )
-_pb2_grpc_path = os.path.join(
-    os.path.dirname(__file__), "..", "echomind_lib", "models", "internal", "embedding_pb2_grpc.py"
+from echomind_lib.models.internal.embedding_pb2_grpc import (
+    EmbedServiceServicer,
+    add_EmbedServiceServicer_to_server,
 )
-
-def _load_module(name: str, path: str, aliases: list[str] | None = None):
-    """Load a Python module directly from file path."""
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    # Register aliases for gRPC import compatibility
-    if aliases:
-        for alias in aliases:
-            sys.modules[alias] = module
-    spec.loader.exec_module(module)
-    return module
-
-# Load pb2 first and register with the name gRPC expects
-_embedding_pb2 = _load_module(
-    "embedding_pb2",
-    _pb2_path,
-    aliases=["internal.embedding_pb2", "internal_dot_embedding__pb2"]
-)
-# Create fake 'internal' package
-if "internal" not in sys.modules:
-    import types
-    sys.modules["internal"] = types.ModuleType("internal")
-sys.modules["internal"].embedding_pb2 = _embedding_pb2
-
-_embedding_pb2_grpc = _load_module("embedding_pb2_grpc", _pb2_grpc_path)
-
-DimensionResponse = _embedding_pb2.DimensionResponse
-EmbedResponse = _embedding_pb2.EmbedResponse
-Embedding = _embedding_pb2.Embedding
-EmbedServiceServicer = _embedding_pb2_grpc.EmbedServiceServicer
-add_EmbedServiceServicer_to_server = _embedding_pb2_grpc.add_EmbedServiceServicer_to_server
 
 from embedder.config import get_settings
 from embedder.logic.encoder import SentenceEncoder
@@ -230,11 +198,12 @@ def serve() -> None:
         logger.error("❌ Failed to load model: %s", e)
         sys.exit(1)
 
-    # Start health probe
-    health_server = SimpleHealthServer(port=settings.health_port)
+    # Start health server
+    health_server = HealthServer(port=settings.health_port)
     health_thread = threading.Thread(target=health_server.start, daemon=True)
     health_thread.start()
-    logger.info("💓 Health probe started on port %d", settings.health_port)
+    health_server.set_ready(True)
+    logger.info("💓 Health server started on port %d", settings.health_port)
 
     # Create gRPC server
     server = grpc.server(

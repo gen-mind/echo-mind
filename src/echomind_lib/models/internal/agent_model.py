@@ -2,16 +2,15 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   agent_model.py
-@Time    :   2026-01-21 01:53:35
+@Time    :   2026-01-26 18:25:06
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 
 from enum import Enum as _Enum
 from google.protobuf import message as _message, message_factory
-from google.protobuf.struct_pb2 import Struct
 from protobuf_pydantic_gen.ext import model2protobuf, pool, protobuf2model
 from pydantic import BaseModel, ConfigDict, Field as _Field
-from typing import Any, Dict, List, Optional, Type
+from typing import List, Optional, Type, Any
 
 
 class MemoryType(_Enum):
@@ -46,8 +45,8 @@ class AgentMemory(BaseModel):
 class ToolCall(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     tool_name: Optional[str] = _Field(default="")
-    parameters: Optional[Struct] = _Field(default=None)
-    result: Optional[Struct] = _Field(default=None)
+    parameters: Optional[dict[str, Any]] = _Field(default=None)
+    result: Optional[dict[str, Any]] = _Field(default=None)
     duration_ms: Optional[int] = _Field(default=0)
 
     def to_protobuf(self) -> _message.Message:
@@ -67,7 +66,7 @@ class PlanStep(BaseModel):
     action: Optional[str] = _Field(default="")
     description: Optional[str] = _Field(default="")
     completed: Optional[bool] = _Field(default=False)
-    result: Optional[Struct] = _Field(default=None)
+    result: Optional[dict[str, Any]] = _Field(default=None)
 
     def to_protobuf(self) -> _message.Message:
         """Convert Pydantic model to protobuf message"""

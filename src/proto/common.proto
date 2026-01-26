@@ -20,17 +20,17 @@ message PaginationResponse {
   int32 pages = 4;      // Total number of pages
 }
 
+// Field-level validation error
+message FieldError {
+  string field = 1;     // Field name (e.g., "config.folder_id")
+  string message = 2;   // Error message for this field
+}
+
 // Standard error response
 message ErrorResponse {
   string code = 1;      // Error code (e.g., "VALIDATION_ERROR", "NOT_FOUND")
   string message = 2;   // Human-readable error message
   repeated FieldError details = 3;  // Field-level errors for validation
-}
-
-// Field-level validation error
-message FieldError {
-  string field = 1;     // Field name (e.g., "config.folder_id")
-  string message = 2;   // Error message for this field
 }
 
 // Audit fields included in all entities

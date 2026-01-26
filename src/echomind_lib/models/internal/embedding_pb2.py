@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18internal/embedding.proto\x12\x11\x65\x63homind.internal\"\x1d\n\x0c\x45mbedRequest\x12\r\n\x05texts\x18\x01 \x03(\t\"A\n\rEmbedResponse\x12\x30\n\nembeddings\x18\x01 \x03(\x0b\x32\x1c.echomind.internal.Embedding\".\n\tEmbedding\x12\x0e\n\x06vector\x18\x01 \x03(\x02\x12\x11\n\tdimension\x18\x02 \x01(\x05\"\x12\n\x10\x44imensionRequest\"8\n\x11\x44imensionResponse\x12\x11\n\tdimension\x18\x01 \x01(\x05\x12\x10\n\x08model_id\x18\x02 \x01(\t2\xb5\x01\n\x0c\x45mbedService\x12J\n\x05\x45mbed\x12\x1f.echomind.internal.EmbedRequest\x1a .echomind.internal.EmbedResponse\x12Y\n\x0cGetDimension\x12#.echomind.internal.DimensionRequest\x1a$.echomind.internal.DimensionResponseB\x19Z\x17\x65\x63homind/proto/internalb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18internal/embedding.proto\x12\x11\x65\x63homind.internal\"\x1d\n\x0c\x45mbedRequest\x12\r\n\x05texts\x18\x01 \x03(\t\".\n\tEmbedding\x12\x0e\n\x06vector\x18\x01 \x03(\x02\x12\x11\n\tdimension\x18\x02 \x01(\x05\"A\n\rEmbedResponse\x12\x30\n\nembeddings\x18\x01 \x03(\x0b\x32\x1c.echomind.internal.Embedding\"\x12\n\x10\x44imensionRequest\"8\n\x11\x44imensionResponse\x12\x11\n\tdimension\x18\x01 \x01(\x05\x12\x10\n\x08model_id\x18\x02 \x01(\t2\xb5\x01\n\x0c\x45mbedService\x12J\n\x05\x45mbed\x12\x1f.echomind.internal.EmbedRequest\x1a .echomind.internal.EmbedResponse\x12Y\n\x0cGetDimension\x12#.echomind.internal.DimensionRequest\x1a$.echomind.internal.DimensionResponseB\x19Z\x17\x65\x63homind/proto/internalb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,10 +34,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._serialized_options = b'Z\027echomind/proto/internal'
   _globals['_EMBEDREQUEST']._serialized_start=47
   _globals['_EMBEDREQUEST']._serialized_end=76
-  _globals['_EMBEDRESPONSE']._serialized_start=78
-  _globals['_EMBEDRESPONSE']._serialized_end=143
-  _globals['_EMBEDDING']._serialized_start=145
-  _globals['_EMBEDDING']._serialized_end=191
+  _globals['_EMBEDDING']._serialized_start=78
+  _globals['_EMBEDDING']._serialized_end=124
+  _globals['_EMBEDRESPONSE']._serialized_start=126
+  _globals['_EMBEDRESPONSE']._serialized_end=191
   _globals['_DIMENSIONREQUEST']._serialized_start=193
   _globals['_DIMENSIONREQUEST']._serialized_end=211
   _globals['_DIMENSIONRESPONSE']._serialized_start=213

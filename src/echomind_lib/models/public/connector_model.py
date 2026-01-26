@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   connector_model.py
-@Time    :   2026-01-21 01:53:35
+@Time    :   2026-01-26 18:25:06
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 
@@ -12,7 +12,7 @@ from enum import Enum as _Enum
 from google.protobuf import message as _message, message_factory
 from protobuf_pydantic_gen.ext import model2protobuf, pool, protobuf2model
 from pydantic import BaseModel, ConfigDict, Field as _Field
-from typing import Any, Dict, List, Optional, Type
+from typing import List, Optional, Type, Any
 
 
 class ConnectorType(_Enum):
@@ -45,8 +45,8 @@ class Connector(BaseModel):
     id: Optional[int] = _Field(default=0)
     name: Optional[str] = _Field(default="")
     type: Optional[ConnectorType] = _Field(default=ConnectorType(0))
-    config: Optional[Dict[str, Any]] = _Field(default=None)
-    state: Optional[Dict[str, Any]] = _Field(default=None)
+    config: Optional[dict[str, Any]] = _Field(default=None)
+    state: Optional[dict[str, Any]] = _Field(default=None)
     refresh_freq_minutes: Optional[int] = _Field(default=0)
     user_id: Optional[int] = _Field(default=0)
     scope: Optional[ConnectorScope] = _Field(default=ConnectorScope(0))
@@ -74,7 +74,7 @@ class CreateConnectorRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     name: Optional[str] = _Field(default="")
     type: Optional[ConnectorType] = _Field(default=ConnectorType(0))
-    config: Optional[Dict[str, Any]] = _Field(default=None)
+    config: Optional[dict[str, Any]] = _Field(default=None)
     refresh_freq_minutes: Optional[int] = _Field(default=0)
     scope: Optional[ConnectorScope] = _Field(default=ConnectorScope(0))
     scope_id: Optional[str] = _Field(default="")
@@ -95,7 +95,7 @@ class UpdateConnectorRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     id: Optional[int] = _Field(default=0)
     name: Optional[str] = _Field(default="")
-    config: Optional[Dict[str, Any]] = _Field(default=None)
+    config: Optional[dict[str, Any]] = _Field(default=None)
     refresh_freq_minutes: Optional[int] = _Field(default=0)
     scope: Optional[ConnectorScope] = _Field(default=ConnectorScope(0))
     scope_id: Optional[str] = _Field(default="")

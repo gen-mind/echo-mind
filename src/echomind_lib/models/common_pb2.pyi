@@ -26,6 +26,14 @@ class PaginationResponse(_message.Message):
     pages: int
     def __init__(self, page: _Optional[int] = ..., limit: _Optional[int] = ..., total: _Optional[int] = ..., pages: _Optional[int] = ...) -> None: ...
 
+class FieldError(_message.Message):
+    __slots__ = ("field", "message")
+    FIELD_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    field: str
+    message: str
+    def __init__(self, field: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
+
 class ErrorResponse(_message.Message):
     __slots__ = ("code", "message", "details")
     CODE_FIELD_NUMBER: _ClassVar[int]
@@ -35,14 +43,6 @@ class ErrorResponse(_message.Message):
     message: str
     details: _containers.RepeatedCompositeFieldContainer[FieldError]
     def __init__(self, code: _Optional[str] = ..., message: _Optional[str] = ..., details: _Optional[_Iterable[_Union[FieldError, _Mapping]]] = ...) -> None: ...
-
-class FieldError(_message.Message):
-    __slots__ = ("field", "message")
-    FIELD_FIELD_NUMBER: _ClassVar[int]
-    MESSAGE_FIELD_NUMBER: _ClassVar[int]
-    field: str
-    message: str
-    def __init__(self, field: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
 
 class AuditInfo(_message.Message):
     __slots__ = ("creation_date", "last_update", "user_id_last_update")

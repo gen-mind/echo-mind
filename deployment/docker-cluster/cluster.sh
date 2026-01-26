@@ -17,16 +17,19 @@
 #
 # IMAGE MANAGEMENT:
 #   pull           - Pull latest images from Docker registries
-#   rebuild        - Rebuild API service locally and restart it
-#   build          - Build API Docker image for Docker Hub with proper tags
+#   build          - Build all local services (uses cache, fast if no changes)
+#   build <svc>    - Build a specific service (uses cache)
+#   rebuild <svc>  - Force rebuild (no cache) and restart a service
+#   build-release  - Build API Docker image for Docker Hub with proper tags
 #   push           - Push built API image to Docker Hub (requires 'docker login')
 #   release        - Build and push API image to Docker Hub in one command
 #
 # EXAMPLES:
 #   ./cluster.sh start              # Start the cluster
+#   ./cluster.sh build              # Build all local services
+#   ./cluster.sh build embedder     # Build only embedder
+#   ./cluster.sh rebuild api        # Rebuild and restart api
 #   ./cluster.sh logs api           # View API logs
-#   ./cluster.sh build              # Build image for Docker Hub
-#   ./cluster.sh release            # Build and push to Docker Hub
 #   ./cluster.sh stop               # Stop the cluster
 #
 # REQUIREMENTS:
@@ -35,8 +38,8 @@
 #   - For push/release: docker login with username 'gsantopaolo'
 #
 # VERSIONING:
-#   - Version is read from /VERSION file at project root
-#   - Current: 0.1.0-beta.1 (Semantic Versioning 2.0)
+#   - Version is read from ECHOMIND_VERSION in .env file
+#   - Current: 0.1.0-beta.2 (Semantic Versioning 2.0)
 #   - Images tagged as: <version>, latest, beta
 #
 # ======================================
@@ -246,25 +249,68 @@ pull_images() {
     echo ""
 }
 
-rebuild_api() {
+build_services() {
     print_banner
 
-    log_step "Rebuilding API service..."
+    SERVICE="${2:-}"
+
+    cd "$SCRIPT_DIR"
+
+    if [ -z "$SERVICE" ]; then
+        # Build all local services (uses cache - fast if no changes)
+        log_step "Building all local services..."
+        echo ""
+
+        log_info "Building api..."
+        docker compose build api
+        log_success "api built"
+
+        log_info "Building embedder..."
+        docker compose build embedder
+        log_success "embedder built"
+
+        log_info "Building migration..."
+        docker compose build migration
+        log_success "migration built"
+
+        echo ""
+        log_success "All local services built!"
+    else
+        # Build specific service
+        log_step "Building ${SERVICE}..."
+        echo ""
+
+        docker compose build "$SERVICE"
+
+        echo ""
+        log_success "${SERVICE} built!"
+    fi
+
+    log_info "Run ${YELLOW}./cluster.sh start${NC} to start with new images"
+    echo ""
+}
+
+rebuild_service() {
+    print_banner
+
+    SERVICE="${2:-api}"
+
+    log_step "Rebuilding ${SERVICE} service..."
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose build --no-cache api
-    docker compose up -d --force-recreate api
+    docker compose build --no-cache "$SERVICE"
+    docker compose up -d --force-recreate "$SERVICE"
 
     echo ""
-    log_success "API service rebuilt and restarted!"
+    log_success "${SERVICE} service rebuilt and restarted!"
     echo ""
 }
 
 get_version() {
-    # Read version from VERSION file at project root
-    if [ -f "$PROJECT_ROOT/VERSION" ]; then
-        cat "$PROJECT_ROOT/VERSION" | tr -d '\n\r '
+    # Read version from .env file
+    if [ -f "$SCRIPT_DIR/.env" ]; then
+        grep -E "^ECHOMIND_VERSION=" "$SCRIPT_DIR/.env" | cut -d'=' -f2 | tr -d '\n\r '
     else
         echo "0.1.0-beta.1"
     fi
@@ -380,21 +426,24 @@ show_help() {
     echo -e "  ${GREEN}logs <svc>${NC}   Show logs for specific service"
     echo ""
     echo "Image Management:"
-    echo -e "  ${GREEN}pull${NC}         Pull latest images from registries"
-    echo -e "  ${GREEN}rebuild${NC}      Rebuild API service locally"
-    echo -e "  ${GREEN}build${NC}        Build API image for Docker Hub"
-    echo -e "  ${GREEN}push${NC}         Push API image to Docker Hub"
-    echo -e "  ${GREEN}release${NC}      Build and push API to Docker Hub"
+    echo -e "  ${GREEN}pull${NC}           Pull latest images from registries"
+    echo -e "  ${GREEN}build${NC}          Build all local services (uses cache)"
+    echo -e "  ${GREEN}build <svc>${NC}    Build a specific service (uses cache)"
+    echo -e "  ${GREEN}rebuild <svc>${NC}  Force rebuild (no cache) and restart"
+    echo -e "  ${GREEN}build-release${NC}  Build API image for Docker Hub"
+    echo -e "  ${GREEN}push${NC}           Push API image to Docker Hub"
+    echo -e "  ${GREEN}release${NC}        Build and push API to Docker Hub"
     echo ""
     echo "Other:"
     echo -e "  ${GREEN}help${NC}         Show this help message"
     echo ""
     echo "Examples:"
-    echo -e "  ${YELLOW}./cluster.sh start${NC}"
-    echo -e "  ${YELLOW}./cluster.sh logs api${NC}"
-    echo -e "  ${YELLOW}./cluster.sh build${NC}"
-    echo -e "  ${YELLOW}./cluster.sh release${NC}"
-    echo -e "  ${YELLOW}./cluster.sh stop${NC}"
+    echo -e "  ${YELLOW}./cluster.sh start${NC}           # Start the cluster"
+    echo -e "  ${YELLOW}./cluster.sh build${NC}           # Build all local services"
+    echo -e "  ${YELLOW}./cluster.sh build embedder${NC}  # Build only embedder"
+    echo -e "  ${YELLOW}./cluster.sh rebuild api${NC}     # Rebuild and restart api"
+    echo -e "  ${YELLOW}./cluster.sh logs api${NC}        # View API logs"
+    echo -e "  ${YELLOW}./cluster.sh stop${NC}            # Stop the cluster"
     echo ""
 }
 
@@ -418,10 +467,13 @@ case "${1:-}" in
     pull)
         pull_images
         ;;
-    rebuild)
-        rebuild_api
-        ;;
     build)
+        build_services "$@"
+        ;;
+    rebuild)
+        rebuild_service "$@"
+        ;;
+    build-release)
         build_for_dockerhub
         ;;
     push)

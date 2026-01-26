@@ -50,6 +50,25 @@ python: check-protoc
 		$(COMMON_PROTO) \
 		$(PUBLIC_DIR)/*.proto \
 		$(INTERNAL_DIR)/*.proto
+	@echo "Fixing gRPC import paths..."
+	@# Fix internal imports: from internal import X -> from echomind_lib.models.internal import X
+	@for f in $(PYTHON_OUT)/internal/*_pb2_grpc.py; do \
+		if [ -f "$$f" ]; then \
+			sed -i.bak 's/from internal import/from echomind_lib.models.internal import/g' "$$f" && rm -f "$$f.bak"; \
+		fi; \
+	done
+	@# Fix public imports: from public import X -> from echomind_lib.models.public import X
+	@for f in $(PYTHON_OUT)/public/*_pb2_grpc.py; do \
+		if [ -f "$$f" ]; then \
+			sed -i.bak 's/from public import/from echomind_lib.models.public import/g' "$$f" && rm -f "$$f.bak"; \
+		fi; \
+	done
+	@# Fix common imports in all gRPC files
+	@for f in $(PYTHON_OUT)/*_pb2_grpc.py $(PYTHON_OUT)/**/*_pb2_grpc.py; do \
+		if [ -f "$$f" ]; then \
+			sed -i.bak 's/import common_pb2/from echomind_lib.models import common_pb2/g' "$$f" && rm -f "$$f.bak"; \
+		fi; \
+	done 2>/dev/null || true
 	@echo "✅ Python models generated in $(PYTHON_OUT)"
 
 # Generate TypeScript interfaces using ts-proto

@@ -7,6 +7,13 @@ option go_package = "echomind/proto/public";
 import "google/protobuf/timestamp.proto";
 import "common.proto";
 
+// User preferences stored as JSON in DB
+message UserPreferences {
+  optional int32 default_assistant_id = 1;
+  string theme = 2;  // "light", "dark", "system"
+  map<string, string> custom = 3;  // Additional custom preferences
+}
+
 // User profile
 message User {
   int32 id = 1;
@@ -21,13 +28,6 @@ message User {
   google.protobuf.Timestamp creation_date = 10;
   google.protobuf.Timestamp last_update = 11;
   google.protobuf.Timestamp last_login = 12;
-}
-
-// User preferences stored as JSON in DB
-message UserPreferences {
-  optional int32 default_assistant_id = 1;
-  string theme = 2;  // "light", "dark", "system"
-  map<string, string> custom = 3;  // Additional custom preferences
 }
 
 // Request to update current user's profile

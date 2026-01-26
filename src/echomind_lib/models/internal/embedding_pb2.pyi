@@ -11,12 +11,6 @@ class EmbedRequest(_message.Message):
     texts: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, texts: _Optional[_Iterable[str]] = ...) -> None: ...
 
-class EmbedResponse(_message.Message):
-    __slots__ = ("embeddings",)
-    EMBEDDINGS_FIELD_NUMBER: _ClassVar[int]
-    embeddings: _containers.RepeatedCompositeFieldContainer[Embedding]
-    def __init__(self, embeddings: _Optional[_Iterable[_Union[Embedding, _Mapping]]] = ...) -> None: ...
-
 class Embedding(_message.Message):
     __slots__ = ("vector", "dimension")
     VECTOR_FIELD_NUMBER: _ClassVar[int]
@@ -24,6 +18,12 @@ class Embedding(_message.Message):
     vector: _containers.RepeatedScalarFieldContainer[float]
     dimension: int
     def __init__(self, vector: _Optional[_Iterable[float]] = ..., dimension: _Optional[int] = ...) -> None: ...
+
+class EmbedResponse(_message.Message):
+    __slots__ = ("embeddings",)
+    EMBEDDINGS_FIELD_NUMBER: _ClassVar[int]
+    embeddings: _containers.RepeatedCompositeFieldContainer[Embedding]
+    def __init__(self, embeddings: _Optional[_Iterable[_Union[Embedding, _Mapping]]] = ...) -> None: ...
 
 class DimensionRequest(_message.Message):
     __slots__ = ()

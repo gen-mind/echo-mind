@@ -7,6 +7,23 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
+class UserPreferences(_message.Message):
+    __slots__ = ("default_assistant_id", "theme", "custom")
+    class CustomEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    DEFAULT_ASSISTANT_ID_FIELD_NUMBER: _ClassVar[int]
+    THEME_FIELD_NUMBER: _ClassVar[int]
+    CUSTOM_FIELD_NUMBER: _ClassVar[int]
+    default_assistant_id: int
+    theme: str
+    custom: _containers.ScalarMap[str, str]
+    def __init__(self, default_assistant_id: _Optional[int] = ..., theme: _Optional[str] = ..., custom: _Optional[_Mapping[str, str]] = ...) -> None: ...
+
 class User(_message.Message):
     __slots__ = ("id", "user_name", "email", "first_name", "last_name", "roles", "groups", "preferences", "is_active", "creation_date", "last_update", "last_login")
     ID_FIELD_NUMBER: _ClassVar[int]
@@ -34,23 +51,6 @@ class User(_message.Message):
     last_update: _timestamp_pb2.Timestamp
     last_login: _timestamp_pb2.Timestamp
     def __init__(self, id: _Optional[int] = ..., user_name: _Optional[str] = ..., email: _Optional[str] = ..., first_name: _Optional[str] = ..., last_name: _Optional[str] = ..., roles: _Optional[_Iterable[str]] = ..., groups: _Optional[_Iterable[str]] = ..., preferences: _Optional[_Union[UserPreferences, _Mapping]] = ..., is_active: bool = ..., creation_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., last_update: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., last_login: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
-
-class UserPreferences(_message.Message):
-    __slots__ = ("default_assistant_id", "theme", "custom")
-    class CustomEntry(_message.Message):
-        __slots__ = ("key", "value")
-        KEY_FIELD_NUMBER: _ClassVar[int]
-        VALUE_FIELD_NUMBER: _ClassVar[int]
-        key: str
-        value: str
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
-    DEFAULT_ASSISTANT_ID_FIELD_NUMBER: _ClassVar[int]
-    THEME_FIELD_NUMBER: _ClassVar[int]
-    CUSTOM_FIELD_NUMBER: _ClassVar[int]
-    default_assistant_id: int
-    theme: str
-    custom: _containers.ScalarMap[str, str]
-    def __init__(self, default_assistant_id: _Optional[int] = ..., theme: _Optional[str] = ..., custom: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class UpdateUserRequest(_message.Message):
     __slots__ = ("first_name", "last_name", "preferences")
