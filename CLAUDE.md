@@ -46,16 +46,16 @@ EchoMind is a **Python-only Agentic RAG** platform with multi-step retrieval, to
 ```
 echomind/
 ├── src/
-│   ├── api/                 # FastAPI application
-│   ├── agent/               # Semantic Kernel agent
+│   ├── api/                 # FastAPI REST + WebSocket gateway
 │   ├── services/            # NATS/gRPC workers
+│   │   ├── search/          # Agentic search (Semantic Kernel, gRPC)
+│   │   ├── orchestrator/    # Scheduler (APScheduler, NATS pub)
+│   │   ├── connector/       # Data source fetcher (NATS sub)
+│   │   ├── semantic/        # Content extraction + chunking (NATS sub)
 │   │   ├── embedder/        # Text → Vector (gRPC)
-│   │   ├── semantic/        # Document chunking (NATS)
-│   │   ├── search/          # Vector search (gRPC)
-│   │   ├── transformer/     # Text splitting (gRPC)
-│   │   ├── voice/           # Whisper (NATS)
-│   │   └── vision/          # BLIP+OCR (NATS)
-│   ├── connectors/          # Data source connectors
+│   │   ├── voice/           # Whisper transcription (NATS sub)
+│   │   ├── vision/          # BLIP + OCR (NATS sub)
+│   │   └── migration/       # Alembic migrations (batch job)
 │   ├── proto/               # Protocol Buffers (SOURCE OF TRUTH)
 │   ├── echomind_lib/        # SHARED LIBRARY
 │   └── web/                 # React client
@@ -100,7 +100,7 @@ async def get_user(user_id: int, db: DbSession):
 
 ## Service Patterns
 
-### gRPC Service (embedder, search, transformer)
+### gRPC Service (embedder, search)
 
 ```python
 import grpc
@@ -134,7 +134,7 @@ def serve():
     server.wait_for_termination()
 ```
 
-### NATS Consumer Service (semantic, voice, vision)
+### NATS Consumer Service (connector, semantic, voice, vision)
 
 ```python
 import asyncio
@@ -186,7 +186,7 @@ async def main():
             await asyncio.sleep(5)
 ```
 
-### ML Model Caching (embedder, transformer, voice, vision)
+### ML Model Caching (embedder, semantic, voice, vision)
 
 ```python
 class SentenceEncoder:
@@ -249,11 +249,12 @@ SEMANTIC_NATS_URL=nats://localhost:4222
 ## File Processing Pipeline
 
 ```
-PDF/DOC/XLS → semantic → pymupdf4llm → markdown → chunks → embeddings
-URL         → semantic → BS4/Selenium → text → chunks → embeddings
-YT          → semantic → youtube_transcript_api → chunks → embeddings
-MP4/WAV     → voice → Whisper → transcript → semantic
-JPEG/PNG    → vision → BLIP+OCR → description → semantic
+PDF/DOC/XLS     → semantic → pymupdf4llm → markdown → chunks → embeddings
+URL             → semantic → BS4/Selenium → text → chunks → embeddings
+YouTube         → semantic → youtube_transcript_api → chunks → embeddings
+MP3/WAV (audio) → voice → Whisper → transcript → semantic → embeddings
+JPEG/PNG        → vision → BLIP+OCR → description → semantic → embeddings
+Video (MP4)     → vision → frame extraction → BLIP → description → semantic → embeddings
 ```
 
 ---
@@ -294,3 +295,6 @@ JPEG/PNG    → vision → BLIP+OCR → description → semantic
 - `.claude/rules/` - Coding standards (path-scoped)
 - `agent_docs/` - Task-specific context
 - `docs/architecture.md` - System architecture
+- `docs/proto-definitions.md` - Enum values, message schemas
+- `docs/db-schema.md` - PostgreSQL table definitions
+- `docs/api-spec.md` - REST/WebSocket API

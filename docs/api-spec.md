@@ -115,11 +115,9 @@ Data source connections (Microsoft Teams, Google Drive for v1).
 
 #### Connector Types (v1)
 
-```python
-class ConnectorType(str, Enum):
-    TEAMS = "teams"
-    GOOGLE_DRIVE = "google_drive"
-```
+**v1 Scope:** `teams`, `google_drive`
+
+**All Types:** See [Proto Definitions - ConnectorType](./proto-definitions.md#connectortype)
 
 #### Connector Object
 
@@ -146,14 +144,9 @@ class ConnectorType(str, Enum):
 
 #### Connector Status Values
 
-```python
-class ConnectorStatus(str, Enum):
-    PENDING = "pending"
-    SYNCING = "syncing"
-    ACTIVE = "active"
-    ERROR = "error"
-    DISABLED = "disabled"
-```
+`pending` | `syncing` | `active` | `error` | `disabled`
+
+**Status Flow:** See [Proto Definitions - ConnectorStatus](./proto-definitions.md#connectorstatus)
 
 ---
 
@@ -263,14 +256,9 @@ LLM provider configurations.
 
 #### LLM Providers
 
-```python
-class LLMProvider(str, Enum):
-    TGI = "tgi"              # Text Generation Inference
-    VLLM = "vllm"            # vLLM
-    OPENAI = "openai"        # OpenAI API (cloud)
-    ANTHROPIC = "anthropic"  # Anthropic API (cloud)
-    OLLAMA = "ollama"        # Ollama (local dev)
-```
+`tgi` | `vllm` | `openai` | `anthropic` | `ollama`
+
+**Full Details:** See [Proto Definitions - LLMProvider](./proto-definitions.md#llmprovider)
 
 ---
 
@@ -328,11 +316,9 @@ Conversation sessions.
 
 #### Chat Mode
 
-```python
-class ChatMode(str, Enum):
-    CHAT = "chat"      # Full RAG with LLM (requires_llm=true)
-    SEARCH = "search"  # Vector search only (requires_llm=false)
-```
+`chat` (RAG + LLM) | `search` (vector search only)
+
+**Full Details:** See [Proto Definitions - ChatMode](./proto-definitions.md#chatmode)
 
 ---
 
@@ -366,12 +352,9 @@ Individual messages within sessions.
 
 #### Message Role
 
-```python
-class MessageRole(str, Enum):
-    USER = "user"
-    ASSISTANT = "assistant"
-    SYSTEM = "system"
-```
+`user` | `assistant` | `system`
+
+**Full Details:** See [Proto Definitions - MessageRole](./proto-definitions.md#messagerole)
 
 ---
 
@@ -624,3 +607,11 @@ Interactive docs:
 GET /api/v1/docs      # Swagger UI
 GET /api/v1/redoc     # ReDoc
 ```
+
+---
+
+## References
+
+- [Proto Definitions](./proto-definitions.md) - Enum values, message schemas
+- [DB Schema](./db-schema.md) - PostgreSQL table definitions
+- [Architecture](./architecture.md) - System overview

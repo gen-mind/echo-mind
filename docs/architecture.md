@@ -164,14 +164,23 @@ flowchart LR
         URL[Web URL]
         DRIVE[OneDrive/GDrive]
         TEAMS[Teams/Slack]
+        AUDIO[Audio Files]
+        IMAGE[Images/Videos]
     end
 
-    subgraph Ingestion["Ingestion Pipeline"]
-        CONN[Connector Service]
-        DETECT[Content Detection]
-        EXTRACT[Content Extraction]
-        SPLIT[Semantic Splitter]
-        EMBED[Embedder]
+    subgraph Trigger["Scheduling"]
+        ORCH[echomind-orchestrator]
+    end
+
+    subgraph Fetch["Data Fetching"]
+        CONN[echomind-connector]
+    end
+
+    subgraph Processing["Content Processing"]
+        SEM[echomind-semantic<br/>Extract + Chunk]
+        VOICE[echomind-voice<br/>Whisper]
+        VISION[echomind-vision<br/>BLIP + OCR]
+        EMBED[echomind-embedder]
     end
 
     subgraph Storage["Storage"]
@@ -180,18 +189,37 @@ flowchart LR
         PG[(PostgreSQL)]
     end
 
-    FILE & URL & DRIVE & TEAMS --> CONN
-    CONN --> DETECT
-    DETECT --> EXTRACT
-    EXTRACT --> MINIO
-    EXTRACT --> SPLIT
-    SPLIT --> EMBED
+    FILE & URL & DRIVE & TEAMS --> ORCH
+    ORCH -->|NATS| CONN
+    CONN --> MINIO
+    CONN -->|NATS| SEM
+
+    AUDIO --> VOICE
+    IMAGE --> VISION
+    VOICE -->|transcript| SEM
+    VISION -->|description| SEM
+
+    SEM -->|gRPC| EMBED
     EMBED --> QDRANT
     CONN --> PG
 
-    style SPLIT fill:#f96,stroke:#333
+    style SEM fill:#f96,stroke:#333
     style EMBED fill:#f96,stroke:#333
+    style VOICE fill:#e1f5fe,stroke:#333
+    style VISION fill:#e1f5fe,stroke:#333
 ```
+
+### File Type Routing
+
+| File Type | Route | Processing |
+|-----------|-------|------------|
+| PDF, DOCX, XLS, MD | Semantic | pymupdf4llm → Markdown → Chunk → Embed |
+| URL | Semantic | BS4/Selenium → Text → Chunk → Embed |
+| YouTube | Semantic | youtube_transcript_api → Text → Chunk → Embed |
+| MP3, WAV, MP4 (audio) | Voice → Semantic | Whisper → Transcript → Chunk → Embed |
+| JPEG, PNG (standalone) | Vision → Semantic | BLIP + OCR → Description → Chunk → Embed |
+| Video (MP4, etc.) | Vision → Semantic | Frame extraction → BLIP → Description → Chunk → Embed |
+| Images in PDF/DOCX | Semantic (LLM) | Handled natively by vision-capable LLM (TBD) |
 
 ### Document Processing States
 
@@ -216,16 +244,16 @@ stateDiagram-v2
 
 ## Vector Collection Strategy
 
-Per-user, per-group, and per-org collections enable scoped retrieval:
+Per-user, per-group, and per-org collections enable scoped retrieval. See [Proto Definitions - ConnectorScope](./proto-definitions.md#connectorscope) for scope values.
 
 ```mermaid
 flowchart TB
     subgraph Collections["Qdrant Collections"]
-        ORG[org_acme_corp]
+        ORG[org]
         GRP1[group_engineering]
         GRP2[group_sales]
-        USR1[user_alice]
-        USR2[user_bob]
+        USR1[user_42]
+        USR2[user_99]
     end
 
     subgraph Query["Query Scope"]
@@ -242,6 +270,12 @@ flowchart TB
     style USR1 fill:#e8f5e9
     style USR2 fill:#e8f5e9
 ```
+
+| Scope | Collection Pattern | Example |
+|-------|-------------------|---------|
+| `user` | `user_{user_id}` | `user_42` |
+| `group` | `group_{scope_id}` | `group_engineering` |
+| `org` | `org` | `org` |
 
 ---
 
@@ -311,13 +345,18 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph Services["Python Services"]
-        API_SVC[API Service<br/>FastAPI + WebSocket]
-        AGENT_SVC[Agent Service<br/>Orchestration + Planning]
-        EMBED_SVC[Embedder Service<br/>gRPC]
-        SEMANTIC_SVC[Semantic Service<br/>NATS Consumer]
-        CONNECTOR_SVC[Connector Service<br/>NATS Consumer]
-        SEARCH_SVC[Search Service<br/>gRPC]
+    subgraph Query["Query Path (Synchronous)"]
+        API_SVC[echomind-api<br/>FastAPI + WebSocket]
+        SEARCH_SVC[echomind-search<br/>Semantic Kernel + gRPC]
+    end
+
+    subgraph Ingestion["Ingestion Path (Asynchronous)"]
+        ORCH_SVC[echomind-orchestrator<br/>APScheduler]
+        CONN_SVC[echomind-connector<br/>NATS Consumer]
+        SEM_SVC[echomind-semantic<br/>NATS Consumer]
+        EMBED_SVC[echomind-embedder<br/>gRPC]
+        VOICE_SVC[echomind-voice<br/>NATS Consumer]
+        VISION_SVC[echomind-vision<br/>NATS Consumer]
     end
 
     subgraph Infra["Infrastructure"]
@@ -328,20 +367,50 @@ flowchart TB
         MINIO[(MinIO)]
     end
 
-    API_SVC <--> AGENT_SVC
-    AGENT_SVC <--> SEARCH_SVC
-    AGENT_SVC <--> EMBED_SVC
+    API_SVC -->|gRPC| SEARCH_SVC
+    SEARCH_SVC --> QDRANT
+    SEARCH_SVC --> REDIS
 
-    CONNECTOR_SVC --> NATS
-    SEMANTIC_SVC --> NATS
-    NATS --> EMBED_SVC
+    ORCH_SVC -->|NATS pub| NATS
+    NATS -->|NATS sub| CONN_SVC
+    CONN_SVC -->|NATS pub| NATS
+    NATS -->|NATS sub| SEM_SVC
+    SEM_SVC -->|gRPC| EMBED_SVC
+    SEM_SVC -->|NATS pub| NATS
+    NATS -->|NATS sub| VOICE_SVC
+    NATS -->|NATS sub| VISION_SVC
 
     EMBED_SVC --> QDRANT
-    SEARCH_SVC --> QDRANT
-    CONNECTOR_SVC --> MINIO
+    CONN_SVC --> MINIO
+    CONN_SVC --> PG
     API_SVC --> PG
-    AGENT_SVC --> REDIS
+    ORCH_SVC --> PG
 ```
+
+### Services Reference
+
+| Service | Protocol | Port | Purpose |
+|---------|----------|------|---------|
+| **echomind-api** | HTTP/WebSocket | 8080 | REST API gateway, WebSocket streaming, serves web client |
+| **echomind-search** | gRPC | 50051 | Agentic search powered by Semantic Kernel. Handles query planning, multi-step retrieval, tool execution, memory management, and LLM response generation. **Note:** Reranker may become a separate service in the future. |
+| **echomind-orchestrator** | NATS (pub) | 8080 | APScheduler-based service that monitors connectors and triggers sync jobs via NATS. See [orchestrator-service.md](./services/orchestrator-service.md). |
+| **echomind-connector** | NATS (sub) | 8080 | Fetches data from external sources (Teams, OneDrive, Google Drive). Handles OAuth, delta sync, and file download to MinIO. |
+| **echomind-semantic** | NATS (sub) | 8080 | Content extraction and text chunking. Uses pymupdf4llm for PDFs, BS4/Selenium for URLs. Supports configurable chunking strategies (character-based or semantic). |
+| **echomind-embedder** | gRPC | 50051 | Generates vector embeddings using SentenceTransformers. Supports model caching. |
+| **echomind-voice** | NATS (sub) | 8080 | Whisper-based audio transcription for audio files (MP3, WAV). Outputs transcript to semantic service. |
+| **echomind-vision** | NATS (sub) | 8080 | BLIP image captioning + OCR for standalone images and video frame extraction. Outputs descriptions to semantic service. |
+| **echomind-migration** | Batch job | - | Alembic-based database schema versioning. Runs before service startup. |
+
+### NATS Subjects
+
+| Subject | Publisher | Consumer | Payload |
+|---------|-----------|----------|---------|
+| `connector.sync.{type}` | orchestrator | connector | `ConnectorSyncRequest` |
+| `document.process` | connector | semantic | `DocumentProcessRequest` |
+| `audio.transcribe` | semantic | voice | `AudioTranscribeRequest` |
+| `image.analyze` | semantic | vision | `ImageAnalyzeRequest` |
+
+**Proto Messages:** See [Proto Definitions](./proto-definitions.md#internal-proto-definitions) for payload schemas.
 
 ---
 
@@ -428,6 +497,23 @@ ECHOMIND_EMBEDDING_DIMENSION=768
 
 This is enforced at startup: if model config changes, system blocks until admin confirms re-indexing.
 
+### Chunking Configuration (Semantic Service)
+
+The semantic service supports configurable chunking strategies:
+
+```bash
+# .env or ConfigMap
+SEMANTIC_CHUNK_STRATEGY=character          # character | semantic
+SEMANTIC_CHUNK_SIZE=1000                   # Characters per chunk
+SEMANTIC_CHUNK_OVERLAP=200                 # Overlap between chunks
+SEMANTIC_CHUNK_MODEL=sentence-transformers/all-MiniLM-L6-v2  # For semantic chunking
+```
+
+| Strategy | Description | Use Case |
+|----------|-------------|----------|
+| **character** | RecursiveCharacterTextSplitter, splits on paragraph/sentence boundaries | Default, fast, predictable |
+| **semantic** | ML-based, uses embedding similarity to find natural breakpoints | Better coherence, higher compute cost |
+
 ---
 
 ## Deployment Modes
@@ -448,14 +534,24 @@ flowchart LR
 ```mermaid
 flowchart TB
     subgraph Compose["docker-compose.yml"]
-        API[echomind-api]
-        AGENT[echomind-agent]
-        WORKER[echomind-worker]
-        PG[postgres]
-        QDRANT[qdrant]
-        REDIS[redis]
-        MINIO[minio]
-        NATS[nats]
+        subgraph Services["Application Services"]
+            API[echomind-api]
+            SEARCH[echomind-search]
+            ORCH[echomind-orchestrator]
+            CONN[echomind-connector]
+            SEM[echomind-semantic]
+            EMBED[echomind-embedder]
+            VOICE[echomind-voice]
+            VISION[echomind-vision]
+        end
+
+        subgraph Infra["Infrastructure"]
+            PG[postgres]
+            QDRANT[qdrant]
+            REDIS[redis]
+            MINIO[minio]
+            NATS[nats]
+        end
     end
 ```
 
@@ -464,24 +560,36 @@ flowchart TB
 ```mermaid
 flowchart TB
     subgraph K8s["Kubernetes Cluster"]
-        subgraph Deployments
-            API[API Deployment<br/>HPA enabled]
-            AGENT[Agent Deployment]
-            WORKER[Worker Deployment]
+        subgraph Deployments["Deployments (Stateless)"]
+            API[echomind-api<br/>HPA enabled]
+            SEARCH[echomind-search<br/>HPA enabled]
+            ORCH[echomind-orchestrator<br/>Single replica]
+            CONN[echomind-connector]
+            SEM[echomind-semantic]
+            EMBED[echomind-embedder<br/>GPU node]
+            VOICE[echomind-voice<br/>GPU node]
+            VISION[echomind-vision<br/>GPU node]
         end
 
-        subgraph StatefulSets
+        subgraph StatefulSets["StatefulSets (Persistent)"]
             PG[PostgreSQL]
             QDRANT[Qdrant]
             REDIS[Redis]
+            MINIO[MinIO]
+            NATS[NATS]
+        end
+
+        subgraph Jobs["Jobs"]
+            MIG[echomind-migration<br/>Pre-deploy hook]
         end
 
         subgraph Ingress
-            ING[Ingress Controller]
+            ING[Traefik Ingress<br/>Rate Limiting]
         end
     end
 
     ING --> API
+    MIG -.->|"runs before"| Deployments
 ```
 
 ---
@@ -494,27 +602,38 @@ echomind/
 │   ├── architecture.md      # This file
 │   └── services/            # Service-specific docs
 ├── src/
-│   ├── api/                 # FastAPI application
+│   ├── api/                 # FastAPI REST + WebSocket gateway
 │   │   ├── routes/
 │   │   ├── middleware/
 │   │   └── websocket/
-│   ├── agent/               # Agent core
-│   │   ├── orchestrator.py
-│   │   ├── planner.py
-│   │   ├── memory/
-│   │   └── tools/
 │   ├── services/            # Background services
+│   │   ├── search/          # Agentic search (Semantic Kernel, gRPC)
+│   │   │   ├── logic/       # SK plugins, tools, memory
+│   │   │   └── main.py
+│   │   ├── orchestrator/    # Scheduler service (APScheduler, NATS pub)
+│   │   │   ├── logic/
+│   │   │   │   └── jobs/    # connector_sync.py, cleanup.py
+│   │   │   └── main.py
+│   │   ├── connector/       # Data source connector (NATS sub)
+│   │   │   ├── logic/
+│   │   │   │   └── providers/  # onedrive.py, teams.py, gdrive.py
+│   │   │   └── main.py
+│   │   ├── semantic/        # Content extraction + chunking (NATS sub)
+│   │   │   ├── logic/
+│   │   │   │   ├── extractors/  # pdf.py, url.py, youtube.py
+│   │   │   │   └── chunkers/    # character.py, semantic.py
+│   │   │   └── main.py
 │   │   ├── embedder/        # Text → Vector (gRPC)
-│   │   ├── semantic/        # Document chunking (NATS)
-│   │   ├── search/          # Vector search (gRPC)
-│   │   ├── transformer/     # Text splitting (gRPC)
-│   │   ├── voice/           # Whisper (NATS)
-│   │   └── vision/          # BLIP+OCR (NATS)
-│   ├── connectors/          # Data source connectors
-│   │   ├── onedrive/
-│   │   ├── teams/
-│   │   ├── web/
-│   │   └── file/
+│   │   │   ├── logic/
+│   │   │   └── main.py
+│   │   ├── voice/           # Whisper transcription (NATS sub)
+│   │   │   ├── logic/
+│   │   │   └── main.py
+│   │   ├── vision/          # BLIP + OCR (NATS sub)
+│   │   │   ├── logic/
+│   │   │   └── main.py
+│   │   └── migration/       # Alembic migrations (batch job)
+│   │       └── versions/
 │   ├── proto/               # Protocol Buffer definitions (source of truth)
 │   │   ├── public/          # Client-facing API objects
 │   │   └── internal/        # Internal service objects
@@ -529,10 +648,11 @@ echomind/
 │   └── web/                 # React client
 ├── deployment/
 │   ├── docker/
-│   │   ├── Dockerfile
+│   │   ├── Dockerfile.*     # Per-service Dockerfiles
 │   │   └── docker-compose.yml
 │   └── k8s/
-│       └── manifests/
+│       ├── base/            # Kustomize base
+│       └── overlays/        # dev, staging, prod
 ├── config/                  # Configuration files
 ├── tests/
 └── scripts/
@@ -550,6 +670,49 @@ echomind/
 
 ---
 
+## Future Vision
+
+### Agentic Ingestion Pipeline
+
+Future enhancement: use an LLM to reason about documents during ingestion, not just retrieval.
+
+```mermaid
+flowchart LR
+    DOC[Document] --> AGENT_INGEST[Ingestion Agent]
+    AGENT_INGEST --> CLASSIFY[Classify content type]
+    AGENT_INGEST --> EXTRACT[Extract entities & relationships]
+    AGENT_INGEST --> SUMMARIZE[Generate summaries]
+    AGENT_INGEST --> LINK[Link to existing knowledge]
+    CLASSIFY & EXTRACT & SUMMARIZE & LINK --> STORE[Store enriched chunks]
+```
+
+Benefits:
+- Automatic document classification and tagging
+- Entity extraction and knowledge graph building
+- Multi-level summaries (document, section, paragraph)
+- Cross-document relationship discovery
+
+### Real-Time Voice (Future)
+
+Current scope: audio file transcription (batch processing).
+
+Future scope: real-time voice streaming for live conversations:
+- WebSocket audio streaming to voice service
+- Live transcription with speaker diarization
+- Real-time agent responses via voice synthesis
+- Use case: voice-enabled AI assistant in Teams calls
+
+### Reranker Service (TBD)
+
+May extract reranking into a separate service if:
+- Cross-encoder models prove computationally expensive
+- Need to A/B test different reranking strategies
+- Want to cache reranking results independently
+
+Current approach: reranking logic lives in `echomind-search` service.
+
+---
+
 ## Decisions Made
 
 - [x] **Agent framework**: Semantic Kernel (Microsoft's AI orchestration SDK, air-gap compatible)
@@ -564,10 +727,21 @@ echomind/
 ## Open Questions
 
 - [ ] Memory persistence strategy (how long to retain episodic memory?) — **TBD**
-- [ ] Reranker strategy (cross-encoder model selection, when to apply reranking?) — **TBD**
+- [ ] Reranker: Keep in `echomind-search` or extract to separate `echomind-reranker` service? — **TBD, see Future Vision**
 - [ ] Object storage selection: MinIO (maintenance mode) vs [RustFS](https://github.com/rustfs/rustfs) — **Evaluate**
+- [ ] Stuck connector handling: Should orchestrator reset connectors stuck in PENDING/SYNCING? — **TBD, see [orchestrator-service.md](./services/orchestrator-service.md)**
+- [ ] Video audio extraction: Process in vision service or route to voice service? — **TBD, depends on model**
 
 ## Resolved
 
 - [x] **Offline dependency bundling**: Docker images from authorized container registries, deployable to [Iron Bank (Platform One)](https://p1.dso.mil/iron-bank)
 - [x] **Connector priority for v1**: Microsoft Teams, Google Drive
+
+---
+
+## References
+
+- [Proto Definitions](./proto-definitions.md) - Enum values, message schemas, NATS payloads
+- [DB Schema](./db-schema.md) - PostgreSQL table definitions
+- [API Specification](./api-spec.md) - REST/WebSocket endpoints
+- [Orchestrator Service](./services/orchestrator-service.md) - Scheduler service details
