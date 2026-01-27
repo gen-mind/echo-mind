@@ -60,6 +60,10 @@ class OrchestratorSettings(BaseSettings):
         5.0,
         description="NATS connection timeout in seconds",
     )
+    nats_stream_name: str = Field(
+        "ECHOMIND",
+        description="NATS JetStream stream name",
+    )
 
     # Default Refresh Intervals (can be overridden per connector)
     default_refresh_web_minutes: int = Field(

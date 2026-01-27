@@ -107,21 +107,7 @@ async def list(session, filters, pagination) -> list[Model]
 
 ### Phase 2: Pipeline Core
 
-#### 2.1 Semantic Service
-- Location: `src/semantic/`
-- Protocol: NATS subscriber
-- Port: 8080 (health)
-- Responsibilities:
-  - Content extraction (pymupdf4llm, BeautifulSoup)
-  - Text chunking (RecursiveCharacterTextSplitter)
-  - Route audio to Voice service
-  - Route images to Vision service
-  - Call Embedder via gRPC
-- NATS subjects:
-  - Subscribe: `document.process`, `connector.sync.web`, `connector.sync.file`
-  - Publish: `audio.transcribe`, `image.analyze`
-
-#### 2.2 Orchestrator Service ✅ COMPLETED (2026-01-26)
+#### 2.1 Orchestrator Service ✅ COMPLETED (2026-01-26)
 - Location: `src/orchestrator/`
 - Protocol: NATS publisher only
 - Port: 8080 (health)
@@ -157,31 +143,52 @@ async def list(session, filters, pagination) -> list[Model]
   - `tests/unit/orchestrator/test_exceptions.py`
   - `tests/unit/orchestrator/test_orchestrator_service.py`
 
----
-
-### Phase 3: Data Sources
-
-#### 3.1 Connector Service
+#### 2.2 Connector Service
 - Location: `src/connector/`
 - Protocol: NATS subscriber
 - Port: 8080 (health)
+- Providers (Phase 1):
+  - **Google Drive** - OAuth2 + service account, Changes API, PDF export
+  - **OneDrive** - MSAL auth, Delta API + cTag
+  - ~~Web~~ - Deferred (needs web-to-PDF component research)
+  - ~~Teams~~ - Deferred to future phase
 - Responsibilities:
-  - OAuth token management
-  - Delta sync (Teams, OneDrive, Google Drive)
+  - OAuth token management (refresh, storage)
+  - Checkpoint-based resumable sync
+  - Change detection via API metadata (download only when needed)
+  - Google Workspace files exported as PDF (10MB limit)
+  - Permission sync on every document
   - Download files to MinIO
   - Create document records
 - NATS subjects:
-  - Subscribe: `connector.sync.teams`, `connector.sync.onedrive`, `connector.sync.google_drive`
+  - Subscribe: `connector.sync.onedrive`, `connector.sync.google_drive`
   - Publish: `document.process`
 - External APIs:
-  - Microsoft Graph API
+  - Microsoft Graph API (OneDrive)
   - Google Drive API
+
+**Note:** `connector.sync.file` goes directly to Semantic (no auth needed).
+`connector.sync.web` requires Connector for web-to-PDF conversion (deferred).
+
+#### 2.3 Semantic Service
+- Location: `src/semantic/`
+- Protocol: NATS subscriber
+- Port: 8080 (health)
+- Responsibilities:
+  - Content extraction (pymupdf4llm, BeautifulSoup)
+  - Text chunking (RecursiveCharacterTextSplitter)
+  - Route audio to Voice service
+  - Route images to Vision service
+  - Call Embedder via gRPC
+- NATS subjects:
+  - Subscribe: `document.process`, `connector.sync.web`, `connector.sync.file`
+  - Publish: `audio.transcribe`, `image.analyze`
 
 ---
 
-### Phase 4: Media Processing
+### Phase 3: Media Processing
 
-#### 4.1 Voice Service
+#### 3.1 Voice Service
 - Location: `src/voice/`
 - Protocol: NATS subscriber
 - Port: 8080 (health)
@@ -193,7 +200,7 @@ async def list(session, filters, pagination) -> list[Model]
   - Subscribe: `audio.transcribe`
 - Models: whisper-base (default)
 
-#### 4.2 Vision Service
+#### 3.2 Vision Service
 - Location: `src/vision/`
 - Protocol: NATS subscriber
 - Port: 8080 (health)
@@ -208,9 +215,9 @@ async def list(session, filters, pagination) -> list[Model]
 
 ---
 
-### Phase 5: Monitoring & Search
+### Phase 4: Monitoring & Search
 
-#### 5.1 Guardian Service
+#### 4.1 Guardian Service
 - Location: `src/guardian/`
 - Protocol: NATS subscriber
 - Port: 8080 (health)
@@ -221,7 +228,7 @@ async def list(session, filters, pagination) -> list[Model]
 - NATS subjects:
   - Subscribe: `dlq.>`
 
-#### 5.2 Search Service
+#### 4.2 Search Service
 - Location: `src/search/`
 - Protocol: gRPC
 - Port: 50051 (gRPC), 8080 (health)
@@ -555,16 +562,18 @@ The 5% uncertainty accounts for:
 
 ## Execution Order
 
-1. Phase 1.1: CRUD Operations (blocks everything)
-2. Phase 1.2: Database Migrations (blocks services)
-3. Phase 1.3: API Tests (can parallel with Phase 2)
-4. Phase 2.1: Semantic Service
-5. Phase 2.2: Orchestrator Service
-6. Phase 3.1: Connector Service
-7. Phase 4.1: Voice Service
-8. Phase 4.2: Vision Service
-9. Phase 5.1: Guardian Service
-10. Phase 5.2: Search Service
+1. Phase 1.1: CRUD Operations ✅
+2. Phase 1.2: Database Migrations ✅
+3. Phase 1.3: API Tests ✅
+4. Phase 2.1: Orchestrator Service ✅
+5. Phase 2.2: Connector Service ← **NEXT**
+6. Phase 2.3: Semantic Service
+7. Phase 3.1: Voice Service
+8. Phase 3.2: Vision Service
+9. Phase 4.1: Guardian Service
+10. Phase 4.2: Search Service
+
+**Pipeline order:** Orchestrator → Connector → Semantic → Embedder → Qdrant
 
 ---
 
@@ -575,3 +584,92 @@ The 5% uncertainty accounts for:
 - Never edit generated code in `echomind_lib/models/`
 - Emoji logging required (see `.claude/rules/logging.md`)
 - Unit tests mandatory - 70% coverage minimum
+
+---
+
+## Architecture Decisions
+
+### Google Workspace Export Strategy (2026-01-27)
+
+**Decision:** All Google Workspace documents exported as PDF.
+
+| Google Format | Export As |
+|---------------|-----------|
+| Google Docs | PDF |
+| Google Sheets | PDF |
+| Google Slides | PDF |
+| Google Drawings | PDF |
+
+**Rationale:**
+- Consistent pipeline - Semantic service processes all as PDF via `pymupdf4llm`
+- Preserves formatting - Tables, charts, layouts retained
+- No special handling needed in Semantic service
+
+### Change Detection Strategy (2026-01-27)
+
+**Decision:** Check for changes via API metadata FIRST, download ONLY when needed.
+
+| Provider | Change Detection Method |
+|----------|-------------------------|
+| Google Drive | Changes API + `md5Checksum` |
+| OneDrive | Delta API + `cTag` (content hash, NOT timestamp) |
+
+**Note:** Teams connector deferred to future phase.
+
+**Rationale:**
+- Minimizes API calls and bandwidth
+- Avoids unnecessary processing of unchanged files
+- `cTag` preferred over `lastModifiedDateTime` - detects content changes only (ignores metadata-only changes like renames)
+
+### Checkpoint-Based State Management (2026-01-27)
+
+**Decision:** Connectors use checkpoint objects for resumable, fault-tolerant syncing.
+
+**Checkpoint Data Per Provider:**
+
+| Provider | Checkpoint Contents |
+|----------|---------------------|
+| Google Drive | `completion_stage`, `completion_map` (per-user), `next_page_token`, `all_retrieved_file_ids`, cached `drive_ids`/`user_emails` |
+| OneDrive | `cached_site_descriptors` (deque), `current_site`, `cached_drive_names`, `current_drive` |
+| Teams | `todo_team_ids` (list of remaining teams) |
+
+**Resumption Flow:**
+1. Check `completion_stage` to know where sync stopped
+2. Use `completed_until` timestamp to skip already-processed files
+3. Use `next_page_token` to resume API pagination
+4. Use `all_retrieved_file_ids` for deduplication
+
+**Rationale:**
+- Fault tolerance - resume after crashes without re-processing
+- Progress tracking - know exactly where we are in multi-stage sync
+- Efficiency - cached metadata (drive IDs, user emails) fetched once, reused
+- Deduplication - file ID sets prevent duplicate processing
+
+### Permission Sync Strategy (2026-01-27)
+
+**Decision:** Track document permissions via `ExternalAccess` for search filtering.
+
+**Sync Frequency:** On every document sync (not a separate job).
+
+**ExternalAccess Model:**
+```python
+@dataclass
+class ExternalAccess:
+    external_user_emails: set[str]  # Users with access
+    external_user_group_ids: set[str]  # Groups with access
+    is_public: bool  # Anyone can access
+```
+
+**Permission Sources Per Provider:**
+
+| Provider | Permission Source |
+|----------|-------------------|
+| Google Drive | `permissions().list()` API - type (user/anyone), emailAddress |
+| OneDrive | Item permissions API - grantedToV2 (user/group), link scope |
+
+**Note:** Teams connector deferred to future phase.
+
+**Rationale:**
+- Search filtering - only return docs user has access to
+- Consistent model - same `ExternalAccess` for all providers
+- Every-doc sync ensures permissions always current (no stale access)

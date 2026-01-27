@@ -51,9 +51,16 @@ services:
     volumes:
       - ${DATA_PATH}/traefik/certificates:/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     command:
       - "--api.dashboard=true"
+      - "--ping=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
@@ -378,6 +385,41 @@ services:
       migration:
         condition: service_completed_successfully
       nats:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind Connector - External Data Source Fetcher
+  # ===============================================
+  connector:
+    image: gsantopaolo/echomind-connector:${CONNECTOR_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: connector/Dockerfile
+    container_name: echomind-connector
+    hostname: connector
+    env_file:
+      - ${CONFIG_PATH}/connector/connector.env
+    environment:
+      - CONNECTOR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - CONNECTOR_NATS_URL=nats://nats:4222
+      - CONNECTOR_MINIO_ENDPOINT=minio:9000
+      - CONNECTOR_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - CONNECTOR_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      orchestrator:
         condition: service_started
     restart: unless-stopped
     networks:

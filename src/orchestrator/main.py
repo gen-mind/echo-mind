@@ -100,13 +100,31 @@ class Orchestrator:
         # Initialize NATS publisher
         logger.info("🔌 Connecting to NATS...")
         try:
-            await init_nats_publisher(
+            publisher = await init_nats_publisher(
                 servers=[self._settings.nats_url],
                 user=self._settings.nats_user,
                 password=self._settings.nats_password,
                 timeout=self._settings.nats_connect_timeout,
             )
             logger.info("✅ NATS connected")
+
+            # Create JetStream stream if it doesn't exist
+            try:
+                await publisher.create_stream(
+                    name=self._settings.nats_stream_name,
+                    subjects=[
+                        "connector.sync.*",
+                        "document.process",
+                    ],
+                )
+                logger.info(
+                    "✅ NATS stream '%s' ready", self._settings.nats_stream_name
+                )
+            except Exception as e:
+                # Stream might already exist, which is fine
+                if "already in use" not in str(e).lower():
+                    logger.warning("⚠️ Stream creation warning: %s", e)
+
         except Exception as e:
             logger.error("❌ NATS connection failed: %s", e)
             await close_db()

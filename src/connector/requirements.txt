@@ -1,0 +1,20 @@
+# Core dependencies
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# HTTP client
+httpx>=0.25.0
+
+# Database
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.29.0
+
+# NATS
+nats-py>=2.6.0
+
+# MinIO
+miniopy-async>=1.17
+
+# Protobuf
+protobuf>=4.0.0
+grpcio>=1.60.0
