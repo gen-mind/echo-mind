@@ -3,14 +3,14 @@
 
 # EchoMind
 
-### Your Organization's AI Adoption Starts Now. For Free.
+### Your Organization's AI Adoption Starts Now. **For Free** 🆓🚀
 
 [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](license)
 [![Deploy Anywhere](https://img.shields.io/badge/Deploy-Anywhere-brightgreen.svg)](#deployment-modes)
 
-**From single container to cluster. From single user to entire organization.**<br/>
-**One platform. Zero cost. Infinite possibilities.**
+**From single container to cluster. From one user to the whole org.**<br/>
+**One platform. $0 forever. No trials. No limits.** ✨
 
 [Documentation](docs/architecture.md) · [Why EchoMind?](#why-echomind)
 
@@ -34,48 +34,37 @@ EchoMind is an **agentic RAG platform** that actually *thinks* before it retriev
 | 🏠 **Private and SaaS LLM Ready** | Run with TGI/vLLM on your own GPU cluster or connected to your favorite LLM API |
 | 🔒 **Air-Gap / SCIF Ready**       | No internet, no telemetry, no phone-home — fully self-contained             |
 | 📦 **Deploy Anywhere**            | Single container to Kubernetes cluster — your choice                        |
-| ⚖️ **MIT Licensed**               | Free and open source, forever                                               |
+| 🆓 **MIT Licensed — Free Forever** | No paid tiers. No usage caps. No hidden licensing surprises |
 
 
 ## Why EchoMind?
+Because teams shouldn’t need a budget to start using AI. EchoMind is **$0, MIT-licensed, and self-hostable** 🆓🏠.
 
 <table>
 <tr>
 <td width="33%" align="center">
 
-### 🆓 Free Forever
+### 🆓 Free. Forever.
 
-**MIT Licensed. No strings attached.**
 
-From a single user to a Fortune 500 enterprise—EchoMind is 100% free. No usage limits. No premium tiers. No vendor lock-in.
+**MIT Licensed. $0. No strings attached.**
 
-</td>
-<td width="33%" align="center">
+From a solo dev to a Fortune 500—EchoMind stays free.  
+No usage limits. No “enterprise” paywalls. No vendor lock-in. 🔓
 
-### 🚀 Deploy Your Way
 
-**One container. Or a thousand nodes.**
+### ⚡ AI in Minutes (Not Months)
 
-Start with a single container. Scale to a distributed Kubernetes cluster when you're ready. Same codebase, same config.
+**Skip procurement. Start building today.**
 
-</td>
-<td width="33%" align="center">
-
-### ⚡ AI in Seconds
-
-**Your org's AI journey starts today.**
-
-Stop waiting for budget approvals and vendor negotiations. Deploy EchoMind now and give your team AI-powered knowledge retrieval before your next meeting.
-
-</td>
-</tr>
-</table>
+No budget approvals. No vendor negotiations.  
+Deploy EchoMind now and ship your first internal AI workflow this week. ✅
 
 ---
 
 ## What is EchoMind?
+EchoMind is an **agentic RAG platform** that actually *thinks* before it retrieves — and it’s **100% free (MIT)** 🆓.
 
-EchoMind is an **Agentic Retrieval-Augmented Generation (RAG)** platform that goes beyond traditional retrieve-then-generate patterns. Unlike conventional RAG systems that simply fetch and paste context, EchoMind's agent:
 
 - **Reasons** about what information it needs before retrieving
 - **Plans** multi-step retrieval strategies across multiple data sources
