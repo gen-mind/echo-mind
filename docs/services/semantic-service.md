@@ -1,12 +1,24 @@
 # Semantic Service
 
+> ⚠️ **DEPRECATED** - This service is replaced by the [Ingestor Service](./ingestor-service.md)
+>
+> The Ingestor service provides:
+> - **NVIDIA nv-ingest** for extraction (replaces pymupdf4llm, BeautifulSoup)
+> - **Tokenizer-based chunking** (replaces langchain character splitter)
+> - **Built-in audio transcription** via Riva NIM (no more routing to Voice)
+> - **Built-in image/video processing** (no more routing to Vision)
+> - **Table/chart detection** via YOLOX NIM (new capability)
+>
+> This service will be removed in a future release.
+
 > **Service:** `echomind-semantic`
 > **Protocol:** NATS (subscriber)
 > **Port:** 8080 (health check only)
+> **Status:** DEPRECATED - Replaced by Ingestor
 
 ---
 
-## What It Does
+## What It Does (DEPRECATED)
 
 The Semantic Service handles **content extraction and text chunking**:
 

@@ -3,7 +3,8 @@
 > **Service:** `echomind-ingestor`
 > **Protocol:** NATS (subscriber)
 > **Port:** 8080 (health check only)
-> **Formerly:** `echomind-semantic`
+> **Replaces:** `echomind-semantic`
+> **Makes Obsolete:** `echomind-voice`, `echomind-vision`
 
 ---
 
@@ -11,14 +12,28 @@
 
 The Ingestor Service is a **complete rewrite** of the former Semantic Service, powered by **NVIDIA's nv-ingest extraction library** (`nv_ingest_api` Python package). This is a **locally installed library**, not an external API call.
 
+### Services Made Obsolete
+
+| Old Service | Replacement in Ingestor |
+|-------------|------------------------|
+| `echomind-semantic` | Fully replaced by Ingestor |
+| `echomind-voice` | nv-ingest handles audio via **Riva NIM** (mp3, wav) |
+| `echomind-vision` | nv-ingest handles images (bmp, jpeg, png, tiff) and video (avi, mkv, mov, mp4) |
+
+**No more routing to Voice/Vision services** - all content types processed within Ingestor.
+
 ### Why the Rewrite?
 
-| Aspect | Old (Semantic) | New (Ingestor) |
-|--------|----------------|----------------|
+| Aspect | Old (Semantic + Voice + Vision) | New (Ingestor) |
+|--------|--------------------------------|----------------|
 | PDF Extraction | pymupdf4llm | nv-ingest library (pdfium + NIMs) |
 | Table Detection | None | YOLOX NIM |
 | Chart Detection | None | YOLOX NIM |
+| Audio Transcription | Whisper (Voice service) | Riva NIM (built into nv-ingest) |
+| Image Analysis | BLIP + OCR (Vision service) | nv-ingest extraction + VLM embedding |
+| Video Processing | Custom (Vision service) | nv-ingest (early access) |
 | Chunking | langchain (character-based) | NVIDIA tokenizer-based (HuggingFace AutoTokenizer) |
+| Architecture | 3 services | 1 service (Ingestor) |
 | Architecture Pattern | Custom | Matches NVIDIA RAG Blueprint |
 
 **Accuracy: 100%** - Based on source code analysis of nv_ingest_api (`split_text.py` lines 48-64).
@@ -57,7 +72,16 @@ The Ingestor Service handles **multimodal content extraction and chunking** usin
 - Splits content into chunks using NVIDIA's tokenizer-based chunking
 - Sends text chunks to Embedder with `input_type="passage"`
 - Sends structured elements (tables/charts) as images to Embedder with multimodal model
+- Embedder stores vectors in Qdrant (vector database)
 - Updates document status in database
+
+> **TODO: Evaluate Chunking Strategy**
+>
+> NVIDIA uses fixed-size token-based chunking (not semantic). Need to evaluate:
+> - Token-based (current): Predictable size, fast, deterministic
+> - Semantic chunking: Groups by meaning, variable size, requires embedding at chunk time
+>
+> Consider benchmarking retrieval accuracy with both approaches.
 
 ---
 
@@ -756,20 +780,41 @@ dependencies = [
 
 ### Subscriptions (Incoming)
 
-| Subject | Payload | From |
-|---------|---------|------|
-| `document.process` | `DocumentProcessRequest` | Connector |
-| `connector.sync.web` | `ConnectorSyncRequest` | Orchestrator |
-| `connector.sync.file` | `ConnectorSyncRequest` | Orchestrator |
+| Subject | Payload | From | Description |
+|---------|---------|------|-------------|
+| `document.process` | `DocumentProcessRequest` | Connector | Files downloaded from cloud providers (Drive, OneDrive) |
+| `connector.sync.web` | `ConnectorSyncRequest` | Orchestrator | Web connector sync (live URL scraping) |
+| `connector.sync.file` | `ConnectorSyncRequest` | Orchestrator | File connector sync (files already in MinIO) |
+
+### Consumer Configuration
+
+```python
+subscriber = JetStreamEventSubscriber(
+    nats_url="nats://nats:4222",
+    stream_name="ECHOMIND",
+    subjects=[
+        "document.process",
+        "connector.sync.web",
+        "connector.sync.file",
+    ],
+    durable_name="ingestor-consumer",
+    queue_group="ingestor-workers"
+)
+```
 
 ### Publications (Outgoing)
 
 **None** - All processing happens within the Ingestor service.
 
-- ✅ PDF, DOCX, PPTX, HTML, Audio, Images → nv-ingest library
-- ✅ Video, YouTube, URLs → Custom extractors in Ingestor
-- ❌ No routing to Voice service (audio handled by nv-ingest Riva NIM)
-- ❌ No routing to Vision service (images handled by nv-ingest, video handled by custom extractor)
+### What Changed from Semantic Service
+
+| Old (Semantic) | New (Ingestor) |
+|----------------|----------------|
+| Published `audio.transcribe` → Voice | ❌ Removed - nv-ingest Riva NIM handles audio |
+| Published `image.analyze` → Vision | ❌ Removed - nv-ingest handles images/video |
+| Subscribed to same NATS subjects | ✅ Same subjects, different consumer name |
+
+**Key Point:** Ingestor is a **drop-in replacement** for Semantic at the NATS level. Same incoming subjects, but no outgoing routing to Voice/Vision.
 
 ---
 

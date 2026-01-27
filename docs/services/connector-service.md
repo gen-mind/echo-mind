@@ -19,7 +19,7 @@ The Connector Service **fetches data from external sources** that require API au
 - ~~Microsoft Teams~~ - Future phase
 
 **Not handled by Connector:**
-- **File** (`connector.sync.file`) → Goes directly to Semantic (no auth needed, files already in MinIO)
+- **File** (`connector.sync.file`) → Goes directly to Ingestor (no auth needed, files already in MinIO)
 
 It handles OAuth token management, checkpoint-based resumable sync, and file download to MinIO.
 
@@ -72,7 +72,7 @@ sequenceDiagram
     participant API as External API
     participant M as MinIO
     participant DB as PostgreSQL
-    participant S as Semantic
+    participant S as Ingestor
 
     O->>N: connector.sync.google_drive
     N->>C: ConnectorSyncRequest
@@ -99,7 +99,7 @@ sequenceDiagram
     end
 
     N->>S: DocumentProcessRequest
-    Note over S: Semantic processes...
+    Note over S: Ingestor processes...
 
     S->>DB: Set status = active
 ```
@@ -153,7 +153,7 @@ See [Proto Definitions](../proto-definitions.md)
 
 | Subject | Payload | To |
 |---------|---------|-----|
-| `document.process` | `DocumentProcessRequest` | Semantic |
+| `document.process` | `DocumentProcessRequest` | Ingestor |
 
 ### Consumer Configuration
 
@@ -249,7 +249,7 @@ async def check_changes(self, state: dict) -> list[FileChange]:
 
 ### Why PDF?
 
-1. **Consistent pipeline** - Semantic service processes all as PDF via `pymupdf4llm`
+1. **Consistent pipeline** - Ingestor processes all as PDF via nv-ingest (pdfium + YOLOX NIM)
 2. **Preserves formatting** - Tables, charts, layouts retained
 3. **All sheets included** - Google Sheets PDF exports all tabs (CSV only exports first sheet)
 4. **No special handling** - Same flow as uploaded PDFs
@@ -692,7 +692,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON=/secrets/google-sa.json
 |------|--------|------------|
 | Sync starts | `syncing` | Connector |
 | Sync fails | `error` | Connector |
-| All docs processed | `active` | Semantic (not Connector) |
+| All docs processed | `active` | Ingestor (not Connector) |
 
 ---
 
@@ -775,4 +775,4 @@ class TestGoogleDriveProvider:
 - [NATS Messaging](../nats-messaging.md) - Message flow documentation
 - [Proto Definitions](../proto-definitions.md) - Message schemas
 - [Orchestrator Service](./orchestrator-service.md) - Triggers connector sync
-- [Semantic Service](./semantic-service.md) - Processes downloaded files
+- [Ingestor Service](./ingestor-service.md) - Processes downloaded files (replaces Semantic)

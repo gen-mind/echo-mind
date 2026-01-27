@@ -1,12 +1,18 @@
 # Voice Service
 
+> ⚠️ **DEPRECATED** - This service is replaced by the [Ingestor Service](./ingestor-service.md)
+>
+> The Ingestor service now handles audio transcription via **NVIDIA Riva NIM** (built into nv-ingest).
+> This service will be removed in a future release.
+
 > **Service:** `echomind-voice`
 > **Protocol:** NATS (subscriber)
 > **Port:** 8080 (health check only)
+> **Status:** DEPRECATED - Replaced by Ingestor
 
 ---
 
-## What It Does
+## What It Does (DEPRECATED)
 
 The Voice Service **transcribes audio files** using OpenAI Whisper:
 

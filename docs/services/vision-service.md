@@ -1,12 +1,21 @@
 # Vision Service
 
+> ⚠️ **DEPRECATED** - This service is replaced by the [Ingestor Service](./ingestor-service.md)
+>
+> The Ingestor service now handles:
+> - **Images** (bmp, jpeg, png, tiff) via nv-ingest extraction + VLM embedding
+> - **Video** (avi, mkv, mov, mp4) via nv-ingest (early access)
+>
+> This service will be removed in a future release.
+
 > **Service:** `echomind-vision`
 > **Protocol:** NATS (subscriber)
 > **Port:** 8080 (health check only)
+> **Status:** DEPRECATED - Replaced by Ingestor
 
 ---
 
-## What It Does
+## What It Does (DEPRECATED)
 
 The Vision Service **analyzes images and video frames** using BLIP and OCR:
 
