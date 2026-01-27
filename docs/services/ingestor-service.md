@@ -29,23 +29,27 @@ The Ingestor Service is a **complete rewrite** of the former Semantic Service, p
 
 The Ingestor Service handles **multimodal content extraction and chunking** using the full nv-ingest library capabilities.
 
-### Handled Directly by nv-ingest
+### Handled Directly by nv-ingest (ALL in Ingestor)
 
-| File Type | Extractor | Content Extracted |
-|-----------|-----------|-------------------|
-| **PDF** | pdfium + YOLOX NIMs | Text, tables, charts, infographics, images |
-| **DOCX** | docxreader | Text, embedded images |
-| **PPTX** | pptx_extractor | Text, slides, embedded images |
-| **HTML** | html_extractor | Text from HTML files |
-| **Audio** | Riva NIM (built into nv-ingest) | Transcription → text |
+| File Type | nv-ingest Function | Content Extracted |
+|-----------|-------------------|-------------------|
+| **PDF** | `extract_primitives_from_pdf()` | Text, tables, charts, infographics, images |
+| **DOCX** | `extract_primitives_from_docx()` | Text, tables, charts, infographics, images |
+| **PPTX** | `extract_primitives_from_pptx()` | Text, tables, charts, infographics, images |
+| **HTML** | `html_extractor` | Text from HTML files |
+| **Audio** | `extract_primitives_from_audio()` | Transcription via Riva NIM |
+| **Images** | `extract_primitives_from_image()` | Text (OCR), tables, charts, infographics |
+| **Charts** | `extract_chart_data_from_image()` | Structured chart data |
+| **Tables** | `extract_table_data_from_image()` | Structured table data |
+| **Infographics** | `extract_infographic_data_from_image()` | Text via OCR |
 
-### Routed to Other Services
+### NOT Supported by nv-ingest (requires custom handling)
 
-| File Type | Routed To | Reason |
-|-----------|-----------|--------|
-| **Video** (MP4, etc.) | Vision Service | nv-ingest has no video extraction |
-| **YouTube URLs** | Custom Extractor | Not supported by nv-ingest |
-| **Live Web URLs** | Custom Extractor | nv-ingest only handles HTML files, not web scraping |
+| File Type | Status | Solution |
+|-----------|--------|----------|
+| **Video** (MP4, etc.) | ❌ No extractor in nv-ingest | Route to Vision Service OR custom extractor |
+| **YouTube URLs** | ❌ No extractor in nv-ingest | Custom extractor (youtube_transcript_api) |
+| **Live Web URLs** | ❌ Only HTML files, no web scraping | Custom extractor (BeautifulSoup/Selenium) |
 
 ### Processing Pipeline
 
@@ -67,17 +71,20 @@ flowchart TB
         NATS_SUB[NATS Subscriber]
         ROUTER[Content Router]
 
-        subgraph NVIngestLib["nv-ingest library"]
-            PDF_EXT[PDF Extractor<br/>pdfium + YOLOX]
-            DOCX_EXT[DOCX Extractor]
-            PPTX_EXT[PPTX Extractor]
-            AUDIO_EXT[Audio Extractor<br/>Riva NIM]
-            CHUNKER[Tokenizer-based Chunker]
+        subgraph NVIngestLib["nv-ingest library (ALL file types)"]
+            PDF_EXT[extract_primitives_from_pdf]
+            DOCX_EXT[extract_primitives_from_docx]
+            PPTX_EXT[extract_primitives_from_pptx]
+            HTML_EXT[html_extractor]
+            AUDIO_EXT[extract_primitives_from_audio<br/>Riva NIM]
+            IMAGE_EXT[extract_primitives_from_image]
+            CHUNKER[transform_text_split_and_tokenize]
         end
 
-        subgraph CustomExt["Custom Extractors"]
-            URL_EXT[URL Extractor]
-            YT_EXT[YouTube Extractor]
+        subgraph CustomExt["Custom Extractors (not in nv-ingest)"]
+            URL_EXT[URL Scraper<br/>BeautifulSoup/Selenium]
+            YT_EXT[YouTube Extractor<br/>youtube_transcript_api]
+            VIDEO_EXT[Video Extractor<br/>frame extraction]
         end
 
         GRPC_CLIENT[gRPC Client]
@@ -87,7 +94,6 @@ flowchart TB
         NATS[(NATS JetStream)]
         MINIO[(MinIO)]
         DB[(PostgreSQL)]
-        VISION[echomind-vision]
     end
 
     subgraph EmbedderService["echomind-embedder"]
@@ -106,13 +112,15 @@ flowchart TB
     ROUTER -->|pdf| PDF_EXT
     ROUTER -->|docx| DOCX_EXT
     ROUTER -->|pptx| PPTX_EXT
+    ROUTER -->|html| HTML_EXT
     ROUTER -->|audio| AUDIO_EXT
-    ROUTER -->|video| VISION
+    ROUTER -->|image| IMAGE_EXT
     ROUTER -->|url| URL_EXT
     ROUTER -->|youtube| YT_EXT
+    ROUTER -->|video| VIDEO_EXT
 
-    PDF_EXT & DOCX_EXT & PPTX_EXT & AUDIO_EXT --> CHUNKER
-    URL_EXT & YT_EXT --> CHUNKER
+    PDF_EXT & DOCX_EXT & PPTX_EXT & HTML_EXT & AUDIO_EXT & IMAGE_EXT --> CHUNKER
+    URL_EXT & YT_EXT & VIDEO_EXT --> CHUNKER
     CHUNKER --> GRPC_CLIENT
 
     GRPC_CLIENT -->|text chunks| TEXT_MODEL
@@ -204,34 +212,36 @@ flowchart TD
     DETECT -->|application/vnd.openxmlformats-officedocument.presentationml| PPTX[PPTX]
     DETECT -->|text/html file| HTML[HTML File]
     DETECT -->|audio/*| AUDIO[Audio]
+    DETECT -->|image/*| IMAGE[Image]
     DETECT -->|video/*| VIDEO[Video]
     DETECT -->|url http/https| URL[Live URL]
     DETECT -->|youtube.com| YT[YouTube]
 
-    subgraph NVIngest["nv-ingest library (handles directly)"]
-        PDF --> PDF_EXT[pdfium + YOLOX]
-        DOCX --> DOCX_EXT[docxreader]
-        PPTX --> PPTX_EXT[pptx_extractor]
+    subgraph NVIngest["nv-ingest library (ALL these handled in Ingestor)"]
+        PDF --> PDF_EXT[extract_primitives_from_pdf]
+        DOCX --> DOCX_EXT[extract_primitives_from_docx]
+        PPTX --> PPTX_EXT[extract_primitives_from_pptx]
         HTML --> HTML_EXT[html_extractor]
-        AUDIO --> AUDIO_EXT[Riva NIM transcription]
+        AUDIO --> AUDIO_EXT[extract_primitives_from_audio]
+        IMAGE --> IMAGE_EXT[extract_primitives_from_image]
     end
 
-    subgraph CustomExtractors["Custom Extractors (not in nv-ingest)"]
+    subgraph CustomExtractors["Custom Extractors (not in nv-ingest, but still in Ingestor)"]
         URL --> URL_EXT[BeautifulSoup/Selenium]
         YT --> YT_EXT[youtube_transcript_api]
+        VIDEO --> VIDEO_EXT[Frame extraction + OCR]
     end
 
-    subgraph RouteOut["Route to Other Services"]
-        VIDEO -->|NATS publish| VISION[Vision Service]
-    end
-
-    PDF_EXT & DOCX_EXT & PPTX_EXT & HTML_EXT & AUDIO_EXT --> CHUNK[nv-ingest chunking]
-    URL_EXT & YT_EXT --> CHUNK
+    PDF_EXT & DOCX_EXT & PPTX_EXT & HTML_EXT & AUDIO_EXT & IMAGE_EXT --> CHUNK[nv-ingest chunking]
+    URL_EXT & YT_EXT & VIDEO_EXT --> CHUNK
 
     CHUNK --> EMBEDDER[Embedder gRPC]
 ```
 
-**Key Point**: Audio is handled **directly by nv-ingest** via Riva NIM - no routing to Voice service needed!
+**Key Point**:
+- **nv-ingest handles**: PDF, DOCX, PPTX, HTML, Audio, Images
+- **Custom extractors in Ingestor**: Video, YouTube, Live URLs
+- **NO routing to other services** - everything processed in Ingestor!
 
 ---
 
@@ -411,12 +421,13 @@ service EmbedService {
 }
 
 message EmbedRequest {
-    repeated string contents = 1;          // Text chunks
-    string model = 2;                      // Model name (ignored, using nvidia model)
-    string collection_name = 3;            // Qdrant collection
-    int32 document_id = 4;
-    string input_type = 5;                 // NEW: "query" or "passage"
+    repeated string contents = 1;          // Text chunks OR base64 images
+    string collection_name = 2;            // Qdrant collection
+    int32 document_id = 3;
+    string input_type = 4;                 // "query" or "passage"
+    string modality = 5;                   // NEW: "text" | "image" | "image_text"
     repeated ChunkMetadata metadata = 6;
+    repeated bytes images = 7;             // NEW: For image_text modality
 }
 
 message EmbedResponse {
@@ -424,6 +435,35 @@ message EmbedResponse {
     int32 vectors_stored = 2;
     string error = 3;
 }
+```
+
+### Modality Handling in Embedder
+
+```python
+class EmbedderService:
+    MODALITY_TO_TOKENS = {
+        "image": 2048,
+        "image_text": 10240,
+        "text": 8192
+    }
+
+    def embed(self, request: EmbedRequest) -> EmbedResponse:
+        modality = request.modality or "text"
+        max_tokens = self.MODALITY_TO_TOKENS[modality]
+
+        if modality == "text":
+            # Use text-only model
+            embeddings = self.text_embedder.embed(request.contents, max_tokens)
+        elif modality == "image":
+            # Use multimodal model with images only
+            embeddings = self.vlm_embedder.embed_images(request.images, max_tokens)
+        elif modality == "image_text":
+            # Use multimodal model with image + text
+            embeddings = self.vlm_embedder.embed_image_text(
+                request.images, request.contents, max_tokens
+            )
+
+        return EmbedResponse(success=True, vectors_stored=len(embeddings))
 ```
 
 ---
@@ -517,7 +557,27 @@ The Embedder service is updated to use **NVIDIA's embedding models** with the ex
 | Input | Text, images, or text+image |
 | Use Case | Tables/charts as images |
 
-**Accuracy: 100%** - From official NVIDIA documentation and HuggingFace model cards.
+### Token Limits by Modality (CRITICAL)
+
+The multimodal model has different token limits based on input type:
+
+```python
+modality_to_tokens = {
+    "image": 2048,        # Image only (tables/charts as pure images)
+    "image_text": 10240,  # Image + OCR text combined
+    "text": 8192          # Text only
+}
+```
+
+| Modality | Max Tokens | When to Use |
+|----------|------------|-------------|
+| `image` | 2048 | Tables/charts embedded as pure images |
+| `image_text` | 10240 | Tables/charts with OCR text extracted |
+| `text` | 8192 | Plain text chunks |
+
+**Note**: Each image tile consumes 256 tokens. For `image_text` modality, both the page image AND its extracted text are fed to the model for more accurate representation.
+
+**Accuracy: 100%** - From official [NVIDIA NIM documentation](https://docs.api.nvidia.com/nim/reference/nvidia-llama-3_2-nemoretriever-1b-vlm-embed-v1) and HuggingFace model cards.
 
 ### Implementation: Raw Transformers (NVIDIA Way)
 
@@ -618,10 +678,11 @@ src/ingestor/
 │   ├── router.py               # Content type routing
 │   └── exceptions.py
 │
-├── extractors/                 # Non-nv_ingest extractors
+├── extractors/                 # Custom extractors (not in nv-ingest)
 │   ├── __init__.py
-│   ├── url.py                  # Web page extraction
-│   └── youtube.py              # YouTube transcript
+│   ├── url.py                  # Live web URL scraping (BeautifulSoup/Selenium)
+│   ├── youtube.py              # YouTube transcript (youtube_transcript_api)
+│   └── video.py                # Video frame extraction + OCR
 │
 ├── grpc/
 │   └── embedder_client.py      # gRPC client for Embedder
@@ -700,11 +761,12 @@ dependencies = [
 
 ### Publications (Outgoing)
 
-| Subject | Payload | To | When |
-|---------|---------|-----|------|
-| `video.process` | `VideoProcessRequest` | Vision | Video files (MP4, etc.) - not supported by nv-ingest |
+**None** - All processing happens within the Ingestor service.
 
-**Note**: Audio is handled directly by nv-ingest via Riva NIM - no NATS publish to Voice service.
+- ✅ PDF, DOCX, PPTX, HTML, Audio, Images → nv-ingest library
+- ✅ Video, YouTube, URLs → Custom extractors in Ingestor
+- ❌ No routing to Voice service (audio handled by nv-ingest Riva NIM)
+- ❌ No routing to Vision service (images handled by nv-ingest, video handled by custom extractor)
 
 ---
 
@@ -760,7 +822,8 @@ tests/unit/ingestor/
 ├── test_document_processor.py
 ├── test_extractors/
 │   ├── test_url_extractor.py
-│   └── test_youtube_extractor.py
+│   ├── test_youtube_extractor.py
+│   └── test_video_extractor.py
 ├── test_router.py
 └── test_embedder_client.py
 ```
@@ -770,11 +833,12 @@ tests/unit/ingestor/
 | Component | Test Coverage |
 |-----------|---------------|
 | IngestorService | Event handling, routing |
-| DocumentProcessor | nv_ingest_api integration (PDF, DOCX, PPTX, HTML, Audio) |
+| DocumentProcessor | nv_ingest_api integration (PDF, DOCX, PPTX, HTML, Audio, Images) |
 | URLExtractor | Live web URL scraping (BeautifulSoup/Selenium) |
 | YouTubeExtractor | YouTube transcript fetch |
-| ContentRouter | MIME type routing, nv-ingest vs custom vs Vision routing |
-| EmbedderClient | gRPC communication, text vs multimodal model selection |
+| VideoExtractor | Frame extraction, OCR |
+| ContentRouter | MIME type routing, nv-ingest vs custom extractors |
+| EmbedderClient | gRPC communication, text vs multimodal model selection, modality handling |
 
 ---
 
@@ -801,11 +865,13 @@ GET :8080/healthz
 | Decision | Accuracy | Reasoning |
 |----------|----------|-----------|
 | Use nv_ingest_api library | 100% | Source code verified - no orchestration deps |
-| nv-ingest handles PDF, DOCX, PPTX, HTML, Audio | 100% | Verified extractors in source code |
-| Audio via Riva NIM (no Voice service routing) | 100% | Verified in audio_extraction.py |
-| Video routes to Vision (not in nv-ingest) | 100% | No video extractor in nv-ingest source |
+| nv-ingest handles PDF, DOCX, PPTX, HTML, Audio, **Images** | 100% | Verified all extractors in `interface/extract.py` |
+| Audio via Riva NIM (no Voice service routing) | 100% | `extract_primitives_from_audio()` in source |
+| Images via nv-ingest (no Vision service routing) | 100% | `extract_primitives_from_image()` in source |
+| Video/YouTube/URLs need custom extractors | 100% | No extractors found in nv-ingest source |
 | Strategy 2: structured elements as images | 100% | From NVIDIA vlm-embed.md docs |
 | Two embedding models (text + multimodal) | 100% | From NVIDIA RAG Blueprint |
+| Token limits by modality (2048/8192/10240) | 100% | From NVIDIA NIM API docs |
 | Prefixes required (query:/passage:) | 100% | From official model card |
 | Pooling = mean + L2 normalize | 100% | From official model card |
 
