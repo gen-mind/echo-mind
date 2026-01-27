@@ -29,27 +29,27 @@ The Ingestor Service is a **complete rewrite** of the former Semantic Service, p
 
 The Ingestor Service handles **multimodal content extraction and chunking** using the full nv-ingest library capabilities.
 
-### Handled Directly by nv-ingest (ALL in Ingestor)
+### ALL File Types Handled by nv-ingest (from README.md)
 
-| File Type | nv-ingest Function | Content Extracted |
-|-----------|-------------------|-------------------|
-| **PDF** | `extract_primitives_from_pdf()` | Text, tables, charts, infographics, images |
-| **DOCX** | `extract_primitives_from_docx()` | Text, tables, charts, infographics, images |
-| **PPTX** | `extract_primitives_from_pptx()` | Text, tables, charts, infographics, images |
-| **HTML** | `html_extractor` | Text from HTML files |
-| **Audio** | `extract_primitives_from_audio()` | Transcription via Riva NIM |
-| **Images** | `extract_primitives_from_image()` | Text (OCR), tables, charts, infographics |
-| **Charts** | `extract_chart_data_from_image()` | Structured chart data |
-| **Tables** | `extract_table_data_from_image()` | Structured table data |
-| **Infographics** | `extract_infographic_data_from_image()` | Text via OCR |
+| File Type | Extension | Notes |
+|-----------|-----------|-------|
+| **PDF** | `.pdf` | Text, tables, charts, infographics, images |
+| **Word** | `.docx` | Text, tables, charts, infographics, images |
+| **PowerPoint** | `.pptx` | Text, tables, charts, infographics, images |
+| **HTML** | `.html` | Converted to markdown |
+| **Images** | `.bmp`, `.jpeg`, `.png`, `.tiff` | OCR, tables, charts, infographics |
+| **Audio** | `.mp3`, `.wav` | Transcription via Riva NIM |
+| **Video** | `.avi`, `.mkv`, `.mov`, `.mp4` | **Early access** - frame extraction |
+| **Text** | `.txt`, `.md`, `.json`, `.sh` | Treated as text |
 
-### NOT Supported by nv-ingest (requires custom handling)
+**Accuracy: 100%** - Directly from nv-ingest README.md lines 47-66.
 
-| File Type | Status | Solution |
-|-----------|--------|----------|
-| **Video** (MP4, etc.) | ❌ No extractor in nv-ingest | Route to Vision Service OR custom extractor |
-| **YouTube URLs** | ❌ No extractor in nv-ingest | Custom extractor (youtube_transcript_api) |
-| **Live Web URLs** | ❌ Only HTML files, no web scraping | Custom extractor (BeautifulSoup/Selenium) |
+### NOT Supported by nv-ingest (requires custom extractors in Ingestor)
+
+| Type | Status | Custom Extractor Needed |
+|------|--------|------------------------|
+| **YouTube URLs** | ❌ Not in nv-ingest | `youtube_transcript_api` |
+| **Live Web URLs** | ❌ Only HTML files, no scraping | BeautifulSoup/Selenium |
 
 ### Processing Pipeline
 
@@ -71,20 +71,21 @@ flowchart TB
         NATS_SUB[NATS Subscriber]
         ROUTER[Content Router]
 
-        subgraph NVIngestLib["nv-ingest library (ALL file types)"]
-            PDF_EXT[extract_primitives_from_pdf]
-            DOCX_EXT[extract_primitives_from_docx]
-            PPTX_EXT[extract_primitives_from_pptx]
-            HTML_EXT[html_extractor]
-            AUDIO_EXT[extract_primitives_from_audio<br/>Riva NIM]
-            IMAGE_EXT[extract_primitives_from_image]
+        subgraph NVIngestLib["nv-ingest library (ALL file types from README)"]
+            PDF_EXT[PDF extraction]
+            DOCX_EXT[DOCX extraction]
+            PPTX_EXT[PPTX extraction]
+            HTML_EXT[HTML → markdown]
+            AUDIO_EXT[Audio transcription<br/>mp3, wav via Riva]
+            IMAGE_EXT[Image extraction<br/>bmp, jpeg, png, tiff]
+            VIDEO_EXT[Video extraction<br/>avi, mkv, mov, mp4<br/>early access]
+            TEXT_EXT[Text files<br/>txt, md, json, sh]
             CHUNKER[transform_text_split_and_tokenize]
         end
 
         subgraph CustomExt["Custom Extractors (not in nv-ingest)"]
             URL_EXT[URL Scraper<br/>BeautifulSoup/Selenium]
             YT_EXT[YouTube Extractor<br/>youtube_transcript_api]
-            VIDEO_EXT[Video Extractor<br/>frame extraction]
         end
 
         GRPC_CLIENT[gRPC Client]
@@ -115,12 +116,13 @@ flowchart TB
     ROUTER -->|html| HTML_EXT
     ROUTER -->|audio| AUDIO_EXT
     ROUTER -->|image| IMAGE_EXT
+    ROUTER -->|video| VIDEO_EXT
+    ROUTER -->|text| TEXT_EXT
     ROUTER -->|url| URL_EXT
     ROUTER -->|youtube| YT_EXT
-    ROUTER -->|video| VIDEO_EXT
 
-    PDF_EXT & DOCX_EXT & PPTX_EXT & HTML_EXT & AUDIO_EXT & IMAGE_EXT --> CHUNKER
-    URL_EXT & YT_EXT & VIDEO_EXT --> CHUNKER
+    PDF_EXT & DOCX_EXT & PPTX_EXT & HTML_EXT & AUDIO_EXT & IMAGE_EXT & VIDEO_EXT & TEXT_EXT --> CHUNKER
+    URL_EXT & YT_EXT --> CHUNKER
     CHUNKER --> GRPC_CLIENT
 
     GRPC_CLIENT -->|text chunks| TEXT_MODEL
@@ -214,6 +216,7 @@ flowchart TD
     DETECT -->|audio/*| AUDIO[Audio]
     DETECT -->|image/*| IMAGE[Image]
     DETECT -->|video/*| VIDEO[Video]
+    DETECT -->|text/*| TEXT[Text Files]
     DETECT -->|url http/https| URL[Live URL]
     DETECT -->|youtube.com| YT[YouTube]
 
@@ -224,23 +227,24 @@ flowchart TD
         HTML --> HTML_EXT[html_extractor]
         AUDIO --> AUDIO_EXT[extract_primitives_from_audio]
         IMAGE --> IMAGE_EXT[extract_primitives_from_image]
+        VIDEO --> VIDEO_EXT[video extractor<br/>early access]
+        TEXT --> TEXT_EXT[text extractor]
     end
 
     subgraph CustomExtractors["Custom Extractors (not in nv-ingest, but still in Ingestor)"]
         URL --> URL_EXT[BeautifulSoup/Selenium]
         YT --> YT_EXT[youtube_transcript_api]
-        VIDEO --> VIDEO_EXT[Frame extraction + OCR]
     end
 
-    PDF_EXT & DOCX_EXT & PPTX_EXT & HTML_EXT & AUDIO_EXT & IMAGE_EXT --> CHUNK[nv-ingest chunking]
-    URL_EXT & YT_EXT & VIDEO_EXT --> CHUNK
+    PDF_EXT & DOCX_EXT & PPTX_EXT & HTML_EXT & AUDIO_EXT & IMAGE_EXT & VIDEO_EXT & TEXT_EXT --> CHUNK[nv-ingest chunking]
+    URL_EXT & YT_EXT --> CHUNK
 
     CHUNK --> EMBEDDER[Embedder gRPC]
 ```
 
 **Key Point**:
-- **nv-ingest handles**: PDF, DOCX, PPTX, HTML, Audio, Images
-- **Custom extractors in Ingestor**: Video, YouTube, Live URLs
+- **nv-ingest handles**: PDF, DOCX, PPTX, HTML, Audio, Images, Video (early access), Text files
+- **Custom extractors in Ingestor**: YouTube URLs, Live Web URLs
 - **NO routing to other services** - everything processed in Ingestor!
 
 ---
@@ -681,8 +685,7 @@ src/ingestor/
 ├── extractors/                 # Custom extractors (not in nv-ingest)
 │   ├── __init__.py
 │   ├── url.py                  # Live web URL scraping (BeautifulSoup/Selenium)
-│   ├── youtube.py              # YouTube transcript (youtube_transcript_api)
-│   └── video.py                # Video frame extraction + OCR
+│   └── youtube.py              # YouTube transcript (youtube_transcript_api)
 │
 ├── grpc/
 │   └── embedder_client.py      # gRPC client for Embedder
@@ -822,8 +825,7 @@ tests/unit/ingestor/
 ├── test_document_processor.py
 ├── test_extractors/
 │   ├── test_url_extractor.py
-│   ├── test_youtube_extractor.py
-│   └── test_video_extractor.py
+│   └── test_youtube_extractor.py
 ├── test_router.py
 └── test_embedder_client.py
 ```
@@ -833,10 +835,9 @@ tests/unit/ingestor/
 | Component | Test Coverage |
 |-----------|---------------|
 | IngestorService | Event handling, routing |
-| DocumentProcessor | nv_ingest_api integration (PDF, DOCX, PPTX, HTML, Audio, Images) |
+| DocumentProcessor | nv_ingest_api integration (PDF, DOCX, PPTX, HTML, Audio, Images, Video, Text) |
 | URLExtractor | Live web URL scraping (BeautifulSoup/Selenium) |
 | YouTubeExtractor | YouTube transcript fetch |
-| VideoExtractor | Frame extraction, OCR |
 | ContentRouter | MIME type routing, nv-ingest vs custom extractors |
 | EmbedderClient | gRPC communication, text vs multimodal model selection, modality handling |
 
@@ -865,10 +866,11 @@ GET :8080/healthz
 | Decision | Accuracy | Reasoning |
 |----------|----------|-----------|
 | Use nv_ingest_api library | 100% | Source code verified - no orchestration deps |
-| nv-ingest handles PDF, DOCX, PPTX, HTML, Audio, **Images** | 100% | Verified all extractors in `interface/extract.py` |
+| nv-ingest handles PDF, DOCX, PPTX, HTML, Audio, Images, Video, Text | 100% | From nv-ingest README.md (all 18 file types) |
 | Audio via Riva NIM (no Voice service routing) | 100% | `extract_primitives_from_audio()` in source |
 | Images via nv-ingest (no Vision service routing) | 100% | `extract_primitives_from_image()` in source |
-| Video/YouTube/URLs need custom extractors | 100% | No extractors found in nv-ingest source |
+| Video via nv-ingest (early access) | 100% | From README.md: avi, mkv, mov, mp4 supported |
+| YouTube/Live URLs need custom extractors | 100% | Not in nv-ingest - requires web scraping |
 | Strategy 2: structured elements as images | 100% | From NVIDIA vlm-embed.md docs |
 | Two embedding models (text + multimodal) | 100% | From NVIDIA RAG Blueprint |
 | Token limits by modality (2048/8192/10240) | 100% | From NVIDIA NIM API docs |
