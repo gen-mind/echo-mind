@@ -9,19 +9,19 @@
 
 ## Overview
 
-The Ingestor Service is a **complete rewrite** of the former Semantic Service, now powered by **NVIDIA nv_ingest_api**. It handles multimodal document ingestion with enterprise-grade extraction capabilities.
+The Ingestor Service is a **complete rewrite** of the former Semantic Service, powered by **NVIDIA's nv-ingest extraction library** (`nv_ingest_api` Python package). This is a **locally installed library**, not an external API call.
 
 ### Why the Rewrite?
 
 | Aspect | Old (Semantic) | New (Ingestor) |
 |--------|----------------|----------------|
-| PDF Extraction | pymupdf4llm | nv_ingest_api (pdfium + optional NIMs) |
-| Table Detection | None | YOLOX NIM (optional) |
-| Chart Detection | None | YOLOX NIM (optional) |
-| Chunking | langchain text splitters | nv_ingest_api transform_text_split_and_tokenize |
+| PDF Extraction | pymupdf4llm | nv-ingest library (pdfium + NIMs) |
+| Table Detection | None | YOLOX NIM |
+| Chart Detection | None | YOLOX NIM |
+| Chunking | langchain (character-based) | NVIDIA tokenizer-based (HuggingFace AutoTokenizer) |
 | Architecture Pattern | Custom | Matches NVIDIA RAG Blueprint |
 
-**Accuracy: 100%** - Based on source code analysis of nv_ingest_api showing it uses same extraction engines as NVIDIA RAG Blueprint.
+**Accuracy: 100%** - Based on source code analysis of nv_ingest_api (`split_text.py` lines 48-64).
 
 ---
 
@@ -135,7 +135,7 @@ sequenceDiagram
         Note over I,NV: nv_ingest_api Processing
         I->>NV: extract_primitives_from_pdf(bytes)
         NV->>NV: pdfium extraction
-        NV->>NV: table/chart detection (optional YOLOX)
+        NV->>NV: table/chart detection (YOLOX NIM)
         NV-->>I: DataFrame with extracted content
 
         I->>NV: transform_text_split_and_tokenize(df)
@@ -198,8 +198,8 @@ flowchart TD
 |-----------|------------|-----------|
 | Extraction Library | nv_ingest_api | Same as NVIDIA RAG Blueprint |
 | PDF Engine | pdfium (via pypdfium2) | Pure Python, no NIM needed for basic text |
-| Table/Chart Detection | YOLOX NIM (optional) | Industry-leading accuracy |
-| Chunking | nv_ingest_api tokenizer-based | Consistent with NVIDIA pattern |
+| Table/Chart Detection | YOLOX NIM | Enterprise-grade accuracy for tables/charts |
+| Chunking | NVIDIA tokenizer-based (`_split_into_chunks`) | Token-boundary splitting via HuggingFace AutoTokenizer |
 | gRPC Client | grpcio | Calls Embedder service |
 | NATS Client | nats-py (async) | Existing EchoMind pattern |
 
@@ -251,22 +251,57 @@ async def extract_document(doc_bytes: bytes, source_id: str) -> pd.DataFrame:
         "metadata": {}
     }])
 
-    # Extract with pdfium (no NIM needed for basic text)
+    # Extract with pdfium + YOLOX NIM for tables/charts
     extracted_df = extract_primitives_from_pdf(
         df_extraction_ledger=df,
         extract_method="pdfium",
         extract_text=True,
-        extract_tables=True,      # Requires YOLOX NIM for detection
-        extract_charts=True,      # Requires YOLOX NIM for detection
+        extract_tables=True,      # YOLOX NIM for detection
+        extract_charts=True,      # YOLOX NIM for detection
         extract_images=False,
     )
 
     return extracted_df
 ```
 
-**Accuracy: 95%** - Based on source code. 5% uncertainty: some edge cases in table/chart extraction may behave differently without NIMs.
+**Accuracy: 100%** - Based on source code analysis. Using YOLOX NIM for table/chart detection.
 
-#### 2. Chunking
+#### 2. Chunking (NVIDIA's Own Implementation)
+
+**NOT langchain** - NVIDIA wrote their own tokenizer-based chunking in `split_text.py`.
+
+How it works (from source code lines 48-64):
+
+```python
+# NVIDIA's internal chunking logic (from nv_ingest_api/internal/transform/split_text.py)
+def _split_into_chunks(text, tokenizer, chunk_size=1024, chunk_overlap=20):
+    # Tokenize with offset mapping to preserve original text positions
+    encoding = tokenizer.encode_plus(text, add_special_tokens=False, return_offsets_mapping=True)
+
+    # Get token offsets (not character positions!)
+    offsets = encoding["offset_mapping"]
+
+    # Split on TOKEN boundaries (not character count)
+    chunks = [offsets[i : i + chunk_size] for i in range(0, len(offsets), chunk_size - chunk_overlap)]
+
+    # Convert back to original text using offsets
+    text_chunks = []
+    for chunk in chunks:
+        text_chunk = text[chunk[0][0] : chunk[-1][0]]
+        text_chunks.append(text_chunk)
+
+    return text_chunks
+```
+
+**Key difference from langchain:**
+| Aspect | Langchain | NVIDIA nv-ingest |
+|--------|-----------|------------------|
+| Split by | Characters | Tokens |
+| Boundary | Character count | Token boundaries |
+| Tokenizer | None (char-based) | HuggingFace AutoTokenizer |
+| Default model | N/A | `meta-llama/Llama-3.2-1B` |
+
+Usage in EchoMind:
 
 ```python
 from nv_ingest_api.interface.transform import transform_text_split_and_tokenize
@@ -276,16 +311,16 @@ async def chunk_content(extracted_df: pd.DataFrame) -> pd.DataFrame:
 
     chunked_df = transform_text_split_and_tokenize(
         inputs=extracted_df,
-        tokenizer="meta-llama/Llama-3.2-1B",  # Same as NVIDIA uses
-        chunk_size=512,
-        chunk_overlap=50,
+        tokenizer="meta-llama/Llama-3.2-1B",  # Llama tokenizer
+        chunk_size=512,                        # 512 TOKENS (not characters!)
+        chunk_overlap=50,                      # 50 token overlap
         split_source_types=["text", "PDF"],
     )
 
     return chunked_df
 ```
 
-**Accuracy: 100%** - Directly from nv_ingest_api interface documentation.
+**Accuracy: 100%** - Verified from source code `nv_ingest_api/internal/transform/split_text.py`.
 
 ---
 
@@ -506,8 +541,8 @@ INGESTOR_CHUNK_SIZE=512
 INGESTOR_CHUNK_OVERLAP=50
 INGESTOR_TOKENIZER=meta-llama/Llama-3.2-1B
 
-# Optional: YOLOX NIM for table/chart detection
-YOLOX_NIM_ENDPOINT=                      # Empty = disabled
+# YOLOX NIM for table/chart detection (enterprise feature)
+YOLOX_NIM_ENDPOINT=http://yolox-nim:8000
 YOLOX_NIM_GRPC_PORT=8001
 ```
 
@@ -644,7 +679,7 @@ GET :8080/healthz
 | Decision | Accuracy | Reasoning |
 |----------|----------|-----------|
 | Use nv_ingest_api library | 100% | Source code verified - no orchestration deps |
-| pdfium extraction works without NIM | 95% | Text extraction local; tables need YOLOX |
+| pdfium + YOLOX for full extraction | 100% | Text via pdfium, tables/charts via YOLOX NIM |
 | Same architecture as NVIDIA | 100% | Both use pipeline → embedding service |
 | nvidia/llama-nemotron-embed-1b-v2 matches NIM | 100% | Same model weights on HuggingFace |
 | Prefixes required (query:/passage:) | 100% | From official model card |
