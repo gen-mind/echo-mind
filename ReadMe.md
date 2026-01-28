@@ -19,8 +19,8 @@
 ---
 
 ## 🧠 What is it?
-
-EchoMind is an **agentic RAG platform** that actually *thinks* before it retrieves.
+EchoMind is the free, deploy-anywhere **agentic AI platform** that turns your company knowledge into answers
+EchoMind *thinks* before it retrieves.
 
 ```
 🔄 Think → Act → Observe → Reflect → Evaluate → Answer
