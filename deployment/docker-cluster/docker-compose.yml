@@ -244,7 +244,7 @@ services:
   # NATS - Message Bus
   # ===============================================
   nats:
-    image: nats:latest
+    image: nats:alpine
     container_name: echomind-nats
     hostname: nats
     ports:
@@ -256,8 +256,12 @@ services:
       - ${CONFIG_PATH}/nats/nats-server.conf:/nats-server.conf
     command:
       - "--config=/nats-server.conf"
-    # No healthcheck: NATS minimal container has no shell/curl/wget
-    # Server readiness is verified by application-level connection retries
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
     networks:
       - backend

@@ -2546,6 +2546,145 @@
             "description": ""
         }
     },
+    "ConnectorSyncRequest": {
+        "connector_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "type": {
+            "type": "ConnectorType",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorType(0)"
+            },
+            "description": ""
+        },
+        "user_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "scope": {
+            "type": "ConnectorScope",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorScope(0)"
+            },
+            "description": ""
+        },
+        "scope_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "config": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "state": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "chunking_session": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
+    "DocumentProcessRequest": {
+        "document_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "connector_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "user_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "minio_path": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "chunking_session": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "scope": {
+            "type": "ConnectorScope",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "ConnectorScope(0)"
+            },
+            "description": ""
+        },
+        "scope_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        }
+    },
     "EmbedRequest": {
         "texts": {
             "type": "str",

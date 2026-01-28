@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from echomind_lib.db.connection import get_db_manager
 from echomind_lib.db.models import User as UserORM
+from echomind_lib.db.nats_publisher import JetStreamPublisher, get_nats_publisher
 from echomind_lib.helpers.auth import (
     TokenUser,
     extract_bearer_token,
@@ -168,3 +169,25 @@ def require_any_role(*roles: str):
 
 
 AdminUser = Annotated[TokenUser, Depends(require_role("admin"))]
+
+
+def get_nats() -> JetStreamPublisher | None:
+    """
+    Get the NATS publisher if available.
+
+    Returns None if NATS is not initialized (graceful degradation).
+
+    Usage:
+        @app.post("/connectors")
+        async def create_connector(nats: NatsPublisher):
+            if nats:
+                await nats.publish(...)
+    """
+    try:
+        return get_nats_publisher()
+    except RuntimeError:
+        # NATS not initialized - return None for graceful degradation
+        return None
+
+
+NatsPublisher = Annotated[JetStreamPublisher | None, Depends(get_nats)]

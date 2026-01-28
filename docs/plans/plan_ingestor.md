@@ -1,6 +1,6 @@
 # Ingestor Service - Implementation Plan Summary
 
-> **Score: 9.4/10** | **Confidence: 92.5%** | **Status: Ready to Implement**
+> **Score: 9.65/10** | **Confidence: 92.5%** | **Status: Ready to Implement**
 
 ---
 
@@ -13,7 +13,21 @@
 | Protocol | NATS subscriber |
 | Port | 8080 (health) |
 | Package | `nv-ingest-api==26.1.2` |
-| Tests Target | 195+ |
+| **File Types** | **18 (from nv-ingest README)** |
+| Tests Target | 260+ |
+
+---
+
+## Supported File Types (18 Total)
+
+| Category | Extensions | nv-ingest Function |
+|----------|------------|-------------------|
+| **Documents** | `.pdf`, `.docx`, `.pptx` | extract_primitives_from_* |
+| **HTML** | `.html` | HTML extractor → markdown |
+| **Images** | `.bmp`, `.jpeg`, `.png`, `.tiff` | extract_primitives_from_image |
+| **Audio** | `.mp3`, `.wav` | extract_primitives_from_audio (Riva) |
+| **Video** | `.avi`, `.mkv`, `.mov`, `.mp4` | video extractor (early access) |
+| **Text** | `.txt`, `.md`, `.json`, `.sh` | text extractor (as-is) |
 
 ---
 
@@ -23,6 +37,7 @@
 2. **pdfium method** - Uses pypdfium2, no external dependencies
 3. **DataFrame input** - All nv-ingest functions use pandas DataFrames
 4. **Tokenizer chunking** - HuggingFace-based, not langchain
+5. **18 file types** - Much broader than initially planned
 
 ---
 
@@ -57,11 +72,19 @@ src/ingestor/
 ├── config.py
 ├── Dockerfile
 ├── logic/
-│   ├── exceptions.py (15+ classes)
+│   ├── exceptions.py (18+ classes)
 │   ├── ingestor_service.py
-│   ├── extractors/ (pdf, docx, pptx, html, text)
+│   ├── extractors/
+│   │   ├── pdf_extractor.py      # .pdf
+│   │   ├── docx_extractor.py     # .docx
+│   │   ├── pptx_extractor.py     # .pptx
+│   │   ├── html_extractor.py     # .html
+│   │   ├── image_extractor.py    # .bmp/.jpeg/.png/.tiff
+│   │   ├── audio_extractor.py    # .mp3/.wav (Riva NIM)
+│   │   ├── video_extractor.py    # .avi/.mkv/.mov/.mp4 (early)
+│   │   └── text_extractor.py     # .txt/.md/.json/.sh
 │   ├── chunker.py
-│   └── mime_router.py
+│   └── mime_router.py (18 MIME types)
 ├── grpc/
 │   └── embedder_client.py
 └── middleware/

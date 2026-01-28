@@ -87,7 +87,22 @@ From `extract_primitives_from_pdf()` signature:
 
 ## 2. Revised Architecture
 
-### 2.1 Core Flow (Verified from Sample Code)
+### 2.1 Complete File Type Support (18 Types from nv-ingest README)
+
+| File Type | Extension | nv-ingest Function | Notes |
+|-----------|-----------|-------------------|-------|
+| **PDF** | `.pdf` | `extract_primitives_from_pdf()` | Text, tables, charts, infographics, images |
+| **Word** | `.docx` | `extract_primitives_from_docx()` | Text, tables, charts, infographics, images |
+| **PowerPoint** | `.pptx` | `extract_primitives_from_pptx()` | Text, tables, charts, infographics, images |
+| **HTML** | `.html` | HTML extractor | Converted to markdown |
+| **Images** | `.bmp`, `.jpeg`, `.png`, `.tiff` | `extract_primitives_from_image()` | OCR, tables, charts, infographics |
+| **Audio** | `.mp3`, `.wav` | `extract_primitives_from_audio()` | Via Riva NIM |
+| **Video** | `.avi`, `.mkv`, `.mov`, `.mp4` | Video extractor | **Early access** |
+| **Text** | `.txt`, `.md`, `.json`, `.sh` | Text extractor | Treated as plain text |
+
+**Total: 18 file types supported by nv-ingest**
+
+### 2.2 Core Flow (Verified from Source)
 
 ```
 NATS Message (document.process)
@@ -98,12 +113,14 @@ Download from MinIO (base64 encode)
        ▼
 Detect MIME type → Route to extractor
        │
-       ├─► PDF → extract_primitives_from_pdf_pdfium()
-       ├─► DOCX → extract_primitives_from_docx()
-       ├─► PPTX → extract_primitives_from_pptx()
-       ├─► Image → extract_primitives_from_image()
-       ├─► Audio → extract_primitives_from_audio() [requires Riva]
-       └─► HTML/TXT → direct text extraction
+       ├─► .pdf ────────────────► extract_primitives_from_pdf()
+       ├─► .docx ───────────────► extract_primitives_from_docx()
+       ├─► .pptx ───────────────► extract_primitives_from_pptx()
+       ├─► .html ───────────────► HTML extractor (→ markdown)
+       ├─► .bmp/.jpeg/.png/.tiff ► extract_primitives_from_image()
+       ├─► .mp3/.wav ───────────► extract_primitives_from_audio() [Riva NIM]
+       ├─► .avi/.mkv/.mov/.mp4 ─► Video extractor [early access]
+       └─► .txt/.md/.json/.sh ──► Text extractor (as-is)
        │
        ▼
 transform_text_split_and_tokenize()
@@ -176,13 +193,16 @@ src/ingestor/
 │   ├── extractors/
 │   │   ├── __init__.py
 │   │   ├── base.py               # Abstract base extractor
-│   │   ├── pdf_extractor.py      # Wraps nv-ingest PDF
-│   │   ├── docx_extractor.py     # Wraps nv-ingest DOCX
-│   │   ├── pptx_extractor.py     # Wraps nv-ingest PPTX
-│   │   ├── html_extractor.py     # BS4 for HTML
-│   │   └── text_extractor.py     # Plain text
+│   │   ├── pdf_extractor.py      # .pdf → extract_primitives_from_pdf()
+│   │   ├── docx_extractor.py     # .docx → extract_primitives_from_docx()
+│   │   ├── pptx_extractor.py     # .pptx → extract_primitives_from_pptx()
+│   │   ├── html_extractor.py     # .html → HTML extractor (markdown)
+│   │   ├── image_extractor.py    # .bmp/.jpeg/.png/.tiff → extract_primitives_from_image()
+│   │   ├── audio_extractor.py    # .mp3/.wav → extract_primitives_from_audio() [Phase C]
+│   │   ├── video_extractor.py    # .avi/.mkv/.mov/.mp4 → video extractor [early access]
+│   │   └── text_extractor.py     # .txt/.md/.json/.sh → plain text
 │   ├── chunker.py                # Wraps transform_text_split_and_tokenize
-│   └── mime_router.py            # MIME type to extractor mapping
+│   └── mime_router.py            # MIME type to extractor mapping (18 types)
 │
 ├── grpc/
 │   ├── __init__.py
@@ -193,23 +213,64 @@ src/ingestor/
     └── error_handler.py
 ```
 
-**Unit Test Targets:**
+**MIME Type Router Mapping (18 file types):**
+
+```python
+MIME_TO_EXTRACTOR = {
+    # Documents
+    "application/pdf": PDFExtractor,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": DOCXExtractor,
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": PPTXExtractor,
+
+    # HTML
+    "text/html": HTMLExtractor,
+
+    # Images
+    "image/bmp": ImageExtractor,
+    "image/jpeg": ImageExtractor,
+    "image/png": ImageExtractor,
+    "image/tiff": ImageExtractor,
+
+    # Audio
+    "audio/mpeg": AudioExtractor,      # .mp3
+    "audio/wav": AudioExtractor,       # .wav
+    "audio/x-wav": AudioExtractor,
+
+    # Video (early access)
+    "video/x-msvideo": VideoExtractor,  # .avi
+    "video/x-matroska": VideoExtractor, # .mkv
+    "video/quicktime": VideoExtractor,  # .mov
+    "video/mp4": VideoExtractor,        # .mp4
+
+    # Text files
+    "text/plain": TextExtractor,        # .txt
+    "text/markdown": TextExtractor,     # .md
+    "application/json": TextExtractor,  # .json
+    "application/x-sh": TextExtractor,  # .sh
+    "text/x-shellscript": TextExtractor,
+}
+```
+
+**Unit Test Targets (All 18 File Types):**
 
 | Module | Test Count | Key Tests |
 |--------|------------|-----------|
 | config | 15 | Settings validation, defaults, env parsing |
-| exceptions | 15 | All exception classes, from chaining |
+| exceptions | 18 | All exception classes (one per file type + base) |
 | ingestor_service | 30 | Message handling, orchestration, error recovery |
 | extractors/base | 10 | Abstract interface, mock tests |
 | extractors/pdf | 20 | nv-ingest integration, DataFrame handling |
 | extractors/docx | 15 | nv-ingest integration |
 | extractors/pptx | 15 | nv-ingest integration |
-| extractors/html | 15 | BS4 extraction, encoding handling |
-| extractors/text | 10 | Plain text handling |
+| extractors/html | 15 | HTML → markdown extraction |
+| extractors/image | 20 | bmp/jpeg/png/tiff via nv-ingest |
+| extractors/audio | 15 | mp3/wav via Riva NIM (mock for MVP) |
+| extractors/video | 15 | avi/mkv/mov/mp4 early access (mock) |
+| extractors/text | 12 | txt/md/json/sh plain text handling |
 | chunker | 20 | Tokenizer chunking, overlap, edge cases |
-| mime_router | 10 | MIME type routing |
+| mime_router | 20 | MIME type routing (18 types + unknown) |
 | grpc/embedder_client | 20 | gRPC mock, retry logic |
-| **Total** | **195** | |
+| **Total** | **260** | |
 
 ### Phase B: Enhanced Extraction (NVIDIA Hosted NIMs)
 
@@ -606,13 +667,13 @@ def chunk_text(
 | Criterion | Weight | Score | Reasoning | Weighted |
 |-----------|--------|-------|-----------|----------|
 | API verification | 25% | 10/10 | Read actual nv-ingest source | 2.5 |
-| Dependency clarity | 15% | 9/10 | Clear optional vs required | 1.35 |
-| Implementation detail | 20% | 9/10 | Code patterns provided | 1.8 |
+| File type coverage | 15% | 10/10 | All 18 types from nv-ingest README | 1.5 |
+| Implementation detail | 20% | 9/10 | Code patterns + MIME routing | 1.8 |
 | Risk identification | 15% | 9/10 | Key risks resolved | 1.35 |
-| Test strategy | 10% | 9/10 | 195 tests planned | 0.9 |
+| Test strategy | 10% | 10/10 | 260 tests planned (all types) | 1.0 |
 | Phasing strategy | 10% | 10/10 | Clear MVP without NIMs | 1.0 |
 | Configuration | 5% | 10/10 | Complete Pydantic schema | 0.5 |
-| **Total** | **100%** | | | **9.4/10** |
+| **Total** | **100%** | | | **9.65/10** |
 
 ### 8.2 Confidence Assessment
 
@@ -681,12 +742,21 @@ def chunk_text(
 
 | Metric | Target |
 |--------|--------|
-| Unit tests | 195+ |
+| Unit tests | 260+ |
 | Code coverage | 80%+ |
-| File types supported (MVP) | PDF, DOCX, PPTX, TXT, HTML |
+| File types supported (MVP) | 18 (all from nv-ingest README) |
 | mypy errors | 0 |
 | ruff errors | 0 |
 | End-to-end processing time (1MB PDF) | <30s |
+
+**File Types by Phase:**
+
+| Phase | File Types |
+|-------|------------|
+| MVP (A) | pdf, docx, pptx, html, txt, md, json, sh |
+| Phase B | + bmp, jpeg, png, tiff (images with YOLOX) |
+| Phase C | + mp3, wav (audio with Riva NIM) |
+| Phase D | + avi, mkv, mov, mp4 (video early access) |
 
 ---
 
