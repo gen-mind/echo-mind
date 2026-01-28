@@ -67,14 +67,6 @@ EchoMind is built for *process automation*, not just Q&A:
 - Invoice extraction + coding suggestions
 - Approval routing + audit-ready explanations
 
-|                                   |                                                                             |
-|-----------------------------------|-----------------------------------------------------------------------------|
-| 🔍 **Multi-Step Retrieval**       | Goes beyond "retrieve-then-generate" — reasons across multiple sources      |
-| 🏠 **Private and SaaS LLM Ready** | Run with TGI/vLLM on your own GPU cluster or connected to your favorite LLM API |
-| 🔒 **Air-Gap / SCIF Ready**       | No internet, no telemetry, no phone-home — fully self-contained             |
-| 📦 **Deploy Anywhere**            | Single container to Kubernetes cluster — your choice                        |
-| 🆓 **MIT Licensed — Free Forever** | No paid tiers. No usage caps. No hidden licensing surprises |
-
 
 ## Why EchoMind?
 Because teams shouldn’t need a budget to start using AI. EchoMind is **$0, MIT-licensed, and self-hostable** 🆓🏠.
@@ -123,6 +115,14 @@ EchoMind is an **agentic RAG platform** that actually *thinks* before it retriev
 | **Enterprise Auth** | Authentik with OIDC/LDAP/Active Directory support |
 | **Per-User Vector Collections** | Scoped search across user, group, and organization data |
 
+
+|                                   |                                                                             |
+|-----------------------------------|-----------------------------------------------------------------------------|
+| 🔍 **Multi-Step Retrieval**       | Goes beyond "retrieve-then-generate" — reasons across multiple sources      |
+| 🏠 **Private and SaaS LLM Ready** | Run with TGI/vLLM on your own GPU cluster or connected to your favorite LLM API |
+| 🔒 **Air-Gap / SCIF Ready**       | No internet, no telemetry, no phone-home — fully self-contained             |
+| 📦 **Deploy Anywhere**            | Single container to Kubernetes cluster — your choice                        |
+| 🆓 **MIT Licensed — Free Forever** | No paid tiers. No usage caps. No hidden licensing surprises |
 
 
 ---
