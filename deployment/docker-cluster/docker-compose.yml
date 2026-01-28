@@ -485,3 +485,34 @@ services:
       - backend
     labels:
       - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind Guardian - DLQ Monitoring & Alerting
+  # ===============================================
+  guardian:
+    image: gsantopaolo/echomind-guardian:${GUARDIAN_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: guardian/Dockerfile
+    container_name: echomind-guardian
+    hostname: guardian
+    env_file:
+      - ${CONFIG_PATH}/guardian/guardian.env
+    environment:
+      - GUARDIAN_NATS_URL=nats://nats:4222
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    depends_on:
+      nats:
+        condition: service_healthy
+      orchestrator:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"

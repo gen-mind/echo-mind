@@ -64,6 +64,10 @@ class OrchestratorSettings(BaseSettings):
         "ECHOMIND",
         description="NATS JetStream stream name",
     )
+    nats_dlq_stream_name: str = Field(
+        "ECHOMIND_DLQ",
+        description="NATS JetStream DLQ advisory stream name for Guardian",
+    )
 
     # Default Refresh Intervals (can be overridden per connector)
     default_refresh_web_minutes: int = Field(

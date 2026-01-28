@@ -125,6 +125,23 @@ class Orchestrator:
                 if "already in use" not in str(e).lower():
                     logger.warning("⚠️ Stream creation warning: %s", e)
 
+            # Create DLQ advisory stream for Guardian service
+            try:
+                await publisher.create_stream(
+                    name=self._settings.nats_dlq_stream_name,
+                    subjects=[
+                        f"$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.{self._settings.nats_stream_name}.>",
+                        f"$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.{self._settings.nats_stream_name}.>",
+                    ],
+                )
+                logger.info(
+                    "✅ NATS DLQ stream '%s' ready", self._settings.nats_dlq_stream_name
+                )
+            except Exception as e:
+                # Stream might already exist, which is fine
+                if "already in use" not in str(e).lower():
+                    logger.warning("⚠️ DLQ stream creation warning: %s", e)
+
         except Exception as e:
             logger.error("❌ NATS connection failed: %s", e)
             await close_db()

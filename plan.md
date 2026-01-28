@@ -740,6 +740,113 @@ curl -f http://localhost:8080/healthz
 
 ---
 
+### Phase 2.3 Evaluation: Ingestor Service (2026-01-28) - FINAL
+
+#### Automated Checks (4/4 PASS)
+
+| Check | Command | Status | Result |
+|-------|---------|--------|--------|
+| Unit Tests | `pytest tests/unit/ingestor/ -v` | PASS | 203 passed, 0 failed |
+| Test Warnings | `pytest tests/unit/ingestor/ -W error` | PASS | 0 warnings |
+| Type Checking | `mypy src/ingestor/` | PASS | 0 errors |
+| Linting | `ruff check src/ingestor/` | PASS | 0 errors |
+
+#### Rule Compliance (8/8 PASS)
+
+| Rule | Status | Details |
+|------|--------|---------|
+| Type hints on all params/returns | PASS | Verified by mypy 0 errors |
+| Docstrings with Args/Returns/Raises | PASS | All functions documented |
+| Emoji logging | PASS | All logger calls have emoji prefix |
+| Imports from echomind_lib | PASS | Uses db.models, db.minio, db.qdrant, db.nats_subscriber |
+| No hand-written Pydantic domain models | PASS | Uses IngestorSettings, proto models |
+| Business logic separation | PASS | main.py delegates to IngestorService |
+| Use `T \| None` not `Optional[T]` | PASS | Modern syntax used |
+| Use built-in generics | PASS | `list`, `dict` not `List`, `Dict` |
+
+#### Code Quality (6/6 PASS)
+
+| Check | Status | Details |
+|-------|--------|---------|
+| No unjustified `# type: ignore` | PASS | All with justification (protobuf imports) |
+| No `# noqa` | PASS | 0 noqa comments |
+| No suppressed exceptions | PASS | 0 `except: pass` occurrences |
+| No bare except | PASS | All use `Exception as e` |
+| No hardcoded secrets | PASS | Settings from env vars |
+| No TODO comments | PASS | 0 TODOs |
+
+#### Deployment (5/5 PASS)
+
+| Check | Status | Details |
+|-------|--------|---------|
+| Dockerfile exists and builds | PASS | `src/ingestor/Dockerfile` - builds successfully |
+| docker-compose.yml | PASS | Service added with correct dependencies |
+| Config file | PASS | `config/ingestor/ingestor.env` exists |
+| Service starts | PASS | Container starts without errors |
+| Health check | PASS | `/healthz` returns healthy |
+
+#### Phase 2.3 Summary
+
+| Category | Pass | Fail |
+|----------|------|------|
+| Automated Checks | 4 | 0 |
+| Rule Compliance | 8 | 0 |
+| Code Quality | 6 | 0 |
+| Deployment | 5 | 0 |
+| **TOTAL** | **23** | **0** |
+
+**Overall Phase 2.3 Status**: **100% PASS** - Ready for Phase 4.1 (Guardian Service)
+
+#### Files Created
+
+**Service Files (12):**
+- `src/ingestor/__init__.py`
+- `src/ingestor/config.py` - Pydantic settings with 25 configuration options
+- `src/ingestor/main.py` - NATS subscriber with graceful degradation
+- `src/ingestor/Dockerfile`
+- `src/ingestor/requirements.txt`
+- `src/ingestor/logic/__init__.py`
+- `src/ingestor/logic/exceptions.py` - 12 domain exceptions
+- `src/ingestor/logic/ingestor_service.py` - Main orchestration service
+- `src/ingestor/logic/extractor.py` - nv-ingest content extraction
+- `src/ingestor/logic/chunker.py` - Tokenizer-based text chunking
+- `src/ingestor/logic/embedder_client.py` - gRPC client for embedder
+- `src/ingestor/middleware/__init__.py`
+- `src/ingestor/middleware/error_handler.py` - Error handling
+
+**Config:**
+- `config/ingestor/ingestor.env`
+
+**Tests (203 total, 7 files):**
+- `tests/unit/ingestor/__init__.py`
+- `tests/unit/ingestor/test_config.py` - 25 tests
+- `tests/unit/ingestor/test_exceptions.py` - 18 tests
+- `tests/unit/ingestor/test_extractor.py` - 45 tests
+- `tests/unit/ingestor/test_chunker.py` - 40 tests
+- `tests/unit/ingestor/test_embedder_client.py` - 30 tests
+- `tests/unit/ingestor/test_ingestor_service.py` - 45 tests
+
+#### Additional Fixes Made
+
+**Proto Generation:**
+- Fixed `generate_proto.sh` to handle cross-package imports in `*_pb2.py` files
+- Fixed `from public import X_pb2` → `from ..public import X_pb2`
+- Fixed `import common_pb2` → `from .. import common_pb2`
+
+**Connector Service:**
+- Changed import from non-existent `semantic_pb2` to `orchestrator_pb2`
+- Added `chunking_session` parameter flow through sync operations
+- Updated `_publish_document_process` to use correct `DocumentProcessRequest` fields
+
+**Graceful Degradation Pattern:**
+- Both Ingestor and Connector now use graceful degradation
+- Health server starts FIRST before any connections
+- Connection failures spawn background retry tasks (30s interval)
+- Services stay alive and recover automatically when dependencies become available
+- NAK messages if services not ready, preventing message loss
+
+---
+
 ## Plan Accuracy
 
 **Plan Accuracy: 95%**
@@ -925,3 +1032,68 @@ CONNECTOR_VERSION=${ECHOMIND_VERSION}
 - Individual services can be pinned to specific versions during debugging
 - Global version provides default for all services
 - Consistency with semantic versioning
+
+### Graceful Degradation Pattern (2026-01-28)
+
+**Decision:** All NATS subscriber services (Connector, Ingestor) use graceful degradation for connection failures.
+
+**Pattern:**
+```python
+class ServiceApp:
+    def __init__(self):
+        self._retry_tasks: list[asyncio.Task[None]] = []
+        self._db_connected = False
+        self._minio_connected = False
+        # ... other connection flags
+
+    async def start(self):
+        # 1. Start health server FIRST
+        self._health_server = HealthServer(port=settings.health_port)
+        health_thread = threading.Thread(target=self._health_server.start, daemon=True)
+        health_thread.start()
+
+        # 2. Initialize each connection with try/except
+        try:
+            await init_db(...)
+            self._db_connected = True
+        except Exception as e:
+            logger.warning("⚠️ Database connection failed: %s", e)
+            self._retry_tasks.append(asyncio.create_task(self._retry_db_connection()))
+
+        # 3. Update readiness based on ALL connections
+        self._update_readiness()
+
+    async def _retry_db_connection(self):
+        while not self._db_connected:
+            await asyncio.sleep(30)
+            try:
+                await init_db(...)
+                self._db_connected = True
+                self._update_readiness()
+            except Exception as e:
+                logger.warning("⚠️ Retry failed: %s", e)
+
+    async def _handle_message(self, msg):
+        if not self._is_ready():
+            await msg.nak()  # Return message to queue
+            return
+        # ... process message
+```
+
+**Key Principles:**
+1. **Health server starts FIRST** - Kubernetes probes work immediately
+2. **Connection failures log warnings** - NOT errors, service keeps running
+3. **Background retry tasks** - 30-second intervals, automatic reconnection
+4. **Readiness flag** - Only `true` when ALL connections succeed
+5. **NAK unprocessable messages** - Return to queue if dependencies unavailable
+
+**Services Using This Pattern:**
+- `src/ingestor/main.py`
+- `src/connector/main.py`
+- `src/api/main.py` (reference implementation)
+
+**Rationale:**
+- Services don't crash during infrastructure startup race conditions
+- Kubernetes can restart containers based on health, not crash loops
+- Messages are preserved in NATS when service is degraded
+- Automatic recovery without manual intervention
