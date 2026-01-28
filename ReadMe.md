@@ -42,8 +42,7 @@ Deploy EchoMind now and ship your first internal AI workflow this week. ✅
 If you want a fast setup review, architecture feedback, or help choosing the right deployment mode,
 you can book a **free call** with the author.
 
-📅 **Book a free call:** https://calendar.app.google/QuNua7HxdsSasCGu9  
-👤 **Author:** https://github.com/gsantopaolo
+📅 [**Book a free call:**](https://calendar.app.google/QuNua7HxdsSasCGu9) with [gsantopaolo](https://github.com/gsantopaolo)
 ---
 ## ✨ How it works
 
