@@ -4,7 +4,7 @@ from unittest import mock
 
 import pytest
 
-from embedder.logic.encoder import SentenceEncoder
+from embedder.logic.encoder import NVIDIA_EMBED_MODELS, SentenceEncoder
 from embedder.logic.exceptions import EncodingError, ModelNotFoundError
 
 
@@ -180,3 +180,103 @@ class TestExceptions:
         assert error.texts_count == 5
         assert "5 texts" in str(error)
         assert "failed to encode" in str(error)
+
+
+class TestNvidiaModelSupport:
+    """Tests for NVIDIA embedding model support."""
+
+    def setup_method(self) -> None:
+        """Reset encoder state before each test."""
+        SentenceEncoder.clear_cache()
+        SentenceEncoder._device = None
+        SentenceEncoder._cache_limit = 1
+
+    def test_is_nvidia_model_true(self) -> None:
+        """Test NVIDIA model detection."""
+        for model_name in NVIDIA_EMBED_MODELS:
+            assert SentenceEncoder._is_nvidia_model(model_name) is True
+
+    def test_is_nvidia_model_false(self) -> None:
+        """Test non-NVIDIA model detection."""
+        assert SentenceEncoder._is_nvidia_model("sentence-transformers/all-MiniLM-L6-v2") is False
+        assert SentenceEncoder._is_nvidia_model("intfloat/e5-large-v2") is False
+
+    @mock.patch("embedder.logic.encoder.SentenceTransformer")
+    def test_nvidia_model_loads_with_trust_remote_code(
+        self, mock_transformer_class: mock.MagicMock
+    ) -> None:
+        """Test that NVIDIA models are loaded with trust_remote_code=True."""
+        import torch
+
+        mock_model = mock.MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 2048
+        mock_transformer_class.return_value = mock_model
+
+        SentenceEncoder.set_device("cpu")
+        SentenceEncoder.get_dimension("nvidia/llama-nemotron-embed-1b-v2")
+
+        mock_transformer_class.assert_called_once_with(
+            "nvidia/llama-nemotron-embed-1b-v2",
+            device="cpu",
+            trust_remote_code=True,
+            model_kwargs={"torch_dtype": torch.bfloat16},
+        )
+
+    @mock.patch("embedder.logic.encoder.SentenceTransformer")
+    def test_nvidia_model_uses_encode_document(
+        self, mock_transformer_class: mock.MagicMock
+    ) -> None:
+        """Test that NVIDIA models use encode_document method."""
+        import numpy as np
+
+        mock_model = mock.MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 2048
+        mock_model.encode_document.return_value = np.array([[0.1, 0.2, 0.3]])
+        mock_transformer_class.return_value = mock_model
+
+        SentenceEncoder.set_device("cpu")
+        result = SentenceEncoder.encode_document(
+            texts=["hello"],
+            model_name="nvidia/llama-nemotron-embed-1b-v2",
+        )
+
+        mock_model.encode_document.assert_called_once_with(["hello"])
+        assert len(result) == 1
+
+    @mock.patch("embedder.logic.encoder.SentenceTransformer")
+    def test_nvidia_model_uses_encode_query(
+        self, mock_transformer_class: mock.MagicMock
+    ) -> None:
+        """Test that NVIDIA models use encode_query method."""
+        import numpy as np
+
+        mock_model = mock.MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 2048
+        mock_model.encode_query.return_value = np.array([[0.1, 0.2, 0.3]])
+        mock_transformer_class.return_value = mock_model
+
+        SentenceEncoder.set_device("cpu")
+        result = SentenceEncoder.encode_query(
+            texts=["hello"],
+            model_name="nvidia/llama-nemotron-embed-1b-v2",
+        )
+
+        mock_model.encode_query.assert_called_once_with(["hello"])
+        assert len(result) == 1
+
+    @mock.patch("embedder.logic.encoder.SentenceTransformer")
+    def test_standard_model_loads_without_trust_remote_code(
+        self, mock_transformer_class: mock.MagicMock
+    ) -> None:
+        """Test that standard models are loaded without trust_remote_code."""
+        mock_model = mock.MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_transformer_class.return_value = mock_model
+
+        SentenceEncoder.set_device("cpu")
+        SentenceEncoder.get_dimension("sentence-transformers/all-MiniLM-L6-v2")
+
+        mock_transformer_class.assert_called_once_with(
+            "sentence-transformers/all-MiniLM-L6-v2",
+            device="cpu",
+        )

@@ -21,11 +21,13 @@ COPY echomind_lib /app/src/echomind_lib
 COPY embedder /app/src/embedder
 
 # Install dependencies
+# Note: transformers==4.47.1 is required for NVIDIA embedding models
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
     grpcio>=1.60.0 \
     grpcio-tools>=1.60.0 \
     sentence-transformers>=2.2.0 \
+    transformers==4.47.1 \
     torch>=2.0.0 \
     pydantic>=2.0.0 \
     pydantic-settings>=2.0.0 \
@@ -58,7 +60,8 @@ ENV PYTHONPATH=/app/src
 
 # Pre-download the default model during build (required for fast startup)
 # NVIDIA embedding model: 1B params, 2048 dim, ~2-4GB VRAM (BF16)
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('nvidia/llama-nemotron-embed-1b-v2')"
+# Note: trust_remote_code=True is required for NVIDIA models
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('nvidia/llama-nemotron-embed-1b-v2', trust_remote_code=True)"
 
 # Set offline mode AFTER download to prevent runtime network calls
 ENV HF_HUB_OFFLINE=1

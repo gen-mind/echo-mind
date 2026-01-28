@@ -2,18 +2,28 @@
 SentenceTransformer encoder with model caching.
 
 Provides thread-safe model loading and batch encoding for text embeddings.
+Supports NVIDIA Nemotron embedding models with trust_remote_code.
 """
 
 import logging
 import threading
 from typing import ClassVar
 
+import torch
 from sentence_transformers import SentenceTransformer
 
 from echomind_lib.helpers.device_checker import get_device
 from embedder.logic.exceptions import EncodingError, ModelNotFoundError
 
 logger = logging.getLogger(__name__)
+
+# NVIDIA models that require trust_remote_code and have special encode methods
+NVIDIA_EMBED_MODELS = [
+    "nvidia/llama-nemotron-embed-1b-v2",
+    "nvidia/llama-3.2-nv-embedqa-1b-v2",
+    "nvidia/llama-nemotron-embed-vl-1b-v2",
+    "nvidia/llama-embed-nemotron-8b",
+]
 
 
 class SentenceEncoder:
@@ -102,7 +112,26 @@ class SentenceEncoder:
             try:
                 device = cls._get_device()
                 logger.info("📥 Loading model: %s on %s", model_name, device)
-                model = SentenceTransformer(model_name, device=device)
+
+                # Check if this is an NVIDIA model requiring special handling
+                is_nvidia_model = any(
+                    model_name.startswith(prefix) or model_name == prefix
+                    for prefix in NVIDIA_EMBED_MODELS
+                )
+
+                if is_nvidia_model:
+                    # NVIDIA models require trust_remote_code and work best with bfloat16
+                    logger.info("🚀 Loading NVIDIA model with trust_remote_code=True")
+                    model = SentenceTransformer(
+                        model_name,
+                        device=device,
+                        trust_remote_code=True,
+                        model_kwargs={"torch_dtype": torch.bfloat16},
+                    )
+                else:
+                    # Standard sentence-transformers model
+                    model = SentenceTransformer(model_name, device=device)
+
                 cls._model_cache[model_name] = model
                 logger.info("✅ Model loaded: %s (dim=%d)", model_name, model.get_sentence_embedding_dimension())
                 return model
@@ -111,12 +140,21 @@ class SentenceEncoder:
                 raise ModelNotFoundError(model_name) from e
 
     @classmethod
+    def _is_nvidia_model(cls, model_name: str) -> bool:
+        """Check if the model is an NVIDIA model with special encoding methods."""
+        return any(
+            model_name.startswith(prefix) or model_name == prefix
+            for prefix in NVIDIA_EMBED_MODELS
+        )
+
+    @classmethod
     def encode(
         cls,
         texts: list[str],
         model_name: str,
         batch_size: int = 32,
         normalize: bool = True,
+        encode_type: str = "document",
     ) -> list[list[float]]:
         """
         Encode texts to embedding vectors.
@@ -126,6 +164,8 @@ class SentenceEncoder:
             model_name: SentenceTransformer model name.
             batch_size: Batch size for encoding.
             normalize: Normalize vectors to unit length.
+            encode_type: Type of encoding - "document" or "query".
+                         NVIDIA models use different methods for each.
 
         Returns:
             List of embedding vectors as float lists.
@@ -140,16 +180,78 @@ class SentenceEncoder:
         model = cls._get_model(model_name)
 
         try:
-            embeddings = model.encode(
-                texts,
-                batch_size=batch_size,
-                normalize_embeddings=normalize,
-                show_progress_bar=False,
-            )
+            # Check if this is an NVIDIA model with special encode methods
+            if cls._is_nvidia_model(model_name):
+                # NVIDIA models have encode_query and encode_document methods
+                if encode_type == "query" and hasattr(model, "encode_query"):
+                    logger.debug("🔍 Using encode_query for NVIDIA model")
+                    embeddings = model.encode_query(texts)
+                elif hasattr(model, "encode_document"):
+                    logger.debug("📄 Using encode_document for NVIDIA model")
+                    embeddings = model.encode_document(texts)
+                else:
+                    # Fallback to standard encode
+                    embeddings = model.encode(
+                        texts,
+                        batch_size=batch_size,
+                        normalize_embeddings=normalize,
+                        show_progress_bar=False,
+                    )
+            else:
+                # Standard sentence-transformers encoding
+                embeddings = model.encode(
+                    texts,
+                    batch_size=batch_size,
+                    normalize_embeddings=normalize,
+                    show_progress_bar=False,
+                )
+
             return [emb.tolist() for emb in embeddings]
         except Exception as e:
             logger.error("❌ Encoding failed: %s", e)
             raise EncodingError(str(e), len(texts)) from e
+
+    @classmethod
+    def encode_query(
+        cls,
+        texts: list[str],
+        model_name: str,
+    ) -> list[list[float]]:
+        """
+        Encode query texts for search.
+
+        For NVIDIA models, uses the specialized encode_query method.
+        For other models, uses standard encoding.
+
+        Args:
+            texts: List of query texts to encode.
+            model_name: SentenceTransformer model name.
+
+        Returns:
+            List of embedding vectors as float lists.
+        """
+        return cls.encode(texts, model_name, encode_type="query")
+
+    @classmethod
+    def encode_document(
+        cls,
+        texts: list[str],
+        model_name: str,
+    ) -> list[list[float]]:
+        """
+        Encode document texts for indexing.
+
+        For NVIDIA models, uses the specialized encode_document method.
+        For other models, uses standard encoding.
+
+        Args:
+            texts: List of document texts to encode.
+            model_name: SentenceTransformer model name.
+
+        Returns:
+            List of embedding vectors as float lists.
+        """
+        return cls.encode(texts, model_name, encode_type="document")
 
     @classmethod
     def get_dimension(cls, model_name: str) -> int:
