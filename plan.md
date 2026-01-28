@@ -18,6 +18,7 @@
 | **Embedder** | echomind-embedder | ✅ Running | 50051, 8080 | `/healthz` |
 | **Orchestrator** | echomind-orchestrator | ✅ Running | 8080 | `/healthz` |
 | **Connector** | echomind-connector | ✅ Running | 8080 | `/healthz` |
+| **Ingestor** | echomind-ingestor | ✅ Running | 8080 | `/healthz` |
 
 ### Implemented Services (Application)
 
@@ -27,15 +28,15 @@
 | **Embedder** | ✅ Complete | 3 files | gRPC, GPU support, SentenceTransformers |
 | **Migration** | ✅ Complete | 2 files | Alembic runner |
 | **Orchestrator** | ✅ Complete | 40 tests | APScheduler, NATS publisher, creates ECHOMIND stream |
-| **Connector** | ✅ Complete | 126 tests | Google Drive + OneDrive providers |
+| **Connector** | ✅ Complete | 126 tests | Google Drive + OneDrive providers, graceful degradation |
+| **Ingestor** | ✅ Complete | 203 tests | nv-ingest extraction, tokenizer chunking, graceful degradation |
 
 ### Not Implemented Services
 
 | Service | Priority | Complexity | Depends On |
 |---------|----------|------------|------------|
-| **Ingestor** | Next | Medium | Embedder, nv-ingest library |
-| **Guardian** | 3rd | Low | NATS DLQ |
-| **Search** | 4th | Very High | Everything |
+| **Guardian** | Next | Low | NATS DLQ |
+| **Search** | 2nd | Very High | Everything |
 
 ### Deprecated Services (Replaced by Ingestor)
 
@@ -758,15 +759,15 @@ The 5% uncertainty accounts for:
 3. Phase 1.3: API Tests ✅
 4. Phase 2.1: Orchestrator Service ✅ (40 tests)
 5. Phase 2.2: Connector Service ✅ (126 tests)
-6. Phase 2.3: Ingestor Service ← **NEXT**
+6. Phase 2.3: Ingestor Service ✅ (203 tests)
 7. ~~Phase 3.1: Voice Service~~ (deprecated - merged into Ingestor)
 8. ~~Phase 3.2: Vision Service~~ (deprecated - merged into Ingestor)
-9. Phase 4.1: Guardian Service
+9. Phase 4.1: Guardian Service ← **NEXT**
 10. Phase 4.2: Search Service
 
 **Pipeline order:** Orchestrator → Connector → Ingestor → Embedder → Qdrant
 
-**Total Unit Tests:** 264 (98 API + 40 Orchestrator + 126 Connector)
+**Total Unit Tests:** 467 (98 API + 40 Orchestrator + 126 Connector + 203 Ingestor)
 
 ---
 
