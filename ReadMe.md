@@ -20,7 +20,7 @@
 
 ## 🧠 What is it?
 EchoMind is the free, deploy-anywhere **agentic AI platform** that automates workflows —
-so your teams move faster, reduce manual work, and cut operational cost.
+so your teams move faster and handle significantly more work with the same headcount.
 
 EchoMind is an **AI agent**:
 it **thinks** about what the workflow needs, **retrieves** the right internal context, **acts** using tools,
