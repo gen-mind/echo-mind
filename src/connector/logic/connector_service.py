@@ -96,7 +96,11 @@ class ConnectorService:
             self._providers[connector_type] = PROVIDERS[connector_type]()
         return self._providers[connector_type]
 
-    async def sync_connector(self, connector_id: int) -> int:
+    async def sync_connector(
+        self,
+        connector_id: int,
+        chunking_session: str = "",
+    ) -> int:
         """
         Sync a connector by ID.
 
@@ -104,6 +108,7 @@ class ConnectorService:
 
         Args:
             connector_id: ID of the connector to sync.
+            chunking_session: UUID for this sync session from orchestrator.
 
         Returns:
             Number of documents processed.
@@ -111,7 +116,11 @@ class ConnectorService:
         Raises:
             ConnectorError: If sync fails.
         """
-        logger.info("🔄 Starting sync for connector %d", connector_id)
+        logger.info(
+            "🔄 Starting sync for connector %d (session: %s)",
+            connector_id,
+            chunking_session or "none",
+        )
 
         # Load connector from database
         connector = await self._get_connector(connector_id)
@@ -139,7 +148,9 @@ class ConnectorService:
 
             async for item in provider.sync(connector.config, checkpoint):
                 if isinstance(item, DownloadedFile):
-                    await self._process_downloaded_file(connector, item)
+                    await self._process_downloaded_file(
+                        connector, item, chunking_session
+                    )
                     docs_processed += 1
                 elif isinstance(item, DeletedFile):
                     await self._process_deleted_file(connector, item)
@@ -254,6 +265,7 @@ class ConnectorService:
         self,
         connector: Connector,
         file: DownloadedFile,
+        chunking_session: str = "",
     ) -> None:
         """
         Process a downloaded file.
@@ -265,6 +277,7 @@ class ConnectorService:
         Args:
             connector: Connector model.
             file: Downloaded file.
+            chunking_session: UUID for this sync session from orchestrator.
         """
         # Generate MinIO path
         object_name = self._generate_minio_path(connector, file)
@@ -285,7 +298,7 @@ class ConnectorService:
         doc = await self._upsert_document(connector, file, object_name)
 
         # Publish to NATS
-        await self._publish_document_process(doc)
+        await self._publish_document_process(doc, connector, chunking_session)
 
     async def _process_deleted_file(
         self,
@@ -403,22 +416,44 @@ class ConnectorService:
         )
         return doc
 
-    async def _publish_document_process(self, doc: Document) -> None:
+    async def _publish_document_process(
+        self,
+        doc: Document,
+        connector: Connector,
+        chunking_session: str = "",
+    ) -> None:
         """
         Publish document.process message to NATS.
 
         Args:
             doc: Document model to process.
+            connector: Connector model with user and scope info.
+            chunking_session: UUID for this sync session from orchestrator.
         """
-        # Create protobuf message
         # Generated protobuf lacks type stubs
-        from echomind_lib.models.internal.semantic_pb2 import DocumentProcessRequest  # type: ignore[import-untyped]
+        from echomind_lib.models.internal.orchestrator_pb2 import (  # type: ignore[import-untyped]
+            DocumentProcessRequest,
+        )
+        from echomind_lib.models.public.connector_pb2 import (  # type: ignore[import-untyped]
+            ConnectorScope,
+        )
+
+        # Map scope string to enum
+        scope_map = {
+            "user": ConnectorScope.CONNECTOR_SCOPE_USER,
+            "group": ConnectorScope.CONNECTOR_SCOPE_GROUP,
+            "org": ConnectorScope.CONNECTOR_SCOPE_ORG,
+        }
+        scope_enum = scope_map.get(connector.scope, ConnectorScope.CONNECTOR_SCOPE_USER)
 
         message = DocumentProcessRequest(
             document_id=doc.id,
             connector_id=doc.connector_id,
-            url=doc.url or "",
-            content_type=doc.content_type or "",
+            user_id=connector.user_id,
+            minio_path=doc.url or "",  # doc.url stores the MinIO object path
+            chunking_session=chunking_session,
+            scope=scope_enum,
+            scope_id=connector.scope_id or "",
         )
 
         await self._nats.publish(

@@ -1,0 +1,541 @@
+"""Unit tests for IngestorService."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+import uuid
+
+import pytest
+
+from ingestor.config import IngestorSettings, reset_settings
+from ingestor.logic.ingestor_service import IngestorService
+from ingestor.logic.exceptions import (
+    DatabaseError,
+    DocumentNotFoundError,
+    FileNotFoundInStorageError,
+    MinioError,
+)
+
+
+class TestIngestorService:
+    """Tests for IngestorService class."""
+
+    def setup_method(self) -> None:
+        """Create service instance with mocks for each test."""
+        reset_settings()
+        self.settings = IngestorSettings()
+
+        # Mock dependencies
+        self.mock_db_session = AsyncMock()
+        self.mock_minio = AsyncMock()
+        self.mock_qdrant = AsyncMock()
+
+        self.service = IngestorService(
+            db_session=self.mock_db_session,
+            minio_client=self.mock_minio,
+            qdrant_client=self.mock_qdrant,
+            settings=self.settings,
+        )
+
+    def teardown_method(self) -> None:
+        """Reset after tests."""
+        reset_settings()
+
+    # ==========================================
+    # Initialization tests
+    # ==========================================
+
+    def test_init_stores_dependencies(self) -> None:
+        """Test service stores all dependencies."""
+        assert self.service._db is self.mock_db_session
+        assert self.service._minio is self.mock_minio
+        assert self.service._qdrant is self.mock_qdrant
+        assert self.service._settings is self.settings
+
+    def test_init_creates_processor(self) -> None:
+        """Test service creates DocumentProcessor."""
+        assert self.service._processor is not None
+
+    def test_init_creates_embedder_client(self) -> None:
+        """Test service creates EmbedderClient."""
+        assert self.service._embedder is not None
+        assert self.service._embedder._host == self.settings.embedder_host
+        assert self.service._embedder._port == self.settings.embedder_port
+
+    # ==========================================
+    # Collection name building tests
+    # ==========================================
+
+    def test_build_collection_name_user_scope(self) -> None:
+        """Test collection name for user scope."""
+        result = self.service._build_collection_name(
+            user_id=123,
+            scope="user",
+            scope_id=None,
+        )
+
+        assert result == "user_123"
+
+    def test_build_collection_name_group_scope(self) -> None:
+        """Test collection name for group scope."""
+        result = self.service._build_collection_name(
+            user_id=123,
+            scope="group",
+            scope_id="my-group",
+        )
+
+        assert result == "group_my-group"
+
+    def test_build_collection_name_org_scope(self) -> None:
+        """Test collection name for org scope."""
+        result = self.service._build_collection_name(
+            user_id=123,
+            scope="org",
+            scope_id="my-org",
+        )
+
+        assert result == "org_my-org"
+
+    def test_build_collection_name_defaults_to_user(self) -> None:
+        """Test collection name defaults to user scope."""
+        result = self.service._build_collection_name(
+            user_id=456,
+            scope="unknown",
+            scope_id=None,
+        )
+
+        assert result == "user_456"
+
+    def test_build_collection_name_group_without_id_defaults_to_user(self) -> None:
+        """Test group scope without scope_id defaults to user."""
+        result = self.service._build_collection_name(
+            user_id=789,
+            scope="group",
+            scope_id=None,
+        )
+
+        assert result == "user_789"
+
+    # ==========================================
+    # Point ID generation tests
+    # ==========================================
+
+    def test_generate_point_id_returns_uuid(self) -> None:
+        """Test _generate_point_id returns valid UUID string."""
+        result = self.service._generate_point_id(
+            document_id=1,
+            chunk_index=0,
+            session="test-session",
+        )
+
+        # Should be valid UUID format
+        uuid.UUID(result)
+
+    def test_generate_point_id_is_deterministic(self) -> None:
+        """Test _generate_point_id is deterministic for same input."""
+        id1 = self.service._generate_point_id(1, 0, "session")
+        id2 = self.service._generate_point_id(1, 0, "session")
+
+        assert id1 == id2
+
+    def test_generate_point_id_different_for_different_input(self) -> None:
+        """Test _generate_point_id differs for different input."""
+        id1 = self.service._generate_point_id(1, 0, "session")
+        id2 = self.service._generate_point_id(1, 1, "session")
+        id3 = self.service._generate_point_id(2, 0, "session")
+
+        assert id1 != id2
+        assert id1 != id3
+        assert id2 != id3
+
+    # ==========================================
+    # Document retrieval tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_get_document_returns_document(self) -> None:
+        """Test _get_document returns document from database."""
+        mock_document = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        self.mock_db_session.execute.return_value = mock_result
+
+        result = await self.service._get_document(123)
+
+        assert result is mock_document
+        self.mock_db_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_document_returns_none_when_not_found(self) -> None:
+        """Test _get_document returns None when document not found."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        self.mock_db_session.execute.return_value = mock_result
+
+        result = await self.service._get_document(999)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_document_raises_database_error(self) -> None:
+        """Test _get_document raises DatabaseError on failure."""
+        self.mock_db_session.execute.side_effect = Exception("connection lost")
+
+        with pytest.raises(DatabaseError) as exc_info:
+            await self.service._get_document(1)
+
+        assert exc_info.value.operation == "select"
+
+    # ==========================================
+    # Status update tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_update_status_updates_database(self) -> None:
+        """Test _update_status updates document in database."""
+        await self.service._update_status(123, "completed")
+
+        self.mock_db_session.execute.assert_called_once()
+        self.mock_db_session.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_update_status_with_chunk_count(self) -> None:
+        """Test _update_status with chunk_count."""
+        await self.service._update_status(123, "completed", chunk_count=50)
+
+        # Verify execute was called with values including chunk_count
+        self.mock_db_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_update_status_with_error_message(self) -> None:
+        """Test _update_status with error_message."""
+        await self.service._update_status(123, "error", error_message="Failed")
+
+        self.mock_db_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_update_status_raises_database_error(self) -> None:
+        """Test _update_status raises DatabaseError on failure."""
+        self.mock_db_session.execute.side_effect = Exception("update failed")
+
+        with pytest.raises(DatabaseError) as exc_info:
+            await self.service._update_status(1, "processing")
+
+        assert exc_info.value.operation == "update"
+
+    # ==========================================
+    # File download tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_download_file_returns_bytes(self) -> None:
+        """Test _download_file returns file content."""
+        self.mock_minio.download_file.return_value = b"file content"
+
+        result = await self.service._download_file("path/to/file.pdf")
+
+        assert result == b"file content"
+        self.mock_minio.download_file.assert_called_once_with(
+            bucket_name=self.settings.minio_bucket,
+            object_name="path/to/file.pdf",
+        )
+
+    @pytest.mark.asyncio
+    async def test_download_file_raises_file_not_found(self) -> None:
+        """Test _download_file raises FileNotFoundInStorageError."""
+        self.mock_minio.download_file.return_value = None
+
+        with pytest.raises(FileNotFoundInStorageError) as exc_info:
+            await self.service._download_file("missing.pdf")
+
+        assert exc_info.value.file_path == "missing.pdf"
+
+    @pytest.mark.asyncio
+    async def test_download_file_raises_minio_error(self) -> None:
+        """Test _download_file raises MinioError on other failures."""
+        self.mock_minio.download_file.side_effect = Exception("connection refused")
+
+        with pytest.raises(MinioError) as exc_info:
+            await self.service._download_file("file.pdf")
+
+        assert exc_info.value.operation == "download"
+
+    @pytest.mark.asyncio
+    async def test_download_file_handles_no_such_key(self) -> None:
+        """Test _download_file raises FileNotFoundInStorageError for NoSuchKey."""
+        self.mock_minio.download_file.side_effect = Exception("NoSuchKey: file not found")
+
+        with pytest.raises(FileNotFoundInStorageError):
+            await self.service._download_file("missing.pdf")
+
+    # ==========================================
+    # Collection management tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_creates_if_not_exists(self) -> None:
+        """Test _ensure_collection creates collection when needed."""
+        self.mock_qdrant.create_collection.return_value = True
+
+        await self.service._ensure_collection("test_collection", 1024)
+
+        self.mock_qdrant.create_collection.assert_called_once_with(
+            collection_name="test_collection",
+            vector_size=1024,
+        )
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_handles_existing(self) -> None:
+        """Test _ensure_collection handles existing collection."""
+        self.mock_qdrant.create_collection.return_value = False
+
+        # Should not raise
+        await self.service._ensure_collection("existing_collection", 768)
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_handles_error(self) -> None:
+        """Test _ensure_collection handles creation error gracefully."""
+        self.mock_qdrant.create_collection.side_effect = Exception("already exists")
+
+        # Should not raise
+        await self.service._ensure_collection("collection", 512)
+
+    # ==========================================
+    # Embed and store tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_embed_and_store_empty_texts(self) -> None:
+        """Test _embed_and_store returns 0 for empty texts."""
+        result = await self.service._embed_and_store(
+            texts=[],
+            document_id=1,
+            collection_name="test",
+            chunking_session="session",
+        )
+
+        assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_embed_and_store_calls_embedder(self) -> None:
+        """Test _embed_and_store calls embedder service."""
+        with patch.object(
+            self.service._embedder,
+            "embed_batch",
+            return_value=[[0.1, 0.2], [0.3, 0.4]],
+        ):
+            result = await self.service._embed_and_store(
+                texts=["chunk1", "chunk2"],
+                document_id=123,
+                collection_name="user_1",
+                chunking_session="session-123",
+            )
+
+            assert result == 2
+            self.service._embedder.embed_batch.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_embed_and_store_upserts_to_qdrant(self) -> None:
+        """Test _embed_and_store upserts vectors to Qdrant."""
+        with patch.object(
+            self.service._embedder,
+            "embed_batch",
+            return_value=[[0.1], [0.2]],
+        ):
+            await self.service._embed_and_store(
+                texts=["a", "b"],
+                document_id=1,
+                collection_name="collection",
+                chunking_session="session",
+            )
+
+            self.mock_qdrant.upsert.assert_called_once()
+            call_kwargs = self.mock_qdrant.upsert.call_args[1]
+            assert call_kwargs["collection_name"] == "collection"
+            assert len(call_kwargs["vectors"]) == 2
+            assert len(call_kwargs["payloads"]) == 2
+            assert len(call_kwargs["ids"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_embed_and_store_payload_structure(self) -> None:
+        """Test _embed_and_store creates correct payload structure."""
+        with patch.object(
+            self.service._embedder,
+            "embed_batch",
+            return_value=[[0.1]],
+        ):
+            await self.service._embed_and_store(
+                texts=["test content"],
+                document_id=123,
+                collection_name="collection",
+                chunking_session="session-id",
+                content_type="text",
+            )
+
+            call_kwargs = self.mock_qdrant.upsert.call_args[1]
+            payload = call_kwargs["payloads"][0]
+
+            assert payload["document_id"] == 123
+            assert payload["chunk_index"] == 0
+            assert payload["chunking_session"] == "session-id"
+            assert payload["content_type"] == "text"
+            assert "text" in payload  # Truncated text for preview
+
+    # ==========================================
+    # Delete vectors tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_delete_document_vectors_calls_qdrant(self) -> None:
+        """Test delete_document_vectors calls Qdrant delete."""
+        await self.service.delete_document_vectors(
+            document_id=123,
+            collection_name="user_1",
+        )
+
+        self.mock_qdrant.delete_by_filter.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_delete_document_vectors_handles_error(self) -> None:
+        """Test delete_document_vectors handles errors gracefully."""
+        self.mock_qdrant.delete_by_filter.side_effect = Exception("delete failed")
+
+        # Should not raise, just log warning
+        await self.service.delete_document_vectors(
+            document_id=1,
+            collection_name="collection",
+        )
+
+    # ==========================================
+    # Process document tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_process_document_not_found_raises(self) -> None:
+        """Test process_document raises DocumentNotFoundError."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        self.mock_db_session.execute.return_value = mock_result
+
+        with pytest.raises(DocumentNotFoundError):
+            await self.service.process_document(
+                document_id=999,
+                connector_id=1,
+                user_id=1,
+                minio_path="path/to/file.pdf",
+                chunking_session="session",
+                scope="user",
+            )
+
+    @pytest.mark.asyncio
+    async def test_process_document_full_pipeline(self) -> None:
+        """Test process_document runs full pipeline."""
+        # Mock document lookup
+        mock_document = MagicMock()
+        mock_document.content_type = "application/pdf"
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        self.mock_db_session.execute.return_value = mock_result
+
+        # Mock file download
+        self.mock_minio.download_file.return_value = b"PDF content"
+
+        # Mock processing
+        with patch.object(
+            self.service._processor,
+            "process",
+            return_value=(["chunk1", "chunk2"], []),
+        ):
+            # Mock embedder
+            with patch.object(
+                self.service._embedder,
+                "get_dimension",
+                return_value=1024,
+            ):
+                with patch.object(
+                    self.service._embedder,
+                    "embed_batch",
+                    return_value=[[0.1], [0.2]],
+                ):
+                    # Mock Qdrant
+                    self.mock_qdrant.create_collection.return_value = True
+
+                    result = await self.service.process_document(
+                        document_id=123,
+                        connector_id=1,
+                        user_id=456,
+                        minio_path="docs/file.pdf",
+                        chunking_session="session-123",
+                        scope="user",
+                    )
+
+                    assert result["document_id"] == 123
+                    assert result["chunk_count"] == 2
+                    assert result["collection_name"] == "user_456"
+
+    @pytest.mark.asyncio
+    async def test_process_document_empty_content(self) -> None:
+        """Test process_document handles empty extraction."""
+        # Mock document lookup
+        mock_document = MagicMock()
+        mock_document.content_type = "text/plain"
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        self.mock_db_session.execute.return_value = mock_result
+
+        # Mock file download
+        self.mock_minio.download_file.return_value = b""
+
+        # Mock processing - returns empty
+        with patch.object(
+            self.service._processor,
+            "process",
+            return_value=([], []),
+        ):
+            result = await self.service.process_document(
+                document_id=1,
+                connector_id=1,
+                user_id=1,
+                minio_path="empty.txt",
+                chunking_session="session",
+                scope="user",
+            )
+
+            assert result["chunk_count"] == 0
+            assert result["collection_name"] is None
+
+    @pytest.mark.asyncio
+    async def test_process_document_updates_status_on_error(self) -> None:
+        """Test process_document updates status to error on failure."""
+        # Mock document lookup
+        mock_document = MagicMock()
+        mock_document.content_type = "application/pdf"
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        self.mock_db_session.execute.return_value = mock_result
+
+        # Mock file download to fail
+        self.mock_minio.download_file.side_effect = Exception("download failed")
+
+        with pytest.raises(Exception):
+            await self.service.process_document(
+                document_id=123,
+                connector_id=1,
+                user_id=1,
+                minio_path="file.pdf",
+                chunking_session="session",
+                scope="user",
+            )
+
+        # Should have updated status to processing, then error
+        assert self.mock_db_session.execute.call_count >= 2
+
+    # ==========================================
+    # Close tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_close_closes_embedder(self) -> None:
+        """Test close() closes embedder client."""
+        with patch.object(self.service._embedder, "close") as mock_close:
+            await self.service.close()
+
+            mock_close.assert_called_once()

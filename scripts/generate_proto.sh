@@ -135,6 +135,10 @@ generate_python() {
         if [ -f "$f" ]; then
             # Fix: from .common_model -> from ..common_model
             sed -i.bak 's/from \.common_model/from ..common_model/g' "$f" && rm -f "$f.bak"
+            # Fix: from .public/xxx_model -> from ..public.xxx_model (cross-package imports)
+            sed -i.bak 's/from \.public\/\([a-z_]*\)_model/from ..public.\1_model/g' "$f" && rm -f "$f.bak"
+            # Fix: from .internal/xxx_model -> from ..internal.xxx_model
+            sed -i.bak 's/from \.internal\/\([a-z_]*\)_model/from ..internal.\1_model/g' "$f" && rm -f "$f.bak"
         fi
     done
     echo -e "  ${GREEN}✓${NC} Import paths fixed"
@@ -167,6 +171,31 @@ generate_python() {
         fi
     done
     echo -e "  ${GREEN}✓${NC} gRPC imports fixed"
+
+    # Step 2.8: Fix cross-package imports in pb2 files
+    # Internal pb2 files import from public like "from public import X_pb2" but should be "from ..public import X_pb2"
+    echo "Fixing cross-package pb2 imports..."
+    for f in "$PYTHON_OUTPUT_DIR/internal"/*_pb2.py; do
+        if [ -f "$f" ]; then
+            # Fix: from public import X_pb2 -> from ..public import X_pb2
+            sed -i.bak 's/from public import /from ..public import /g' "$f" && rm -f "$f.bak"
+        fi
+    done
+    for f in "$PYTHON_OUTPUT_DIR/public"/*_pb2.py; do
+        if [ -f "$f" ]; then
+            # Fix: from internal import X_pb2 -> from ..internal import X_pb2
+            sed -i.bak 's/from internal import /from ..internal import /g' "$f" && rm -f "$f.bak"
+            # Fix: import common_pb2 -> from .. import common_pb2
+            sed -i.bak 's/^import common_pb2/from .. import common_pb2/g' "$f" && rm -f "$f.bak"
+        fi
+    done
+    for f in "$PYTHON_OUTPUT_DIR/internal"/*_pb2.py; do
+        if [ -f "$f" ]; then
+            # Fix: import common_pb2 -> from .. import common_pb2
+            sed -i.bak 's/^import common_pb2/from .. import common_pb2/g' "$f" && rm -f "$f.bak"
+        fi
+    done
+    echo -e "  ${GREEN}✓${NC} Cross-package imports fixed"
 
     # Step 3: Create __init__.py files
     echo "Generating exports..."

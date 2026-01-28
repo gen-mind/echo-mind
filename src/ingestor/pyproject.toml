@@ -1,0 +1,74 @@
+[project]
+name = "echomind-ingestor"
+version = "0.1.0"
+description = "EchoMind document ingestion pipeline using nv-ingest"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+
+dependencies = [
+    # Core extraction (nv-ingest)
+    "nv-ingest-api>=26.1.0",
+    "pypdfium2>=4.0.0",
+    "pandas>=2.0.0",
+
+    # HTML processing
+    "beautifulsoup4>=4.12.0",
+    "html2text>=2024.2.0",
+
+    # Tokenizer (for chunking)
+    "transformers>=4.40.0",
+    "torch>=2.0.0",
+
+    # gRPC (Embedder client)
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
+    "protobuf>=5.28.0",
+    "protobuf-pydantic-gen>=0.1.8",
+
+    # NATS JetStream
+    "nats-py>=2.6.0",
+
+    # Database
+    "asyncpg>=0.29.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+
+    # Object storage (MinIO)
+    "miniopy-async>=1.20.0",
+
+    # Vector database (Qdrant)
+    "qdrant-client>=1.12.0",
+
+    # Configuration
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

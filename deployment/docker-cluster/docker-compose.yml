@@ -359,6 +359,12 @@ services:
     environment:
       - EMBEDDER_QDRANT_HOST=qdrant
       - EMBEDDER_QDRANT_PORT=6333
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
     depends_on:
       qdrant:
         condition: service_healthy
@@ -424,6 +430,55 @@ services:
       nats:
         condition: service_started
       orchestrator:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind Ingestor - Document Processing Pipeline
+  # ===============================================
+  ingestor:
+    image: gsantopaolo/echomind-ingestor:${INGESTOR_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: ingestor/Dockerfile
+    container_name: echomind-ingestor
+    hostname: ingestor
+    env_file:
+      - ${CONFIG_PATH}/ingestor/ingestor.env
+    environment:
+      - INGESTOR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - INGESTOR_NATS_URL=nats://nats:4222
+      - INGESTOR_MINIO_ENDPOINT=minio:9000
+      - INGESTOR_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - INGESTOR_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - INGESTOR_QDRANT_HOST=qdrant
+      - INGESTOR_QDRANT_PORT=6333
+      - INGESTOR_EMBEDDER_HOST=embedder
+      - INGESTOR_EMBEDDER_PORT=50051
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      embedder:
+        condition: service_healthy
+      connector:
         condition: service_started
     restart: unless-stopped
     networks:

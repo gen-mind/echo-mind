@@ -1,0 +1,488 @@
+"""Unit tests for DocumentProcessor."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pandas as pd
+import pytest
+
+from ingestor.config import IngestorSettings, reset_settings
+from ingestor.logic.document_processor import DocumentProcessor
+from ingestor.logic.exceptions import (
+    ChunkingError,
+    ExtractionError,
+    UnsupportedMimeTypeError,
+)
+
+
+class TestDocumentProcessor:
+    """Tests for DocumentProcessor class."""
+
+    def setup_method(self) -> None:
+        """Create processor instance for each test."""
+        reset_settings()
+        self.settings = IngestorSettings()
+        self.processor = DocumentProcessor(self.settings)
+
+    def teardown_method(self) -> None:
+        """Reset after tests."""
+        reset_settings()
+
+    # ==========================================
+    # Initialization tests
+    # ==========================================
+
+    def test_init_creates_mime_router(self) -> None:
+        """Test processor initializes with MimeRouter."""
+        assert self.processor._router is not None
+
+    def test_init_stores_settings(self) -> None:
+        """Test processor stores settings."""
+        assert self.processor._settings is self.settings
+
+    # ==========================================
+    # MIME type validation tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_process_unsupported_mime_type_raises(self) -> None:
+        """Test process raises for unsupported MIME type."""
+        with pytest.raises(UnsupportedMimeTypeError) as exc_info:
+            await self.processor.process(
+                file_bytes=b"test",
+                document_id=1,
+                file_name="test.xyz",
+                mime_type="application/x-unknown",
+            )
+
+        assert "application/x-unknown" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_process_validates_mime_type_first(self) -> None:
+        """Test MIME type validation happens before any processing."""
+        # Even with empty bytes, should fail on MIME type first
+        with pytest.raises(UnsupportedMimeTypeError):
+            await self.processor.process(
+                file_bytes=b"",
+                document_id=1,
+                file_name="test",
+                mime_type="video/webm",  # Not supported
+            )
+
+    # ==========================================
+    # DataFrame building tests
+    # ==========================================
+
+    def test_build_dataframe_structure(self) -> None:
+        """Test _build_dataframe creates correct structure."""
+        df = self.processor._build_dataframe(
+            file_bytes=b"test content",
+            document_id=123,
+            file_name="test.pdf",
+            mime_type="application/pdf",
+        )
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 1
+        assert "source_id" in df.columns
+        assert "source_name" in df.columns
+        assert "content" in df.columns
+        assert "document_type" in df.columns
+        assert "metadata" in df.columns
+
+    def test_build_dataframe_source_id_is_string(self) -> None:
+        """Test source_id is stored as string."""
+        df = self.processor._build_dataframe(
+            file_bytes=b"test",
+            document_id=456,
+            file_name="test.pdf",
+            mime_type="application/pdf",
+        )
+
+        assert df.iloc[0]["source_id"] == "456"
+
+    def test_build_dataframe_content_is_base64(self) -> None:
+        """Test content is base64 encoded."""
+        import base64
+
+        original = b"hello world"
+        df = self.processor._build_dataframe(
+            file_bytes=original,
+            document_id=1,
+            file_name="test.txt",
+            mime_type="text/plain",
+        )
+
+        encoded = df.iloc[0]["content"]
+        decoded = base64.b64decode(encoded)
+        assert decoded == original
+
+    def test_build_dataframe_document_type_from_mime(self) -> None:
+        """Test document_type is derived from MIME type."""
+        test_cases = [
+            ("application/pdf", "pdf"),
+            ("image/jpeg", "jpeg"),
+            ("text/plain", "txt"),
+            ("audio/mpeg", "mp3"),
+        ]
+
+        for mime_type, expected_doc_type in test_cases:
+            df = self.processor._build_dataframe(
+                file_bytes=b"test",
+                document_id=1,
+                file_name="test",
+                mime_type=mime_type,
+            )
+            assert df.iloc[0]["document_type"] == expected_doc_type
+
+    def test_build_dataframe_metadata_structure(self) -> None:
+        """Test metadata has correct structure."""
+        df = self.processor._build_dataframe(
+            file_bytes=b"test",
+            document_id=789,
+            file_name="mydoc.pdf",
+            mime_type="application/pdf",
+        )
+
+        metadata = df.iloc[0]["metadata"]
+        assert "content_metadata" in metadata
+        assert "source_metadata" in metadata
+        assert metadata["source_metadata"]["source_name"] == "mydoc.pdf"
+        assert metadata["source_metadata"]["source_id"] == "789"
+
+    # ==========================================
+    # Text extraction tests
+    # ==========================================
+
+    def test_extract_text_basic(self) -> None:
+        """Test _extract_text extracts plain text."""
+        import base64
+
+        content = "Hello, World!"
+        encoded = base64.b64encode(content.encode()).decode()
+
+        df = pd.DataFrame({
+            "content": [encoded],
+            "metadata": [{"content_metadata": {}}],
+        })
+
+        result = self.processor._extract_text(df)
+
+        text = result.iloc[0]["metadata"]["content_metadata"]["text"]
+        assert text == content
+
+    def test_extract_text_handles_unicode(self) -> None:
+        """Test _extract_text handles UTF-8 content."""
+        import base64
+
+        content = "Hello, \u4e16\u754c!"  # "Hello, 世界!"
+        encoded = base64.b64encode(content.encode("utf-8")).decode()
+
+        df = pd.DataFrame({
+            "content": [encoded],
+            "metadata": [{"content_metadata": {}}],
+        })
+
+        result = self.processor._extract_text(df)
+
+        text = result.iloc[0]["metadata"]["content_metadata"]["text"]
+        assert content in text
+
+    def test_extract_text_fallback_to_latin1(self) -> None:
+        """Test _extract_text falls back to latin-1 encoding."""
+        import base64
+
+        # Create content that's valid latin-1 but not UTF-8
+        content = bytes([0xe0, 0xe1, 0xe2])  # Latin-1 specific chars
+        encoded = base64.b64encode(content).decode()
+
+        df = pd.DataFrame({
+            "content": [encoded],
+            "metadata": [{"content_metadata": {}}],
+        })
+
+        # Should not raise, should fall back to latin-1
+        result = self.processor._extract_text(df)
+        assert "text" in result.iloc[0]["metadata"]["content_metadata"]
+
+    # ==========================================
+    # HTML extraction tests
+    # ==========================================
+
+    def test_extract_html_removes_script_tags(self) -> None:
+        """Test _extract_html removes script elements."""
+        import base64
+
+        html = "<html><body><script>alert('xss')</script><p>Hello</p></body></html>"
+        encoded = base64.b64encode(html.encode()).decode()
+
+        df = pd.DataFrame({
+            "content": [encoded],
+            "metadata": [{"content_metadata": {}}],
+        })
+
+        result = self.processor._extract_html(df)
+
+        text = result.iloc[0]["metadata"]["content_metadata"]["text"]
+        assert "alert" not in text
+        assert "Hello" in text
+
+    def test_extract_html_removes_style_tags(self) -> None:
+        """Test _extract_html removes style elements."""
+        import base64
+
+        html = "<html><head><style>body{color:red}</style></head><body>Content</body></html>"
+        encoded = base64.b64encode(html.encode()).decode()
+
+        df = pd.DataFrame({
+            "content": [encoded],
+            "metadata": [{"content_metadata": {}}],
+        })
+
+        result = self.processor._extract_html(df)
+
+        text = result.iloc[0]["metadata"]["content_metadata"]["text"]
+        assert "color:red" not in text
+        assert "Content" in text
+
+    # ==========================================
+    # Structured image extraction tests
+    # ==========================================
+
+    def test_extract_structured_images_empty_when_yolox_disabled(self) -> None:
+        """Test no structured images when YOLOX is disabled."""
+        # Default settings have yolox_enabled=False
+        df = pd.DataFrame({
+            "metadata": [{
+                "content_metadata": {
+                    "type": "table",
+                    "image_data": "base64data",
+                }
+            }]
+        })
+
+        result = self.processor._extract_structured_images(df)
+
+        assert result == []
+
+    def test_extract_structured_images_with_yolox(self) -> None:
+        """Test structured images extracted when YOLOX enabled."""
+        import base64
+
+        # Enable YOLOX in settings
+        with patch.object(self.processor._settings, "yolox_enabled", True):
+            image_bytes = b"\x89PNG\r\n\x1a\n"  # Fake PNG header
+            encoded = base64.b64encode(image_bytes).decode()
+
+            df = pd.DataFrame({
+                "metadata": [{
+                    "content_metadata": {
+                        "type": "table",
+                        "image_data": encoded,
+                    }
+                }]
+            })
+
+            result = self.processor._extract_structured_images(df)
+
+            assert len(result) == 1
+            assert result[0] == image_bytes
+
+    def test_extract_structured_images_filters_by_type(self) -> None:
+        """Test only table/chart/infographic types are extracted."""
+        import base64
+
+        with patch.object(self.processor._settings, "yolox_enabled", True):
+            image_bytes = b"imagedata"
+            encoded = base64.b64encode(image_bytes).decode()
+
+            df = pd.DataFrame({
+                "metadata": [
+                    {"content_metadata": {"type": "table", "image_data": encoded}},
+                    {"content_metadata": {"type": "chart", "image_data": encoded}},
+                    {"content_metadata": {"type": "infographic", "image_data": encoded}},
+                    {"content_metadata": {"type": "text", "image_data": encoded}},  # Should be skipped
+                ]
+            })
+
+            result = self.processor._extract_structured_images(df)
+
+            assert len(result) == 3
+
+    # ==========================================
+    # Extraction routing tests
+    # ==========================================
+
+    def test_extract_routes_by_extractor_type(self) -> None:
+        """Test _extract routes to correct extractor based on MIME type."""
+        # Verify the router returns correct extractor types
+        test_cases = [
+            ("application/pdf", "pdf"),
+            ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"),
+            ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"),
+            ("image/png", "image"),
+            ("audio/mpeg", "audio"),
+            ("video/mp4", "video"),
+            ("text/plain", "text"),
+            ("text/html", "html"),
+        ]
+
+        for mime_type, expected_extractor in test_cases:
+            extractor = self.processor._router.get_extractor_type(mime_type)
+            assert extractor == expected_extractor, f"{mime_type} should use {expected_extractor}"
+
+    # ==========================================
+    # Audio extraction tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_extract_audio_returns_empty_when_riva_disabled(self) -> None:
+        """Test audio extraction returns empty when Riva disabled."""
+        # Default settings have riva_enabled=False
+        df = pd.DataFrame({"test": [1]})
+
+        result = await self.processor._extract(df, "audio/mpeg", document_id=1)
+
+        assert result.empty
+
+    # ==========================================
+    # Video extraction tests
+    # ==========================================
+
+    def test_extract_video_returns_empty(self) -> None:
+        """Test video extraction returns empty (early access feature)."""
+        df = pd.DataFrame({"test": [1]})
+
+        result = self.processor._extract_video(df)
+
+        assert result.empty
+
+    # ==========================================
+    # Chunking tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_chunk_content_empty_dataframe(self) -> None:
+        """Test chunking returns empty list for empty DataFrame."""
+        df = pd.DataFrame()
+
+        result = await self.processor._chunk_content(df, document_id=1)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_chunk_content_extracts_text_from_metadata(self) -> None:
+        """Test chunking extracts text from content_metadata."""
+        nv_ingest = pytest.importorskip("nv_ingest_api", reason="nv_ingest_api not installed")
+
+        # Mock the transform function at the import location
+        with patch(
+            "nv_ingest_api.interface.transform.transform_text_split_and_tokenize"
+        ) as mock_transform:
+            mock_transform.return_value = pd.DataFrame({
+                "metadata": [
+                    {"content_metadata": {"text": "chunk 1"}},
+                    {"content_metadata": {"text": "chunk 2"}},
+                    {"content_metadata": {"text": "  "}},  # Empty, should be filtered
+                ]
+            })
+
+            df = pd.DataFrame({"test": [1]})
+            result = await self.processor._chunk_content(df, document_id=1)
+
+            assert result == ["chunk 1", "chunk 2"]
+
+    @pytest.mark.asyncio
+    async def test_chunk_content_uses_settings(self) -> None:
+        """Test chunking uses settings for size and overlap."""
+        nv_ingest = pytest.importorskip("nv_ingest_api", reason="nv_ingest_api not installed")
+
+        with patch(
+            "nv_ingest_api.interface.transform.transform_text_split_and_tokenize"
+        ) as mock_transform:
+            mock_transform.return_value = pd.DataFrame()
+
+            df = pd.DataFrame({"test": [1]})
+            await self.processor._chunk_content(df, document_id=1)
+
+            # Verify settings were passed
+            call_kwargs = mock_transform.call_args[1]
+            assert call_kwargs["chunk_size"] == self.settings.chunk_size
+            assert call_kwargs["chunk_overlap"] == self.settings.chunk_overlap
+            assert call_kwargs["tokenizer"] == self.settings.tokenizer
+
+    @pytest.mark.asyncio
+    async def test_chunk_content_raises_chunking_error(self) -> None:
+        """Test chunking raises ChunkingError on failure."""
+        nv_ingest = pytest.importorskip("nv_ingest_api", reason="nv_ingest_api not installed")
+
+        with patch(
+            "nv_ingest_api.interface.transform.transform_text_split_and_tokenize",
+            side_effect=Exception("tokenizer failed"),
+        ):
+            df = pd.DataFrame({"test": [1]})
+
+            with pytest.raises(ChunkingError) as exc_info:
+                await self.processor._chunk_content(df, document_id=123)
+
+            assert exc_info.value.document_id == 123
+
+
+class TestDocumentProcessorIntegration:
+    """Integration-style tests for full processing flow."""
+
+    def setup_method(self) -> None:
+        """Create processor instance."""
+        reset_settings()
+        self.settings = IngestorSettings()
+        self.processor = DocumentProcessor(self.settings)
+
+    def teardown_method(self) -> None:
+        """Reset after tests."""
+        reset_settings()
+
+    @pytest.mark.asyncio
+    async def test_process_text_file_end_to_end(self) -> None:
+        """Test full processing of a text file."""
+        nv_ingest = pytest.importorskip("nv_ingest_api", reason="nv_ingest_api not installed")
+
+        content = "This is a test document with some content for chunking."
+
+        # Mock the chunking function at the import location
+        with patch(
+            "nv_ingest_api.interface.transform.transform_text_split_and_tokenize"
+        ) as mock_transform:
+            mock_transform.return_value = pd.DataFrame({
+                "metadata": [
+                    {"content_metadata": {"text": content}},
+                ]
+            })
+
+            chunks, images = await self.processor.process(
+                file_bytes=content.encode(),
+                document_id=1,
+                file_name="test.txt",
+                mime_type="text/plain",
+            )
+
+            assert len(chunks) == 1
+            assert chunks[0] == content
+            assert images == []  # No structured images for text
+
+    @pytest.mark.asyncio
+    async def test_process_returns_tuple(self) -> None:
+        """Test process returns (chunks, images) tuple."""
+        with patch.object(self.processor, "_extract", return_value=pd.DataFrame()):
+            with patch.object(self.processor, "_chunk_content", return_value=["chunk1"]):
+                with patch.object(self.processor, "_extract_structured_images", return_value=[]):
+                    result = await self.processor.process(
+                        file_bytes=b"test",
+                        document_id=1,
+                        file_name="test.pdf",
+                        mime_type="application/pdf",
+                    )
+
+                    assert isinstance(result, tuple)
+                    assert len(result) == 2
+                    chunks, images = result
+                    assert isinstance(chunks, list)
+                    assert isinstance(images, list)

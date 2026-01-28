@@ -762,13 +762,42 @@ dependencies = [
 
 ## NATS Messaging
 
+### Proto Definitions
+
+The Ingestor service uses messages from `src/proto/internal/orchestrator.proto`:
+
+```protobuf
+// DocumentProcessRequest - sent by Connector to Ingestor
+message DocumentProcessRequest {
+  int32 document_id = 1;      // Database document ID
+  int32 connector_id = 2;     // Source connector ID
+  int32 user_id = 3;          // Owner user ID
+  string minio_path = 4;      // Path to file in MinIO
+  string chunking_session = 5; // UUID for deduplication
+  ConnectorScope scope = 6;   // user|group|org
+  optional string scope_id = 7; // group/org ID if applicable
+}
+
+// ConnectorSyncRequest - sent by Orchestrator to Connector
+message ConnectorSyncRequest {
+  int32 connector_id = 1;
+  ConnectorType type = 2;
+  int32 user_id = 3;
+  ConnectorScope scope = 4;
+  optional string scope_id = 5;
+  google.protobuf.Struct config = 6;
+  google.protobuf.Struct state = 7;
+  string chunking_session = 8;  // Passed through to DocumentProcessRequest
+}
+```
+
 ### Subscriptions (Incoming)
 
 | Subject | Payload | From | Description |
 |---------|---------|------|-------------|
-| `document.process` | `DocumentProcessRequest` | Connector | Files downloaded from cloud providers (Drive, OneDrive) |
-| `connector.sync.web` | `ConnectorSyncRequest` | Orchestrator | Web connector sync (live URL scraping) |
-| `connector.sync.file` | `ConnectorSyncRequest` | Orchestrator | File connector sync (files already in MinIO) |
+| `document.process` | `DocumentProcessRequest` (orchestrator.proto) | Connector | Files downloaded from cloud providers (Drive, OneDrive) |
+| `connector.sync.web` | `ConnectorSyncRequest` (orchestrator.proto) | Orchestrator | Web connector sync (live URL scraping) |
+| `connector.sync.file` | `ConnectorSyncRequest` (orchestrator.proto) | Orchestrator | File connector sync (files already in MinIO) |
 
 ### Consumer Configuration
 

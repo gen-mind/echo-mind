@@ -235,21 +235,23 @@ message ConnectorSyncRequest {
 
 ### DocumentProcessRequest
 
-Sent by connector to semantic service for processing.
+Sent by connector to ingestor service for processing. Defined in `src/proto/internal/orchestrator.proto`.
 
 ```protobuf
-// src/proto/internal/semantic.proto
+// src/proto/internal/orchestrator.proto
 
 message DocumentProcessRequest {
-    int32 document_id = 1;
-    int32 connector_id = 2;
-    string url = 3;                      // MinIO path or original URL
-    string content_type = 4;             // MIME type
-    echomind.public.ConnectorScope scope = 5;
-    optional string scope_id = 6;
-    string chunking_session = 7;
+    int32 document_id = 1;               // Database document ID
+    int32 connector_id = 2;              // Source connector ID
+    int32 user_id = 3;                   // Owner user ID
+    string minio_path = 4;               // Path to file in MinIO
+    string chunking_session = 5;         // UUID for deduplication
+    echomind.public.ConnectorScope scope = 6;
+    optional string scope_id = 7;        // Group/org ID if applicable
 }
 ```
+
+**Note:** This message is used for the `document.process` NATS subject. The connector uploads files to MinIO and passes the `minio_path` (not the original URL).
 
 ---
 
