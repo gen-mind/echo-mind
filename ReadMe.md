@@ -29,7 +29,22 @@ then **verifies** the result before responding.
 > EchoMind is built for real work: support automation, IT deflection, meeting follow-ups, contract review,
 > AP/invoice handling, onboarding, and any process where the bottleneck is “finding the right info + doing the next step”.
 
+## ⚡ AI in Minutes (Not Months)
 
+**Skip procurement. Start building today.**
+
+No budget approvals. No vendor negotiations.  
+Deploy EchoMind now and ship your first internal AI workflow this week. ✅
+
+---
+### 🤝 Need help getting started? Let’s jump on a quick call (free)
+
+If you want a fast setup review, architecture feedback, or help choosing the right deployment mode,
+you can book a **free call** with the author.
+
+📅 **Book a free call:** https://calendar.app.google/QuNua7HxdsSasCGu9  
+👤 **Author:** https://github.com/gsantopaolo
+---
 ## ✨ How it works
 
 ```
@@ -68,7 +83,7 @@ EchoMind is built for *process automation*, not just Q&A:
 - Approval routing + audit-ready explanations
 
 
-## Why EchoMind?
+## 🚀Why EchoMind?
 Because teams shouldn’t need a budget to start using AI. EchoMind is **$0, MIT-licensed, and self-hostable** 🆓🏠.
 
 
@@ -78,21 +93,8 @@ Because teams shouldn’t need a budget to start using AI. EchoMind is **$0, MIT
 From startups to Fortune 500—EchoMind stays free.  
 No usage limits. No “enterprise” paywalls. No vendor lock-in. 🔓
 
-### ⚡ AI in Minutes (Not Months)
-**Skip procurement. Start building today.**
-
-No budget approvals. No vendor negotiations.  
-Deploy EchoMind now and ship your first internal AI workflow this week. ✅
-
-
-### ⚡ AI in Minutes (Not Months)
-
-**Skip procurement. Start building today.**
-
-No budget approvals. No vendor negotiations.  
-Deploy EchoMind now and ship your first internal AI workflow this week. ✅
-
 ---
+
 
 ## 🧬 What makes EchoMind agentic?
 EchoMind is an **agentic RAG platform** that actually *thinks* before it retrieves — and it’s **100% free (MIT)** 🆓.
