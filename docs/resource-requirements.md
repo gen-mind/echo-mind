@@ -804,18 +804,11 @@ Services that scale vertically:
 
 ## Quick Reference: Deployment Scenarios
 
-### Scenario 1: Local Development (Laptop/Desktop)
 
-**Target:** 4-8 GB RAM available, 4 CPU cores
 
-**Recommendation:** Use Development specs
-- Total: ~6.25 physical cores, ~5.5 GB RAM
-- ✅ Fits on modern laptop with headroom
-- Use Docker Desktop resource limits to constrain usage
+### Scenario 1: Small VPS/Cloud Instance
 
-### Scenario 2: Small VPS/Cloud Instance
-
-**Target:** 10-20 users, moderate usage
+**Target:** 10-50 users, moderate usage
 
 **Recommendation:** Small Production specs
 
@@ -826,7 +819,7 @@ Services that scale vertically:
 
 **With 1-year commitment:** ~$200-230/month
 
-### Scenario 3: Production Deployment (Single Server)
+### Scenario 2: Production Deployment (Single Server)
 
 **Target:** 50-100 users, high availability needs
 
@@ -839,7 +832,7 @@ Services that scale vertically:
 
 **With 1-year commitment:** ~$400-460/month
 
-### Scenario 4: Production Deployment (Multi-Server)
+### Scenario 3: Production Deployment (Multi-Server)
 
 **Target:** 100+ users, fault tolerance required
 
