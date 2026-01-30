@@ -523,15 +523,15 @@ services:
   # Portainer - Docker Management UI
   # ===============================================
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:alpine
     container_name: echomind-portainer
     hostname: portainer
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9000 || exit 1"]
-      interval: 60s
-      timeout: 15s
-      start_period: 120s
+      test: ["CMD", "wget", "--no-verbose", "--tries=3", "--spider", "http://127.0.0.1:9000/api/system/status"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
       retries: 3
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
