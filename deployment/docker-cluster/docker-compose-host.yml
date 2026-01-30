@@ -128,6 +128,7 @@ services:
     hostname: authentik-server
     command: server
     environment:
+      - AUTHENTIK_LOG_LEVEL=error
       - AUTHENTIK_POSTGRESQL__HOST=postgres
       - AUTHENTIK_POSTGRESQL__USER=${POSTGRES_USER}
       - AUTHENTIK_POSTGRESQL__NAME=${AUTHENTIK_DB_NAME}
@@ -166,6 +167,7 @@ services:
     hostname: authentik-worker
     command: worker
     environment:
+      - AUTHENTIK_LOG_LEVEL=error
       - AUTHENTIK_POSTGRESQL__HOST=postgres
       - AUTHENTIK_POSTGRESQL__USER=${POSTGRES_USER}
       - AUTHENTIK_POSTGRESQL__NAME=${AUTHENTIK_DB_NAME}
