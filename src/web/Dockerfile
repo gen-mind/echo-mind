@@ -12,9 +12,6 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Debug: list files to verify lib is copied
-RUN ls -la src/lib/ || echo "lib folder not found"
-
 # Build args for Vite env vars (baked at build time)
 ARG VITE_API_BASE_URL
 ARG VITE_WS_URL
