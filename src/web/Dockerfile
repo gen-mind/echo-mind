@@ -12,12 +12,6 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Debug - show what's actually in the container
-RUN echo "=== Contents of /app ===" && ls -la /app/
-RUN echo "=== Contents of /app/src ===" && ls -la /app/src/
-RUN echo "=== Contents of /app/src/lib ===" && ls -la /app/src/lib/ || echo "NO LIB FOLDER"
-RUN echo "=== vite.config.ts ===" && cat /app/vite.config.ts
-
 # Build args for Vite env vars (baked at build time)
 ARG VITE_API_BASE_URL
 ARG VITE_WS_URL
@@ -44,6 +38,6 @@ EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget -q --spider http://localhost/health || exit 1
+    CMD wget -q -O /dev/null http://localhost/health || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
