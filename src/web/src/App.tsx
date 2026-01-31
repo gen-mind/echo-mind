@@ -84,11 +84,11 @@ export default function App() {
                   <Route index element={<ChatPage />} />
                   <Route path="/chat/:sessionId" element={<ChatPage />} />
                   <Route path="/documents" element={<DocumentsPage />} />
-                  <Route path="/connectors" element={<RequireRole role="admin"><ConnectorsPage /></RequireRole>} />
-                  <Route path="/embedding-models" element={<RequireRole role="admin"><EmbeddingModelsPage /></RequireRole>} />
-                  <Route path="/llms" element={<RequireRole role="admin"><LLMsPage /></RequireRole>} />
+                  <Route path="/connectors" element={<RequireRole feature="connectors"><ConnectorsPage /></RequireRole>} />
+                  <Route path="/embedding-models" element={<RequireRole feature="embedding-models"><EmbeddingModelsPage /></RequireRole>} />
+                  <Route path="/llms" element={<RequireRole feature="llms"><LLMsPage /></RequireRole>} />
                   <Route path="/assistants" element={<AssistantsPage />} />
-                  <Route path="/users" element={<RequireRole role="admin"><UsersPage /></RequireRole>} />
+                  <Route path="/users" element={<RequireRole feature="users"><UsersPage /></RequireRole>} />
                   <Route path="/settings" element={<SettingsPage />} />
                 </Route>
               </Routes>

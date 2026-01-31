@@ -42,20 +42,18 @@ interface NavItem {
   icon: LucideIcon
   label: string
   href: string
-  /** Permission required to see this item (optional) */
-  permission?: string
-  /** Role required to see this item (optional) */
-  role?: string
+  /** Feature permission required to see this item */
+  feature?: string
 }
 
 const navItems: NavItem[] = [
-  { icon: MessageSquare, label: 'Chat', href: '/' },
-  { icon: FileText, label: 'Documents', href: '/documents' },
-  { icon: Link2, label: 'Connectors', href: '/connectors', role: 'admin' },
-  { icon: Layers, label: 'Embeddings', href: '/embedding-models', role: 'admin' },
-  { icon: Cpu, label: 'LLMs', href: '/llms', role: 'admin' },
-  { icon: Bot, label: 'Assistants', href: '/assistants' },
-  { icon: Users, label: 'Users', href: '/users', role: 'admin' },
+  { icon: MessageSquare, label: 'Chat', href: '/', feature: 'chat' },
+  { icon: FileText, label: 'Documents', href: '/documents', feature: 'documents' },
+  { icon: Link2, label: 'Connectors', href: '/connectors', feature: 'connectors' },
+  { icon: Layers, label: 'Embeddings', href: '/embedding-models', feature: 'embedding-models' },
+  { icon: Cpu, label: 'LLMs', href: '/llms', feature: 'llms' },
+  { icon: Bot, label: 'Assistants', href: '/assistants', feature: 'assistants' },
+  { icon: Users, label: 'Users', href: '/users', feature: 'users' },
 ]
 
 interface SidebarProps {
@@ -68,22 +66,18 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
   const navigate = useNavigate()
   const { setTheme, resolvedTheme } = useTheme()
   const { user, logout } = useAuth()
-  const { hasRole, can } = usePermissions()
+  const { can } = usePermissions()
 
   // Filter nav items based on user permissions
   const visibleNavItems = useMemo(() => {
     return navItems.filter((item) => {
-      // Check role requirement
-      if (item.role && !hasRole(item.role)) {
-        return false
-      }
-      // Check permission requirement
-      if (item.permission && !can(item.permission)) {
+      // Check feature permission
+      if (item.feature && !can(item.feature)) {
         return false
       }
       return true
     })
-  }, [hasRole, can])
+  }, [can])
 
   const { data: sessionsData } = useQuery({
     queryKey: ['chat-sessions', { limit: 20 }],

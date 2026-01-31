@@ -102,12 +102,25 @@ class JWTValidator:
     def _extract_user(self, payload: dict[str, Any]) -> TokenUser:
         """Extract user information from token payload."""
         groups = payload.get("groups", [])
-        roles = payload.get("roles", [])
+        roles = list(payload.get("roles", []))
 
         # Map Authentik groups to application roles
-        # Users in "echomind-admins" group get the "admin" role
-        if "echomind-admins" in groups and "admin" not in roles:
-            roles = [*roles, "admin"]
+        # Higher levels include all lower level roles
+        if "echomind-superadmins" in groups:
+            if "superadmin" not in roles:
+                roles.append("superadmin")
+            if "admin" not in roles:
+                roles.append("admin")
+            if "user" not in roles:
+                roles.append("user")
+        elif "echomind-admins" in groups:
+            if "admin" not in roles:
+                roles.append("admin")
+            if "user" not in roles:
+                roles.append("user")
+        elif "echomind-allowed" in groups:
+            if "user" not in roles:
+                roles.append("user")
 
         return TokenUser(
             id=payload.get("user_id", 0),

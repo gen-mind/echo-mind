@@ -2,70 +2,104 @@ import { useMemo } from 'react'
 import { useAuth } from './AuthProvider'
 
 /**
- * Permission configuration mapping roles to features.
- * Add new roles/permissions here as needed.
+ * Authentik group names
  */
-const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['users', 'settings', 'llms', 'assistants', 'connectors', 'documents', 'embedding-models', 'chat'],
-  user: ['chat', 'documents', 'assistants'],
+const GROUPS = {
+  ALLOWED: 'echomind-allowed',
+  ADMINS: 'echomind-admins',
+  SUPERADMINS: 'echomind-superadmins',
+} as const
+
+/**
+ * Permission levels for features.
+ * - 'allowed': echomind-allowed and above
+ * - 'admin': echomind-admins and above
+ * - 'superadmin': echomind-superadmins only
+ */
+type PermissionLevel = 'allowed' | 'admin' | 'superadmin'
+
+/**
+ * Feature permission configuration.
+ * Maps feature names to the minimum group required.
+ */
+const FEATURE_PERMISSIONS: Record<string, PermissionLevel> = {
+  // Available to all users (echomind-allowed and above)
+  chat: 'allowed',
+  documents: 'allowed',
+  assistants: 'allowed',
+  connectors: 'allowed', // View + personal only for 'allowed', full for admin+
+
+  // Admin only (echomind-admins and above)
+  users: 'admin',
+  'connectors:manage': 'admin', // Full connector management
+
+  // Superadmin only (echomind-superadmins)
+  'embedding-models': 'superadmin',
+  llms: 'superadmin',
+  portainer: 'superadmin',
+  infrastructure: 'superadmin',
 }
 
 /**
- * Map Authentik groups to application roles.
- * The group "echomind-admins" grants the "admin" role.
+ * Map Authentik groups to permission level.
+ * Higher level includes all permissions from lower levels.
  */
-function mapGroupsToRoles(groups: string[]): string[] {
-  const roles: string[] = ['user'] // Everyone gets base user role
-
-  if (groups.includes('echomind-admins')) {
-    roles.push('admin')
+function getPermissionLevel(groups: string[]): PermissionLevel | null {
+  if (groups.includes(GROUPS.SUPERADMINS)) {
+    return 'superadmin'
   }
-
-  return roles
+  if (groups.includes(GROUPS.ADMINS)) {
+    return 'admin'
+  }
+  if (groups.includes(GROUPS.ALLOWED)) {
+    return 'allowed'
+  }
+  return null
 }
 
 /**
- * Get all permissions for a set of roles.
+ * Check if a permission level meets the required level.
  */
-function getPermissionsForRoles(roles: string[]): Set<string> {
-  const permissions = new Set<string>()
+function meetsLevel(userLevel: PermissionLevel | null, requiredLevel: PermissionLevel): boolean {
+  if (!userLevel) return false
 
-  for (const role of roles) {
-    const rolePerms = ROLE_PERMISSIONS[role]
-    if (rolePerms) {
-      rolePerms.forEach((p) => permissions.add(p))
-    }
-  }
+  const levelHierarchy: PermissionLevel[] = ['allowed', 'admin', 'superadmin']
+  const userIndex = levelHierarchy.indexOf(userLevel)
+  const requiredIndex = levelHierarchy.indexOf(requiredLevel)
 
-  return permissions
+  return userIndex >= requiredIndex
 }
 
 export interface UsePermissionsResult {
-  /** User's roles (e.g., ['user', 'admin']) */
-  roles: string[]
+  /** User's permission level */
+  level: PermissionLevel | null
   /** User's Authentik groups */
   groups: string[]
-  /** Check if user has a specific role */
-  hasRole: (role: string) => boolean
+  /** Check if user has a specific Authentik group */
+  hasGroup: (group: string) => boolean
   /** Check if user has permission for a feature */
-  can: (permission: string) => boolean
-  /** Check if user is an admin */
+  can: (feature: string) => boolean
+  /** Check if user is at least 'allowed' level */
+  isAllowed: boolean
+  /** Check if user is at least 'admin' level */
   isAdmin: boolean
+  /** Check if user is 'superadmin' level */
+  isSuperAdmin: boolean
 }
 
 /**
- * Hook to check user roles and permissions.
+ * Hook to check user permissions based on Authentik groups.
  *
  * @example
  * ```tsx
  * function AdminPanel() {
- *   const { isAdmin, can } = usePermissions()
- *
- *   if (!isAdmin) return null
+ *   const { isAdmin, isSuperAdmin, can } = usePermissions()
  *
  *   return (
  *     <div>
  *       {can('users') && <UsersSection />}
+ *       {can('embedding-models') && <EmbeddingsSection />}
+ *       {isSuperAdmin && <InfrastructureSection />}
  *     </div>
  *   )
  * }
@@ -78,18 +112,25 @@ export function usePermissions(): UsePermissionsResult {
     // Extract groups from OIDC token
     const groups: string[] = (user?.profile?.groups as string[]) || []
 
-    // Map groups to roles
-    const roles = mapGroupsToRoles(groups)
-
-    // Get all permissions for the user's roles
-    const permissions = getPermissionsForRoles(roles)
+    // Get the user's permission level
+    const level = getPermissionLevel(groups)
 
     return {
-      roles,
+      level,
       groups,
-      hasRole: (role: string) => roles.includes(role),
-      can: (permission: string) => permissions.has(permission),
-      isAdmin: roles.includes('admin'),
+      hasGroup: (group: string) => groups.includes(group),
+      can: (feature: string) => {
+        const requiredLevel = FEATURE_PERMISSIONS[feature]
+        if (!requiredLevel) {
+          // Unknown feature - deny by default
+          console.warn(`Unknown permission feature: ${feature}`)
+          return false
+        }
+        return meetsLevel(level, requiredLevel)
+      },
+      isAllowed: level !== null,
+      isAdmin: meetsLevel(level, 'admin'),
+      isSuperAdmin: meetsLevel(level, 'superadmin'),
     }
   }, [user])
 }

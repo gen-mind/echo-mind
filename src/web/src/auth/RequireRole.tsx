@@ -4,10 +4,10 @@ import { usePermissions } from './usePermissions'
 
 interface RequireRoleProps {
   children: ReactNode
-  /** Role required to access this content */
-  role?: string
-  /** Permission required to access this content */
-  permission?: string
+  /** Feature permission required to access this content */
+  feature?: string
+  /** Minimum level required: 'allowed', 'admin', or 'superadmin' */
+  level?: 'allowed' | 'admin' | 'superadmin'
   /** Where to redirect if access is denied (default: /) */
   redirectTo?: string
   /** Content to show if access is denied (instead of redirect) */
@@ -15,45 +15,64 @@ interface RequireRoleProps {
 }
 
 /**
- * Component to protect routes or content based on user role/permission.
+ * Component to protect routes or content based on user permission level.
  *
  * @example
  * ```tsx
- * // Protect a route
+ * // Protect a route by feature
  * <Route
  *   path="/users"
  *   element={
- *     <RequireRole role="admin">
+ *     <RequireRole feature="users">
  *       <UsersPage />
  *     </RequireRole>
  *   }
  * />
  *
+ * // Protect by level
+ * <RequireRole level="superadmin">
+ *   <InfrastructurePage />
+ * </RequireRole>
+ *
  * // Protect content with fallback
- * <RequireRole permission="users" fallback={<AccessDenied />}>
- *   <UsersList />
+ * <RequireRole feature="llms" fallback={<AccessDenied />}>
+ *   <LLMConfig />
  * </RequireRole>
  * ```
  */
 export function RequireRole({
   children,
-  role,
-  permission,
+  feature,
+  level,
   redirectTo = '/',
   fallback,
 }: RequireRoleProps) {
-  const { hasRole, can } = usePermissions()
+  const { can, isAllowed, isAdmin, isSuperAdmin } = usePermissions()
 
-  // Check role if specified
-  if (role && !hasRole(role)) {
+  // Check feature permission if specified
+  if (feature && !can(feature)) {
     if (fallback) return <>{fallback}</>
     return <Navigate to={redirectTo} replace />
   }
 
-  // Check permission if specified
-  if (permission && !can(permission)) {
-    if (fallback) return <>{fallback}</>
-    return <Navigate to={redirectTo} replace />
+  // Check level if specified
+  if (level) {
+    let hasAccess = false
+    switch (level) {
+      case 'allowed':
+        hasAccess = isAllowed
+        break
+      case 'admin':
+        hasAccess = isAdmin
+        break
+      case 'superadmin':
+        hasAccess = isSuperAdmin
+        break
+    }
+    if (!hasAccess) {
+      if (fallback) return <>{fallback}</>
+      return <Navigate to={redirectTo} replace />
+    }
   }
 
   return <>{children}</>
