@@ -297,9 +297,9 @@ services:
       - API_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - API_NATS_URL=nats://nats:4222
       # Auth - issuer must match JWT's 'iss' claim exactly (external URL)
-      - API_AUTH_ISSUER=https://auth.demo.echomind.ch/application/o/echo-mind/
-      - API_AUTH_AUDIENCE=KgfSGS07LFhpniaqeMRKeyydcqy0cQNloCLFZI1f
-      - API_AUTH_JWKS_URL=http://authentik-server:9000/application/o/echo-mind/jwks/
+      - API_AUTH_ISSUER=${API_AUTH_ISSUER}
+      - API_AUTH_AUDIENCE=${API_AUTH_AUDIENCE}
+      - API_AUTH_JWKS_URL=${API_AUTH_JWKS_URL}
     depends_on:
       postgres:
         condition: service_healthy
