@@ -322,7 +322,15 @@ services:
       - "traefik.http.routers.api.rule=Host(`api.demo.echomind.ch`)"
       - "traefik.http.routers.api.entrypoints=websecure"
       - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.api.middlewares=api-cors"
       - "traefik.http.services.api.loadbalancer.server.port=8000"
+      # CORS middleware for API (required for SPA at demo.echomind.ch)
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE,PATCH"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolalloworiginlist=https://demo.echomind.ch,http://localhost:5173,http://localhost:3000"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolallowcredentials=true"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.api-cors.headers.addvaryheader=true"
 
   # ===============================================
   # EchoMind Migration - Database Migrations
