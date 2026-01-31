@@ -5,11 +5,11 @@
 # ======================================
 #
 # USAGE:
-#   ./cluster.sh [OPTIONS] <command>
+#   ./cluster.sh <--local|--host> <command>
 #
-# OPTIONS:
+# MODE (required):
+#   --local, -L    Use local mode (docker-compose.yml for development)
 #   --host, -H     Use host mode (docker-compose-host.yml for production)
-#                  Default: local mode (docker-compose.yml for development)
 #
 # CLUSTER MANAGEMENT:
 #   start          - Start the entire cluster with all services
@@ -29,13 +29,12 @@
 #   release        - Build and push API image to Docker Hub in one command
 #
 # EXAMPLES:
-#   ./cluster.sh start              # Start local cluster
+#   ./cluster.sh --local start      # Start local cluster
+#   ./cluster.sh -L start           # Start local cluster (short flag)
 #   ./cluster.sh --host start       # Start production cluster (demo.echomind.ch)
 #   ./cluster.sh -H logs api        # View API logs on host
-#   ./cluster.sh build              # Build all local services
-#   ./cluster.sh build embedder     # Build only embedder
-#   ./cluster.sh rebuild api        # Rebuild and restart api
-#   ./cluster.sh stop               # Stop the cluster
+#   ./cluster.sh -L build           # Build all local services
+#   ./cluster.sh -H rebuild web     # Rebuild web on host
 #
 # REQUIREMENTS:
 #   - Docker and Docker Compose installed
@@ -63,19 +62,43 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Mode detection (--host or -H flag)
-MODE="local"
-COMPOSE_FILE="docker-compose.yml"
-ENV_SOURCE=".env"
-DOMAIN="localhost"
+# Mode detection (--host/-H or --local/-L flag) - REQUIRED
+MODE=""
+COMPOSE_FILE=""
+ENV_SOURCE=""
+DOMAIN=""
 
-# Parse --host flag (must be first argument)
+# Parse mode flag (must be first argument)
 if [ "${1:-}" = "--host" ] || [ "${1:-}" = "-H" ]; then
     MODE="host"
     COMPOSE_FILE="docker-compose-host.yml"
     ENV_SOURCE=".env.host"
     DOMAIN="demo.echomind.ch"
     shift  # Remove the flag from arguments
+elif [ "${1:-}" = "--local" ] || [ "${1:-}" = "-L" ]; then
+    MODE="local"
+    COMPOSE_FILE="docker-compose.yml"
+    ENV_SOURCE=".env"
+    DOMAIN="localhost"
+    shift  # Remove the flag from arguments
+elif [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    # Allow help without mode flag
+    MODE="local"
+    COMPOSE_FILE="docker-compose.yml"
+else
+    echo -e "\033[0;31m❌ Error: Mode flag is required!\033[0m"
+    echo ""
+    echo "Usage: ./cluster.sh <--local|--host> <command>"
+    echo ""
+    echo "  --local, -L    Local development (docker-compose.yml)"
+    echo "  --host, -H     Production host (docker-compose-host.yml)"
+    echo ""
+    echo "Examples:"
+    echo "  ./cluster.sh --local start"
+    echo "  ./cluster.sh -H rebuild web"
+    echo ""
+    echo "Run './cluster.sh help' for full usage information."
+    exit 1
 fi
 
 # Functions
@@ -245,9 +268,9 @@ start_cluster() {
         echo ""
 
         log_info "Useful commands:"
-        echo -e "  ${YELLOW}./cluster.sh logs${NC}      - View logs"
-        echo -e "  ${YELLOW}./cluster.sh status${NC}    - Check status"
-        echo -e "  ${YELLOW}./cluster.sh stop${NC}      - Stop cluster"
+        echo -e "  ${YELLOW}./cluster.sh -L logs${NC}      - View logs"
+        echo -e "  ${YELLOW}./cluster.sh -L status${NC}    - Check status"
+        echo -e "  ${YELLOW}./cluster.sh -L stop${NC}      - Stop cluster"
         echo ""
     fi
 }
@@ -360,9 +383,9 @@ build_services() {
         log_success "${SERVICE} built!"
     fi
 
-    local flag=""
-    [ "$MODE" = "host" ] && flag="-H "
-    log_info "Run ${YELLOW}./cluster.sh ${flag}start${NC} to start with new images"
+    local flag="-L"
+    [ "$MODE" = "host" ] && flag="-H"
+    log_info "Run ${YELLOW}./cluster.sh ${flag} start${NC} to start with new images"
     echo ""
 }
 
@@ -490,13 +513,13 @@ show_help() {
 
     VERSION=$(get_version)
 
-    echo "Usage: ./cluster.sh [OPTIONS] [COMMAND]"
+    echo "Usage: ./cluster.sh <--local|--host> <command>"
     echo ""
     echo -e "Current Version: ${CYAN}${VERSION}${NC}"
-    echo -e "Current Mode: ${CYAN}${MODE}${NC} (${COMPOSE_FILE})"
     echo ""
-    echo "Options:"
-    echo -e "  ${GREEN}--host, -H${NC}   Use host mode (docker-compose-host.yml for production)"
+    echo "Mode (required):"
+    echo -e "  ${GREEN}--local, -L${NC}  Local development (docker-compose.yml)"
+    echo -e "  ${GREEN}--host, -H${NC}   Production host (docker-compose-host.yml)"
     echo ""
     echo "Cluster Management:"
     echo -e "  ${GREEN}start${NC}        Start the cluster"
@@ -519,13 +542,13 @@ show_help() {
     echo -e "  ${GREEN}help${NC}         Show this help message"
     echo ""
     echo "Examples:"
-    echo -e "  ${YELLOW}./cluster.sh start${NC}              # Start local cluster"
+    echo -e "  ${YELLOW}./cluster.sh --local start${NC}      # Start local cluster"
+    echo -e "  ${YELLOW}./cluster.sh -L start${NC}           # Start local cluster (short)"
     echo -e "  ${YELLOW}./cluster.sh --host start${NC}       # Start production cluster"
     echo -e "  ${YELLOW}./cluster.sh -H logs api${NC}        # View API logs on host"
-    echo -e "  ${YELLOW}./cluster.sh build${NC}              # Build all local services"
-    echo -e "  ${YELLOW}./cluster.sh build embedder${NC}     # Build only embedder"
-    echo -e "  ${YELLOW}./cluster.sh rebuild api${NC}        # Rebuild and restart api"
-    echo -e "  ${YELLOW}./cluster.sh stop${NC}               # Stop the cluster"
+    echo -e "  ${YELLOW}./cluster.sh -L build${NC}           # Build all local services"
+    echo -e "  ${YELLOW}./cluster.sh -H rebuild web${NC}     # Rebuild web on host"
+    echo -e "  ${YELLOW}./cluster.sh -L stop${NC}            # Stop local cluster"
     echo ""
 }
 
