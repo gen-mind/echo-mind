@@ -28,10 +28,14 @@ from api.routes import (
     embedding_models,
     health,
     llms,
+    teams,
+    upload,
     users,
 )
-from api.websocket.chat_handler import ChatHandler
-from echomind_lib.db.connection import close_db, init_db
+from api.logic.embedder_client import close_embedder_client, init_embedder_client
+from api.logic.llm_client import close_llm_client
+from api.websocket.chat_handler import create_chat_handler
+from echomind_lib.db.connection import close_db, get_db_manager, init_db
 from echomind_lib.db.minio import close_minio, init_minio
 from echomind_lib.db.nats_publisher import close_nats_publisher, init_nats_publisher
 from echomind_lib.db.qdrant import close_qdrant, init_qdrant
@@ -305,6 +309,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("🔄 Will retry NATS connection in background...")
         retry_tasks.append(asyncio.create_task(_retry_nats_connection(settings)))
 
+    # Initialize Embedder gRPC client for chat search
+    try:
+        await init_embedder_client(
+            host=settings.embedder_host,
+            port=settings.embedder_port,
+            timeout=settings.embedder_timeout,
+        )
+        logger.info("✅ Embedder client initialized successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ Embedder client initialization failed: {e}")
+
     # Register health checks for readiness probe
     _register_health_checks(settings.health_check_timeout)
 
@@ -338,6 +353,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     try:
         await close_nats_publisher()
+    except Exception:
+        pass
+
+    try:
+        await close_embedder_client()
+    except Exception:
+        pass
+
+    try:
+        await close_llm_client()
     except Exception:
         pass
 
@@ -386,18 +411,30 @@ def create_app() -> FastAPI:
         connectors.router, prefix="/api/v1/connectors", tags=["Connectors"]
     )
     app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
+    app.include_router(
+        upload.router, prefix="/api/v1/documents/upload", tags=["Upload"]
+    )
     app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
+    app.include_router(teams.router, prefix="/api/v1/teams", tags=["Teams"])
 
     # WebSocket endpoint
-    chat_handler = ChatHandler()
-
     @app.websocket("/api/v1/ws/chat")
     async def websocket_chat(websocket: WebSocket, token: str | None = None) -> None:
-        """WebSocket endpoint for real-time chat."""
+        """
+        WebSocket endpoint for real-time chat.
+
+        Creates a new ChatHandler per connection with its own DB session
+        for proper transaction management.
+        """
         if token is None:
             await websocket.close(code=4001, reason="Token required")
             return
-        await chat_handler.handle_connection(websocket, token)
+
+        # Get DB session for this connection
+        db_manager = get_db_manager()
+        async with db_manager.session() as db:
+            handler = create_chat_handler(db)
+            await handler.handle_connection(websocket, token)
 
     return app
 

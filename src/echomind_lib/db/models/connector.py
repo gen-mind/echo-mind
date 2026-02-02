@@ -21,6 +21,7 @@ from echomind_lib.db.models.base import (
 
 if TYPE_CHECKING:
     from echomind_lib.db.models.document import Document
+    from echomind_lib.db.models.team import Team
     from echomind_lib.db.models.user import User
 
 
@@ -38,6 +39,7 @@ class Connector(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     scope: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
     scope_id: Mapped[str | None] = mapped_column(Text)
+    team_id: Mapped[int | None] = mapped_column(SmallInteger, ForeignKey("teams.id"))
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
     status_message: Mapped[str | None] = mapped_column(Text)
     last_sync_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
@@ -48,4 +50,5 @@ class Connector(Base):
     deleted_date: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     
     user: Mapped["User"] = relationship(back_populates="connectors", foreign_keys=[user_id])
+    team: Mapped["Team | None"] = relationship(back_populates="connectors", foreign_keys=[team_id])
     documents: Mapped[list["Document"]] = relationship(back_populates="connector")

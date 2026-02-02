@@ -1,14 +1,25 @@
-import { useMemo } from 'react'
+import { useMemo, useCallback } from 'react'
 import { useAuth } from './AuthProvider'
 
 /**
  * Authentik group names
  */
-const GROUPS = {
+export const GROUPS = {
   ALLOWED: 'echomind-allowed',
   ADMINS: 'echomind-admins',
   SUPERADMINS: 'echomind-superadmins',
 } as const
+
+/**
+ * Connector scopes matching backend RBAC
+ */
+export const SCOPES = {
+  USER: 'user',
+  TEAM: 'team',
+  ORG: 'org',
+} as const
+
+export type ConnectorScope = (typeof SCOPES)[keyof typeof SCOPES]
 
 /**
  * Permission levels for features.
@@ -27,17 +38,27 @@ const FEATURE_PERMISSIONS: Record<string, PermissionLevel> = {
   chat: 'allowed',
   documents: 'allowed',
   assistants: 'allowed',
-  connectors: 'allowed', // View + personal only for 'allowed', full for admin+
+  connectors: 'allowed',
+  'connectors:view': 'allowed',
+  'connectors:create:user': 'allowed',
 
-  // Admin only (echomind-admins and above)
+  // Admin features (echomind-admins and above)
   users: 'admin',
-  'connectors:manage': 'admin', // Full connector management
+  teams: 'admin',
+  'teams:view': 'allowed', // View own teams
+  'teams:create': 'admin',
+  'teams:manage': 'admin',
+  'connectors:manage': 'admin',
+  'connectors:create:team': 'admin',
 
   // Superadmin only (echomind-superadmins)
   'embedding-models': 'superadmin',
   llms: 'superadmin',
   portainer: 'superadmin',
   infrastructure: 'superadmin',
+  'connectors:create:org': 'superadmin',
+  'teams:delete': 'admin', // Admins can delete teams they lead
+  'users:manage': 'superadmin',
 }
 
 /**
@@ -75,6 +96,8 @@ export interface UsePermissionsResult {
   level: PermissionLevel | null
   /** User's Authentik groups */
   groups: string[]
+  /** User's ID (from token) */
+  userId: number | null
   /** Check if user has a specific Authentik group */
   hasGroup: (group: string) => boolean
   /** Check if user has permission for a feature */
@@ -85,10 +108,54 @@ export interface UsePermissionsResult {
   isAdmin: boolean
   /** Check if user is 'superadmin' level */
   isSuperAdmin: boolean
+
+  // Connector-specific permissions
+  /** Check if user can create a connector with given scope */
+  canCreateConnector: (scope: ConnectorScope, teamId?: number, userTeamIds?: number[]) => boolean
+  /** Check if user can edit a connector */
+  canEditConnector: (
+    connector: { userId: number; scope: ConnectorScope; teamId?: number },
+    userTeamIds?: number[],
+    userTeamLeadIds?: number[]
+  ) => boolean
+  /** Check if user can delete a connector */
+  canDeleteConnector: (
+    connector: { userId: number; scope: ConnectorScope; teamId?: number },
+    userTeamIds?: number[],
+    userTeamLeadIds?: number[]
+  ) => boolean
+  /** Check if user can view a connector */
+  canViewConnector: (
+    connector: { userId: number; scope: ConnectorScope; teamId?: number },
+    userTeamIds?: number[]
+  ) => boolean
+
+  // Team-specific permissions
+  /** Check if user can create teams */
+  canCreateTeam: boolean
+  /** Check if user can manage a specific team */
+  canManageTeam: (teamId: number, leaderId?: number, userTeamLeadIds?: number[]) => boolean
 }
 
 /**
  * Hook to check user permissions based on Authentik groups.
+ *
+ * Implements RBAC rules defined in docs/rbac.md.
+ *
+ * @example
+ * ```tsx
+ * function ConnectorPage() {
+ *   const { canCreateConnector, canEditConnector, isAdmin } = usePermissions()
+ *
+ *   return (
+ *     <div>
+ *       {canCreateConnector('user') && <CreatePersonalConnectorButton />}
+ *       {canCreateConnector('team', teamId, userTeamIds) && <CreateTeamConnectorButton />}
+ *       {canCreateConnector('org') && <CreateOrgConnectorButton />}
+ *     </div>
+ *   )
+ * }
+ * ```
  *
  * @example
  * ```tsx
@@ -108,29 +175,192 @@ export interface UsePermissionsResult {
 export function usePermissions(): UsePermissionsResult {
   const { user } = useAuth()
 
-  return useMemo(() => {
-    // Extract groups from OIDC token
-    const groups: string[] = (user?.profile?.groups as string[]) || []
+  // Extract user info from OIDC token
+  const groups: string[] = useMemo(
+    () => (user?.profile?.groups as string[]) || [],
+    [user]
+  )
 
-    // Get the user's permission level
-    const level = getPermissionLevel(groups)
+  const userId: number | null = useMemo(() => {
+    // user.profile.sub is the user ID from Authentik
+    const sub = user?.profile?.sub
+    if (!sub) return null
+    // Try to parse as number, fallback to null
+    const parsed = parseInt(sub, 10)
+    return isNaN(parsed) ? null : parsed
+  }, [user])
 
-    return {
+  const level = useMemo(() => getPermissionLevel(groups), [groups])
+
+  const isAllowed = level !== null
+  const isAdmin = meetsLevel(level, 'admin')
+  const isSuperAdmin = meetsLevel(level, 'superadmin')
+
+  // Basic permission check
+  const can = useCallback(
+    (feature: string): boolean => {
+      const requiredLevel = FEATURE_PERMISSIONS[feature]
+      if (!requiredLevel) {
+        // Unknown feature - deny by default
+        console.warn(`Unknown permission feature: ${feature}`)
+        return false
+      }
+      return meetsLevel(level, requiredLevel)
+    },
+    [level]
+  )
+
+  const hasGroup = useCallback(
+    (group: string): boolean => groups.includes(group),
+    [groups]
+  )
+
+  // Connector permissions
+  const canCreateConnector = useCallback(
+    (scope: ConnectorScope, teamId?: number, userTeamIds?: number[]): boolean => {
+      if (isSuperAdmin) return true
+
+      if (scope === SCOPES.USER) {
+        return isAllowed
+      }
+
+      if (scope === SCOPES.TEAM) {
+        // Must be admin AND member of the team
+        if (!isAdmin) return false
+        if (!teamId || !userTeamIds) return false
+        return userTeamIds.includes(teamId)
+      }
+
+      if (scope === SCOPES.ORG) {
+        return isSuperAdmin
+      }
+
+      return false
+    },
+    [isAllowed, isAdmin, isSuperAdmin]
+  )
+
+  const canViewConnector = useCallback(
+    (
+      connector: { userId: number; scope: ConnectorScope; teamId?: number },
+      userTeamIds?: number[]
+    ): boolean => {
+      if (isSuperAdmin) return true
+
+      const { userId: connectorUserId, scope, teamId } = connector
+
+      if (scope === SCOPES.USER) {
+        // Owner only
+        return connectorUserId === userId
+      }
+
+      if (scope === SCOPES.TEAM) {
+        // Team members
+        if (!teamId || !userTeamIds) return false
+        return userTeamIds.includes(teamId)
+      }
+
+      if (scope === SCOPES.ORG) {
+        // All allowed users
+        return isAllowed
+      }
+
+      return false
+    },
+    [userId, isAllowed, isSuperAdmin]
+  )
+
+  const canEditConnector = useCallback(
+    (
+      connector: { userId: number; scope: ConnectorScope; teamId?: number },
+      userTeamIds?: number[],
+      userTeamLeadIds?: number[]
+    ): boolean => {
+      if (isSuperAdmin) return true
+
+      const { userId: connectorUserId, scope, teamId } = connector
+
+      if (scope === SCOPES.USER) {
+        // Owner only
+        return connectorUserId === userId
+      }
+
+      if (scope === SCOPES.TEAM) {
+        // Team lead or admin who is member
+        if (!teamId) return false
+
+        // Check if user is team lead
+        if (userTeamLeadIds?.includes(teamId)) return true
+
+        // Admins who are team members can edit
+        if (isAdmin && userTeamIds?.includes(teamId)) return true
+
+        return false
+      }
+
+      if (scope === SCOPES.ORG) {
+        // Superadmin only (already checked above)
+        return false
+      }
+
+      return false
+    },
+    [userId, isAdmin, isSuperAdmin]
+  )
+
+  // Delete uses same rules as edit
+  const canDeleteConnector = canEditConnector
+
+  // Team permissions
+  const canCreateTeam = isAdmin
+
+  const canManageTeam = useCallback(
+    (teamId: number, leaderId?: number, userTeamLeadIds?: number[]): boolean => {
+      if (isSuperAdmin) return true
+      if (isAdmin) return true // Admins can manage any team
+
+      // Team leader can manage
+      if (leaderId === userId) return true
+
+      // Check if user is lead of this team
+      if (userTeamLeadIds?.includes(teamId)) return true
+
+      return false
+    },
+    [userId, isAdmin, isSuperAdmin]
+  )
+
+  return useMemo(
+    () => ({
       level,
       groups,
-      hasGroup: (group: string) => groups.includes(group),
-      can: (feature: string) => {
-        const requiredLevel = FEATURE_PERMISSIONS[feature]
-        if (!requiredLevel) {
-          // Unknown feature - deny by default
-          console.warn(`Unknown permission feature: ${feature}`)
-          return false
-        }
-        return meetsLevel(level, requiredLevel)
-      },
-      isAllowed: level !== null,
-      isAdmin: meetsLevel(level, 'admin'),
-      isSuperAdmin: meetsLevel(level, 'superadmin'),
-    }
-  }, [user])
+      userId,
+      hasGroup,
+      can,
+      isAllowed,
+      isAdmin,
+      isSuperAdmin,
+      canCreateConnector,
+      canViewConnector,
+      canEditConnector,
+      canDeleteConnector,
+      canCreateTeam,
+      canManageTeam,
+    }),
+    [
+      level,
+      groups,
+      userId,
+      hasGroup,
+      can,
+      isAllowed,
+      isAdmin,
+      isSuperAdmin,
+      canCreateConnector,
+      canViewConnector,
+      canEditConnector,
+      canDeleteConnector,
+      canManageTeam,
+    ]
+  )
 }

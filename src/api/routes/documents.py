@@ -1,13 +1,11 @@
-"""Document management endpoints."""
+"""Document management endpoints with RBAC enforcement."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from pydantic import BaseModel
-from sqlalchemy import select
 
 from api.converters import orm_to_document
 from api.dependencies import CurrentUser, DbSession
-from echomind_lib.db.models import Connector as ConnectorORM
-from echomind_lib.db.models import Document as DocumentORM
+from api.logic.document_service import DocumentService
 from echomind_lib.models.public import (
     Document,
     ListDocumentsResponse,
@@ -18,6 +16,7 @@ router = APIRouter()
 
 class DocumentSearchResult(BaseModel):
     """Search result with relevance score."""
+
     document: Document
     chunk_id: str
     chunk_content: str
@@ -26,6 +25,7 @@ class DocumentSearchResult(BaseModel):
 
 class DocumentSearchResponse(BaseModel):
     """Response model for document search."""
+
     results: list[DocumentSearchResult]
 
 
@@ -39,7 +39,13 @@ async def list_documents(
     doc_status: str | None = None,
 ) -> ListDocumentsResponse:
     """
-    List documents for the current user's connectors.
+    List documents accessible to the current user.
+
+    Access rules:
+    - User sees documents from own connectors
+    - User sees documents from team connectors for teams they belong to
+    - User sees documents from org connectors
+    - Superadmins see all documents
 
     Args:
         user: The authenticated user.
@@ -52,39 +58,16 @@ async def list_documents(
     Returns:
         ListDocumentsResponse: Paginated list of documents.
     """
-    # Get user's connector IDs
-    connector_query = select(ConnectorORM.id).where(
-        ConnectorORM.user_id == user.id,
-        ConnectorORM.deleted_date.is_(None),
+    service = DocumentService(db)
+    db_documents = await service.list_documents(
+        user=user,
+        page=page,
+        limit=limit,
+        connector_id=connector_id,
+        doc_status=doc_status,
     )
-    if connector_id:
-        connector_query = connector_query.where(ConnectorORM.id == connector_id)
-    
-    connector_result = await db.execute(connector_query)
-    connector_ids = [c[0] for c in connector_result.all()]
-    
-    if not connector_ids:
-        return ListDocumentsResponse(documents=[])
-    
-    # Query documents
-    query = select(DocumentORM).where(DocumentORM.connector_id.in_(connector_ids))
-    
-    if doc_status:
-        query = query.where(DocumentORM.status == doc_status)
-    
-    query = query.order_by(DocumentORM.creation_date.desc())
-    
-    # Count total
-    count_query = select(DocumentORM.id).where(DocumentORM.connector_id.in_(connector_ids))
-    if doc_status:
-        count_query = count_query.where(DocumentORM.status == doc_status)
-    # Paginate
-    query = query.offset((page - 1) * limit).limit(limit)
-    result = await db.execute(query)
-    db_documents = result.scalars().all()
-    
+
     documents = [orm_to_document(d) for d in db_documents]
-    
     return ListDocumentsResponse(documents=documents)
 
 
@@ -100,6 +83,11 @@ async def search_documents(
     """
     Search documents using vector similarity.
 
+    Searches across all collections accessible to the user:
+    - Personal collection (user_{user_id})
+    - Team collections (team_{team_id}) for user's teams
+    - Organization collection (org_default)
+
     Args:
         user: The authenticated user.
         db: Database session.
@@ -111,27 +99,27 @@ async def search_documents(
     Returns:
         DocumentSearchResponse: List of matching documents with scores.
     """
-    # Get user's connector IDs
-    connector_query = select(ConnectorORM.id, ConnectorORM.scope, ConnectorORM.scope_id).where(
-        ConnectorORM.user_id == user.id,
-        ConnectorORM.deleted_date.is_(None),
+    service = DocumentService(db)
+    results = await service.search_documents(
+        user=user,
+        query_text=query,
+        connector_id=connector_id,
+        limit=min(limit, 50),
+        min_score=min_score,
     )
-    if connector_id:
-        connector_query = connector_query.where(ConnectorORM.id == connector_id)
-    
-    connector_result = await db.execute(connector_query)
-    connectors = connector_result.all()
-    
-    if not connectors:
-        return DocumentSearchResponse(results=[])
-    
-    # Stub: Vector search requires Embedder + Qdrant integration (Phase 2)
-    # Production implementation:
-    # 1. Embed the query using the active embedding model
-    # 2. Search Qdrant collections based on connector scopes
-    # 3. Return ranked results
-    
-    return DocumentSearchResponse(results=[])
+
+    # Transform results to response model
+    search_results = [
+        DocumentSearchResult(
+            document=orm_to_document(r["document"]),
+            chunk_id=r["chunk_id"],
+            chunk_content=r["chunk_content"],
+            score=r["score"],
+        )
+        for r in results
+    ]
+
+    return DocumentSearchResponse(results=search_results)
 
 
 @router.get("/{document_id}", response_model=Document)
@@ -143,6 +131,13 @@ async def get_document(
     """
     Get a document by ID.
 
+    Access rules:
+    - Document inherits permissions from its connector
+    - User scope: Owner only
+    - Team scope: Team members
+    - Org scope: All allowed users
+    - Superadmins: All documents
+
     Args:
         document_id: The ID of the document to retrieve.
         user: The authenticated user.
@@ -152,25 +147,12 @@ async def get_document(
         Document: The requested document.
 
     Raises:
-        HTTPException: 404 if document not found or user doesn't own it.
+        HTTPException: 404 if document not found.
+        HTTPException: 403 if user lacks permission.
     """
-    # Verify user owns the connector
-    result = await db.execute(
-        select(DocumentORM)
-        .join(ConnectorORM, DocumentORM.connector_id == ConnectorORM.id)
-        .where(DocumentORM.id == document_id)
-        .where(ConnectorORM.user_id == user.id)
-        .where(ConnectorORM.deleted_date.is_(None))
-    )
-    db_document = result.scalar_one_or_none()
-    
-    if not db_document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found",
-        )
-    
-    return orm_to_document(db_document)
+    service = DocumentService(db)
+    document = await service.get_document(document_id, user)
+    return orm_to_document(document)
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -182,32 +164,20 @@ async def delete_document(
     """
     Delete a document and its chunks from the vector store.
 
+    Access rules:
+    - Document inherits permissions from its connector
+    - User scope: Owner only
+    - Team scope: Team leads or admin team members
+    - Org scope: Superadmins only
+
     Args:
         document_id: The ID of the document to delete.
         user: The authenticated user.
         db: Database session.
 
     Raises:
-        HTTPException: 404 if document not found or user doesn't own it.
+        HTTPException: 404 if document not found.
+        HTTPException: 403 if user lacks permission.
     """
-    # Verify user owns the connector
-    result = await db.execute(
-        select(DocumentORM)
-        .join(ConnectorORM, DocumentORM.connector_id == ConnectorORM.id)
-        .where(DocumentORM.id == document_id)
-        .where(ConnectorORM.user_id == user.id)
-        .where(ConnectorORM.deleted_date.is_(None))
-    )
-    db_document = result.scalar_one_or_none()
-    
-    if not db_document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found",
-        )
-    
-    # Stub: Qdrant chunk deletion requires vector DB integration (Phase 2)
-    # Stub: MinIO file deletion requires storage integration (Phase 2)
-    
-    # Delete from database
-    await db.delete(db_document)
+    service = DocumentService(db)
+    await service.delete_document(document_id, user)

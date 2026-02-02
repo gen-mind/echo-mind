@@ -80,3 +80,4 @@ export {
 export { Textarea } from './textarea'
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip'
 export { Toaster } from './sonner'
+export { Progress } from './progress'

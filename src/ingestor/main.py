@@ -368,6 +368,7 @@ class IngestorApp:
                         chunking_session=request.chunking_session,
                         scope=scope,
                         scope_id=request.scope_id or None,
+                        team_id=request.team_id if request.team_id else None,
                     )
 
                     # ACK message on success

@@ -59,7 +59,7 @@ class ValidationError(APIError):
         super().__init__(
             code="VALIDATION_ERROR",
             message=message,
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             details=details,
         )
 

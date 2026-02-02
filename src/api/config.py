@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     )
     
     
+    # Embedder gRPC
+    embedder_host: str = Field(default="localhost", description="Embedder gRPC host")
+    embedder_port: int = Field(default=50051, description="Embedder gRPC port")
+    embedder_timeout: float = Field(default=30.0, description="Embedder call timeout")
+
     # CORS
     cors_origins: list[str] = Field(
         default=["http://localhost:3000"],

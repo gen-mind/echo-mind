@@ -13,3 +13,4 @@ export * from './public/connector';
 export * from './public/document';
 export * from './public/llm';
 export * from './public/embedding_model';
+export * from './public/team';

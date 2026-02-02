@@ -5,17 +5,17 @@ Handles connector sync scheduling and NATS message publishing.
 This is protocol-agnostic business logic that can be used by any entry point.
 """
 
-import json
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Any
 
+from google.protobuf import struct_pb2
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from echomind_lib.db.crud.connector import connector_crud
 from echomind_lib.db.models import Connector
 from echomind_lib.db.nats_publisher import JetStreamPublisher
+from echomind_lib.models.internal import orchestrator_pb2
+from echomind_lib.models.public import connector_pb2
 
 from orchestrator.logic.exceptions import (
     ConnectorNotFoundError,
@@ -32,6 +32,24 @@ CONNECTOR_SUBJECTS: dict[str, str] = {
     "onedrive": "connector.sync.onedrive",
     "google_drive": "connector.sync.google_drive",
     "teams": "connector.sync.teams",
+}
+
+# Connector type string to proto enum mapping
+CONNECTOR_TYPE_MAP: dict[str, int] = {
+    "web": connector_pb2.ConnectorType.CONNECTOR_TYPE_WEB,
+    "file": connector_pb2.ConnectorType.CONNECTOR_TYPE_FILE,
+    "onedrive": connector_pb2.ConnectorType.CONNECTOR_TYPE_ONEDRIVE,
+    "google_drive": connector_pb2.ConnectorType.CONNECTOR_TYPE_GOOGLE_DRIVE,
+    "teams": connector_pb2.ConnectorType.CONNECTOR_TYPE_TEAMS,
+}
+
+# Connector scope string to proto enum mapping
+# Note: "team" maps to GROUP (proto doesn't have TEAM enum)
+CONNECTOR_SCOPE_MAP: dict[str, int] = {
+    "user": connector_pb2.ConnectorScope.CONNECTOR_SCOPE_USER,
+    "team": connector_pb2.ConnectorScope.CONNECTOR_SCOPE_GROUP,  # team uses GROUP
+    "group": connector_pb2.ConnectorScope.CONNECTOR_SCOPE_GROUP,
+    "org": connector_pb2.ConnectorScope.CONNECTOR_SCOPE_ORG,
 }
 
 
@@ -134,19 +152,19 @@ class OrchestratorService:
 
         await self._session.commit()
 
-        # Build message payload
-        payload = self._build_sync_payload(connector, chunking_session)
-
         # Get NATS subject for connector type
         subject = CONNECTOR_SUBJECTS.get(connector.type)
         if not subject:
             raise SyncTriggerError(connector.id, f"Unknown connector type: {connector.type}")
 
+        # Build protobuf message
+        request = self._build_sync_request(connector, chunking_session)
+
         # Publish to NATS (fire-and-forget)
         try:
             await self._publisher.publish(
                 subject=subject,
-                payload=json.dumps(payload).encode("utf-8"),
+                payload=request.SerializeToString(),
             )
         except Exception as e:
             raise SyncTriggerError(connector.id, f"NATS publish failed: {e}") from e
@@ -160,32 +178,71 @@ class OrchestratorService:
 
         return chunking_session
 
-    def _build_sync_payload(
+    def _build_sync_request(
         self,
         connector: Connector,
         chunking_session: str,
-    ) -> dict[str, Any]:
+    ) -> orchestrator_pb2.ConnectorSyncRequest:
         """
-        Build the sync request payload.
+        Build the sync request protobuf message.
 
         Args:
             connector: Connector to sync.
             chunking_session: UUID for this sync session.
 
         Returns:
-            Dict payload for NATS message.
+            ConnectorSyncRequest protobuf message.
+
+        Raises:
+            SyncTriggerError: If connector type is not in the mapping.
         """
-        return {
-            "connector_id": connector.id,
-            "type": connector.type,
-            "user_id": connector.user_id,
-            "scope": connector.scope,
-            "scope_id": connector.scope_id,
-            "config": connector.config,
-            "state": connector.state,
-            "chunking_session": chunking_session,
-            "triggered_at": datetime.now(timezone.utc).isoformat(),
-        }
+        request = orchestrator_pb2.ConnectorSyncRequest()
+        request.connector_id = connector.id
+        request.user_id = connector.user_id
+        request.chunking_session = chunking_session
+
+        # Set connector type enum using explicit mapping
+        connector_type = connector.type.lower() if connector.type else None
+        if connector_type not in CONNECTOR_TYPE_MAP:
+            raise SyncTriggerError(
+                connector.id,
+                f"Unknown connector type: {connector.type}",
+            )
+        request.type = CONNECTOR_TYPE_MAP[connector_type]
+
+        # Set scope enum using explicit mapping
+        # Note: "team" correctly maps to CONNECTOR_SCOPE_GROUP
+        connector_scope = connector.scope.lower() if connector.scope else "user"
+        request.scope = CONNECTOR_SCOPE_MAP.get(
+            connector_scope,
+            connector_pb2.ConnectorScope.CONNECTOR_SCOPE_USER,
+        )
+
+        # Set scope_id if present
+        if connector.scope_id:
+            request.scope_id = connector.scope_id
+
+        # Convert config dict to protobuf Struct
+        if connector.config:
+            config_struct = struct_pb2.Struct()
+            config_struct.update(connector.config)
+            request.config.CopyFrom(config_struct)
+
+        # Convert state dict to protobuf Struct
+        if connector.state:
+            state_struct = struct_pb2.Struct()
+            state_struct.update(connector.state)
+            request.state.CopyFrom(state_struct)
+
+        logger.debug(
+            "🔧 Built sync request: connector_id=%d, type=%s, scope=%s, session=%s",
+            connector.id,
+            connector_type,
+            connector_scope,
+            chunking_session,
+        )
+
+        return request
 
     async def trigger_manual_sync(self, connector_id: int) -> str:
         """

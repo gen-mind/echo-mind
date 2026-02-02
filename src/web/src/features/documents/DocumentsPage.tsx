@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { FileText, Search, Trash2, ExternalLink, Loader2 } from 'lucide-react'
+import { FileText, Search, Trash2, ExternalLink, Loader2, Upload, RefreshCw, Info } from 'lucide-react'
 import { documentsApi, connectorsApi } from '@/api'
 import type { DocumentStatus } from '@/models'
+import { FileUploadDialog } from './components'
 import {
   Button,
   Input,
@@ -50,6 +51,7 @@ export function DocumentsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [connectorFilter, setConnectorFilter] = useState<string>('all')
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [page, setPage] = useState(1)
   const limit = 20
 
@@ -60,7 +62,7 @@ export function DocumentsPage() {
 
   const connectors = connectorsData?.connectors || []
 
-  const { data: documentsData, isLoading } = useQuery({
+  const { data: documentsData, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['documents', { page, limit, status: statusFilter, connector_id: connectorFilter }],
     queryFn: () =>
       documentsApi.list({
@@ -103,6 +105,16 @@ export function DocumentsPage() {
               View and manage documents from your connectors
             </p>
           </div>
+          <Button onClick={() => setUploadDialogOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Upload
+          </Button>
+        </div>
+
+        {/* Status update notice */}
+        <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-muted/50 rounded-md">
+          <Info className="h-4 w-4 flex-shrink-0" />
+          <span>Document processing happens in the background. Click refresh to see status updates.</span>
         </div>
 
         <Card>
@@ -117,6 +129,15 @@ export function DocumentsPage() {
                   className="pl-9"
                 />
               </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                title="Refresh document list"
+              >
+                <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
+              </Button>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[150px]">
                   <SelectValue placeholder="Status" />
@@ -277,6 +298,15 @@ export function DocumentsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Upload Dialog */}
+        <FileUploadDialog
+          open={uploadDialogOpen}
+          onOpenChange={setUploadDialogOpen}
+          onUploadComplete={() => {
+            queryClient.invalidateQueries({ queryKey: ['documents'] })
+          }}
+        />
       </div>
     </div>
   )

@@ -30,6 +30,8 @@ from connector.logic.providers.base import (
     BaseProvider,
     DeletedFile,
     DownloadedFile,
+    FileMetadata,
+    StreamResult,
 )
 from connector.logic.providers.google_drive import GoogleDriveProvider
 from connector.logic.providers.onedrive import OneDriveProvider
@@ -143,21 +145,43 @@ class ConnectorService:
             # Authenticate
             await provider.authenticate(connector.config)
 
-            # Sync and process documents
+            # Sync and process documents using streaming
             docs_processed = 0
 
-            async for item in provider.sync(connector.config, checkpoint):
-                if isinstance(item, DownloadedFile):
-                    await self._process_downloaded_file(
-                        connector, item, chunking_session
+            # Detect changes via provider's change detection
+            async for change in provider.get_changes(connector.config, checkpoint):
+                if change.action == "delete":
+                    await self._process_deleted_file(
+                        connector, DeletedFile(source_id=change.source_id)
                     )
-                    docs_processed += 1
-                elif isinstance(item, DeletedFile):
-                    await self._process_deleted_file(connector, item)
+                elif change.file:
+                    # Check for duplicates in checkpoint
+                    if hasattr(checkpoint, "mark_file_retrieved"):
+                        if not checkpoint.mark_file_retrieved(change.source_id):
+                            continue
+                    elif hasattr(checkpoint, "mark_item_retrieved"):
+                        if not checkpoint.mark_item_retrieved(change.source_id):
+                            continue
+
+                    # Stream file directly to storage
+                    try:
+                        await self._process_file_stream(
+                            connector, provider, change.file, chunking_session
+                        )
+                        docs_processed += 1
+                    except Exception as e:
+                        logger.warning(
+                            "⚠️ Failed to stream file %s: %s",
+                            change.source_id,
+                            e,
+                        )
+                        checkpoint.error_count += 1
 
                 # Save checkpoint periodically
                 if docs_processed % 10 == 0:
                     await self._save_checkpoint(connector, checkpoint)
+
+            checkpoint.has_more = False
 
             # Save final checkpoint
             await self._save_checkpoint(connector, checkpoint)
@@ -299,6 +323,145 @@ class ConnectorService:
 
         # Publish to NATS
         await self._publish_document_process(doc, connector, chunking_session)
+
+    async def _process_file_stream(
+        self,
+        connector: Connector,
+        provider: BaseProvider,
+        file: FileMetadata,
+        chunking_session: str = "",
+    ) -> None:
+        """
+        Stream a file from provider directly to MinIO storage.
+
+        Memory-efficient method that streams file content without loading
+        the entire file into memory.
+
+        Args:
+            connector: Connector model.
+            provider: Provider instance.
+            file: File metadata from change detection.
+            chunking_session: UUID for this sync session.
+        """
+        # Generate MinIO path
+        object_name = self._generate_minio_path_from_metadata(connector, file)
+
+        # Stream directly to storage
+        try:
+            result = await provider.stream_to_storage(
+                file=file,
+                config=connector.config,
+                minio_client=self._minio,
+                bucket=self._bucket,
+                object_key=object_name,
+            )
+            logger.info(
+                "✅ Streamed %s to MinIO: %s (%d bytes)",
+                file.name,
+                object_name,
+                result.size,
+            )
+        except Exception as e:
+            raise MinioUploadError(object_name, str(e)) from e
+
+        # Fetch permissions
+        external_access = await provider.get_file_permissions(file, connector.config)
+
+        # Create or update document record
+        doc = await self._upsert_document_from_stream(
+            connector, file, object_name, result, external_access
+        )
+
+        # Publish to NATS
+        await self._publish_document_process(doc, connector, chunking_session)
+
+    def _generate_minio_path_from_metadata(
+        self,
+        connector: Connector,
+        file: FileMetadata,
+    ) -> str:
+        """
+        Generate MinIO object path for a file from metadata.
+
+        Format: {connector_id}/{source_id}/{uuid}_{filename}
+
+        Args:
+            connector: Connector model.
+            file: File metadata.
+
+        Returns:
+            MinIO object path.
+        """
+        safe_name = file.name.replace("/", "_").replace("\\", "_")
+        unique_id = uuid.uuid4().hex[:8]
+        return f"{connector.id}/{file.source_id}/{unique_id}_{safe_name}"
+
+    async def _upsert_document_from_stream(
+        self,
+        connector: Connector,
+        file: FileMetadata,
+        minio_url: str,
+        stream_result: StreamResult,
+        external_access: Any,
+    ) -> Document:
+        """
+        Create or update document record from stream result.
+
+        Args:
+            connector: Connector model.
+            file: File metadata.
+            minio_url: MinIO object path.
+            stream_result: Result from streaming upload.
+            external_access: File permissions.
+
+        Returns:
+            Document model.
+        """
+        # Check for existing document
+        result = await self._db.execute(
+            select(Document).where(
+                Document.connector_id == connector.id,
+                Document.source_id == file.source_id,
+            )
+        )
+        doc = result.scalar_one_or_none()
+
+        now = datetime.now(timezone.utc)
+
+        if doc:
+            # Update existing
+            doc.url = minio_url
+            doc.original_url = file.web_url
+            doc.title = file.name
+            doc.content_type = file.mime_type
+            doc.signature = stream_result.content_hash or file.content_hash
+            doc.status = "pending"
+            doc.last_update = now
+        else:
+            # Create new
+            doc = Document(
+                connector_id=connector.id,
+                source_id=file.source_id,
+                url=minio_url,
+                original_url=file.web_url,
+                title=file.name,
+                content_type=file.mime_type,
+                signature=stream_result.content_hash or file.content_hash,
+                status="pending",
+                creation_date=now,
+            )
+            self._db.add(doc)
+
+        await self._db.commit()
+        await self._db.refresh(doc)
+
+        logger.info(
+            "✅ %s document %d for source %s",
+            "Updated" if doc else "Created",
+            doc.id,
+            file.source_id,
+        )
+        return doc
 
     async def _process_deleted_file(
         self,
@@ -455,6 +618,10 @@ class ConnectorService:
             scope=scope_enum,
             scope_id=connector.scope_id or "",
         )
+
+        # Set team_id for team-scoped connectors
+        if connector.team_id is not None:
+            message.team_id = connector.team_id
 
         await self._nats.publish(
             subject="document.process",

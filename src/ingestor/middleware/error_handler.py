@@ -20,6 +20,7 @@ from ingestor.logic.exceptions import (
     IngestorError,
     MinioError,
     NatsError,
+    OwnershipMismatchError,
     UnsupportedMimeTypeError,
     ValidationError,
 )
@@ -63,6 +64,25 @@ async def handle_ingestor_error(error: IngestorError) -> dict[str, Any]:
         logger.error("❌ Document not found: %d", error.document_id)
         error_info["should_retry"] = False
         error_info["details"]["document_id"] = error.document_id
+
+    elif isinstance(error, OwnershipMismatchError):
+        # SECURITY: Never retry - indicates forged or corrupted message
+        logger.critical(
+            "🚨 SECURITY: Ownership mismatch detected! Document %d - "
+            "claimed connector=%d (actual=%d), claimed user=%s (actual=%s)",
+            error.document_id,
+            error.expected_connector_id,
+            error.actual_connector_id,
+            error.expected_user_id,
+            error.actual_user_id,
+        )
+        error_info["should_retry"] = False
+        error_info["details"]["document_id"] = error.document_id
+        error_info["details"]["claimed_connector_id"] = error.expected_connector_id
+        error_info["details"]["actual_connector_id"] = error.actual_connector_id
+        error_info["details"]["claimed_user_id"] = error.expected_user_id
+        error_info["details"]["actual_user_id"] = error.actual_user_id
+        error_info["details"]["security_alert"] = True
 
     elif isinstance(error, UnsupportedMimeTypeError):
         logger.error("❌ Unsupported MIME type: %s", error.mime_type)

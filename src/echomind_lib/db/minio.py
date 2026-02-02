@@ -5,9 +5,20 @@ Provides async operations for file storage and retrieval.
 """
 
 import io
-from typing import Any, BinaryIO
+from dataclasses import dataclass
+from datetime import timedelta
+from typing import Any, AsyncIterator, BinaryIO
 
 from miniopy_async import Minio
+
+
+@dataclass
+class StreamUploadResult:
+    """Result of a streaming upload operation."""
+
+    etag: str
+    size: int
+    storage_path: str
 
 
 class MinIOClient:
@@ -105,7 +116,80 @@ class MinIOClient:
             metadata=metadata,
         )
         return result.etag
-    
+
+    async def stream_upload(
+        self,
+        bucket_name: str,
+        object_name: str,
+        data_stream: AsyncIterator[bytes],
+        content_type: str = "application/octet-stream",
+        metadata: dict[str, str] | None = None,
+    ) -> StreamUploadResult:
+        """
+        Upload a file from an async stream to MinIO.
+
+        This method collects the stream into memory before uploading.
+        For true streaming with unknown size, miniopy-async requires the
+        length parameter. Future optimization: use multipart upload for
+        very large files.
+
+        Args:
+            bucket_name: Target bucket.
+            object_name: Object path/name.
+            data_stream: Async iterator yielding bytes chunks.
+            content_type: MIME type.
+            metadata: Optional metadata dict.
+
+        Returns:
+            StreamUploadResult with etag, size, and storage path.
+        """
+        # Collect stream into buffer
+        # Note: For files > 5GB, should use multipart upload
+        chunks: list[bytes] = []
+        async for chunk in data_stream:
+            chunks.append(chunk)
+
+        content = b"".join(chunks)
+        length = len(content)
+
+        result = await self._client.put_object(
+            bucket_name=bucket_name,
+            object_name=object_name,
+            data=io.BytesIO(content),
+            length=length,
+            content_type=content_type,
+            metadata=metadata,
+        )
+
+        return StreamUploadResult(
+            etag=result.etag,
+            size=length,
+            storage_path=f"minio:{bucket_name}:{object_name}",
+        )
+
+    async def presigned_put_url(
+        self,
+        bucket_name: str,
+        object_name: str,
+        expires: int = 3600,
+    ) -> str:
+        """
+        Generate a presigned URL for uploading (PUT).
+
+        Args:
+            bucket_name: Bucket name.
+            object_name: Object path.
+            expires: URL validity in seconds.
+
+        Returns:
+            Presigned PUT URL.
+        """
+        return await self._client.presigned_put_object(
+            bucket_name,
+            object_name,
+            expires=timedelta(seconds=expires),
+        )
+
     async def download_file(self, bucket_name: str, object_name: str) -> bytes:
         """
         Download a file from MinIO.

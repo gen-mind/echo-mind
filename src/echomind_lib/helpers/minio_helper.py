@@ -7,9 +7,9 @@ Provides high-level utilities for document storage and retrieval.
 import hashlib
 import mimetypes
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 
-from echomind_lib.db.minio import get_minio, MinIOClient
+from echomind_lib.db.minio import get_minio, MinIOClient, StreamUploadResult
 
 
 class MinIOHelper:
@@ -115,7 +115,50 @@ class MinIOHelper:
         )
         
         return f"minio:{self._bucket}:{path}"
-    
+
+    async def stream_upload_document(
+        self,
+        connector_id: int,
+        document_id: int,
+        data_stream: AsyncIterator[bytes],
+        filename: str = "content",
+        content_type: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> StreamUploadResult:
+        """
+        Upload a document from an async stream to MinIO.
+
+        Memory-efficient upload for large files using streaming.
+
+        Args:
+            connector_id: Connector ID.
+            document_id: Document ID.
+            data_stream: Async iterator yielding bytes chunks.
+            filename: Original filename.
+            content_type: MIME type (auto-detected if not provided).
+            metadata: Optional metadata.
+
+        Returns:
+            StreamUploadResult with etag, size, and storage path.
+        """
+        if content_type is None:
+            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+        path = self._get_document_path(connector_id, document_id, filename)
+
+        result = await self.client.stream_upload(
+            bucket_name=self._bucket,
+            object_name=path,
+            data_stream=data_stream,
+            content_type=content_type,
+            metadata=metadata,
+        )
+
+        # Override storage_path with correct format
+        result.storage_path = f"minio:{self._bucket}:{path}"
+
+        return result
+
     async def download_document(self, storage_path: str) -> bytes:
         """
         Download a document from MinIO.

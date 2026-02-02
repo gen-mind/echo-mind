@@ -1,14 +1,13 @@
-"""Connector management endpoints."""
+"""Connector management endpoints with RBAC enforcement."""
 
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from pydantic import BaseModel
 
 from api.converters import orm_to_connector
 from api.dependencies import CurrentUser, DbSession, NatsPublisher
 from api.logic.connector_service import ConnectorService
-from api.logic.exceptions import NotFoundError
 from echomind_lib.models.public import (
     Connector,
     CreateConnectorRequest,
@@ -46,7 +45,13 @@ async def list_connectors(
     connector_status: str | None = None,
 ) -> ListConnectorsResponse:
     """
-    List all connectors for the current user.
+    List connectors accessible to the current user.
+
+    Access rules:
+    - User sees own connectors
+    - User sees team connectors for teams they belong to
+    - User sees org connectors
+    - Superadmins see all connectors
 
     Args:
         user: The authenticated user.
@@ -59,29 +64,16 @@ async def list_connectors(
     Returns:
         ListConnectorsResponse: Paginated list of connectors.
     """
-    from sqlalchemy import select
-
-    from echomind_lib.db.models import Connector as ConnectorORM
-
-    query = select(ConnectorORM).where(
-        ConnectorORM.user_id == user.id,
-        ConnectorORM.deleted_date.is_(None),
+    service = ConnectorService(db)
+    db_connectors = await service.list_connectors(
+        user=user,
+        page=page,
+        limit=limit,
+        connector_type=connector_type,
+        connector_status=connector_status,
     )
 
-    if connector_type:
-        query = query.where(ConnectorORM.type == connector_type)
-    if connector_status:
-        query = query.where(ConnectorORM.status == connector_status)
-
-    query = query.order_by(ConnectorORM.name)
-
-    # Paginate
-    query = query.offset((page - 1) * limit).limit(limit)
-    result = await db.execute(query)
-    db_connectors = result.scalars().all()
-
     connectors = [orm_to_connector(c) for c in db_connectors]
-
     return ListConnectorsResponse(connectors=connectors)
 
 
@@ -95,6 +87,11 @@ async def create_connector(
     """
     Create a new connector and trigger initial sync.
 
+    Access rules:
+    - User scope: All allowed users
+    - Team scope: Admins who are team members
+    - Org scope: Superadmins only
+
     Args:
         data: The connector creation data.
         user: The authenticated user.
@@ -103,18 +100,27 @@ async def create_connector(
 
     Returns:
         Connector: The created connector.
+
+    Raises:
+        HTTPException: 403 if user lacks permission for the scope.
     """
     service = ConnectorService(db, nats)
+
+    # Extract team_id from config if present (for team scope)
+    team_id = None
+    if data.config and "team_id" in data.config:
+        team_id = data.config.get("team_id")
 
     connector = await service.create_connector(
         name=data.name,
         connector_type=data.type.name if data.type else "unspecified",
-        user_id=user.id,
+        user=user,
         config=data.config,
         refresh_freq_minutes=data.refresh_freq_minutes,
         scope=data.scope.name if data.scope else None,
         scope_id=data.scope_id,
-        trigger_sync=True,  # Publish NATS message for initial sync
+        team_id=team_id,
+        trigger_sync=True,
     )
 
     return orm_to_connector(connector)
@@ -129,6 +135,12 @@ async def get_connector(
     """
     Get a connector by ID.
 
+    Access rules:
+    - User scope: Owner only
+    - Team scope: Team members
+    - Org scope: All allowed users
+    - Superadmins: All connectors
+
     Args:
         connector_id: The ID of the connector to retrieve.
         user: The authenticated user.
@@ -139,17 +151,11 @@ async def get_connector(
 
     Raises:
         HTTPException: 404 if connector not found.
+        HTTPException: 403 if user lacks permission.
     """
     service = ConnectorService(db)
-
-    try:
-        connector = await service.get_connector(connector_id, user.id)
-        return orm_to_connector(connector)
-    except NotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connector not found",
-        )
+    connector = await service.get_connector(connector_id, user)
+    return orm_to_connector(connector)
 
 
 @router.put("/{connector_id}", response_model=Connector)
@@ -162,6 +168,11 @@ async def update_connector(
     """
     Update a connector.
 
+    Access rules:
+    - User scope: Owner only
+    - Team scope: Team leads or admin team members
+    - Org scope: Superadmins only
+
     Args:
         connector_id: The ID of the connector to update.
         data: The fields to update.
@@ -173,25 +184,26 @@ async def update_connector(
 
     Raises:
         HTTPException: 404 if connector not found.
+        HTTPException: 403 if user lacks permission.
     """
     service = ConnectorService(db)
 
-    try:
-        connector = await service.update_connector(
-            connector_id=connector_id,
-            user_id=user.id,
-            name=data.name,
-            config=data.config,
-            refresh_freq_minutes=data.refresh_freq_minutes,
-            scope=data.scope.name if data.scope and hasattr(data.scope, "name") else None,
-            scope_id=data.scope_id,
-        )
-        return orm_to_connector(connector)
-    except NotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connector not found",
-        )
+    # Extract team_id from config if present
+    team_id = None
+    if data.config and "team_id" in data.config:
+        team_id = data.config.get("team_id")
+
+    connector = await service.update_connector(
+        connector_id=connector_id,
+        user=user,
+        name=data.name,
+        config=data.config,
+        refresh_freq_minutes=data.refresh_freq_minutes,
+        scope=data.scope.name if data.scope and hasattr(data.scope, "name") else None,
+        scope_id=data.scope_id,
+        team_id=team_id,
+    )
+    return orm_to_connector(connector)
 
 
 @router.delete("/{connector_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -203,6 +215,11 @@ async def delete_connector(
     """
     Delete a connector (soft delete).
 
+    Access rules:
+    - User scope: Owner only
+    - Team scope: Team leads or admin team members
+    - Org scope: Superadmins only
+
     Args:
         connector_id: The ID of the connector to delete.
         user: The authenticated user.
@@ -210,16 +227,10 @@ async def delete_connector(
 
     Raises:
         HTTPException: 404 if connector not found.
+        HTTPException: 403 if user lacks permission.
     """
     service = ConnectorService(db)
-
-    try:
-        await service.delete_connector(connector_id, user.id)
-    except NotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connector not found",
-        )
+    await service.delete_connector(connector_id, user)
 
 
 @router.post("/{connector_id}/sync", response_model=TriggerSyncResponse)
@@ -232,7 +243,7 @@ async def trigger_sync(
     """
     Trigger a manual sync for a connector.
 
-    Publishes a ConnectorSyncRequest message to NATS to start the sync process.
+    Requires edit access to the connector.
 
     Args:
         connector_id: The ID of the connector to sync.
@@ -245,17 +256,11 @@ async def trigger_sync(
 
     Raises:
         HTTPException: 404 if connector not found.
+        HTTPException: 403 if user lacks permission.
     """
     service = ConnectorService(db, nats)
-
-    try:
-        success, message = await service.trigger_sync(connector_id, user.id)
-        return TriggerSyncResponse(success=success, message=message)
-    except NotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connector not found",
-        )
+    success, message = await service.trigger_sync(connector_id, user)
+    return TriggerSyncResponse(success=success, message=message)
 
 
 @router.get("/{connector_id}/status", response_model=ConnectorStatusResponse)
@@ -267,6 +272,8 @@ async def get_connector_status(
     """
     Get the sync status of a connector.
 
+    Requires view access to the connector.
+
     Args:
         connector_id: The ID of the connector.
         user: The authenticated user.
@@ -277,14 +284,8 @@ async def get_connector_status(
 
     Raises:
         HTTPException: 404 if connector not found.
+        HTTPException: 403 if user lacks permission.
     """
     service = ConnectorService(db)
-
-    try:
-        status_info = await service.get_connector_status(connector_id, user.id)
-        return ConnectorStatusResponse(**status_info)
-    except NotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connector not found",
-        )
+    status_info = await service.get_connector_status(connector_id, user)
+    return ConnectorStatusResponse(**status_info)

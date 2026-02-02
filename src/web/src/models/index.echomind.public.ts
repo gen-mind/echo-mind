@@ -11,4 +11,5 @@ export * from "./public/assistant";
 export * from "./public/embedding_model";
 export * from "./public/chat";
 export * from "./public/llm";
+export * from "./public/team";
 export * from "./public/user";

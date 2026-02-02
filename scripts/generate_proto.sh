@@ -332,6 +332,7 @@ generate_typescript() {
         echo "export * from './public/document';"
         echo "export * from './public/llm';"
         echo "export * from './public/embedding_model';"
+        echo "export * from './public/team';"
     } > "$TS_OUTPUT_DIR/index.ts"
 
     echo -e "  ${GREEN}✓${NC} Index created"

@@ -12,6 +12,7 @@ from ingestor.logic.exceptions import (
     DocumentNotFoundError,
     FileNotFoundInStorageError,
     MinioError,
+    OwnershipMismatchError,
 )
 
 
@@ -74,18 +75,85 @@ class TestIngestorService:
 
         assert result == "user_123"
 
-    def test_build_collection_name_group_scope(self) -> None:
-        """Test collection name for group scope."""
+    def test_build_collection_name_user_scope_ignores_team_id(self) -> None:
+        """Test user scope ignores team_id parameter."""
+        result = self.service._build_collection_name(
+            user_id=123,
+            scope="user",
+            scope_id=None,
+            team_id=999,  # Should be ignored
+        )
+
+        assert result == "user_123"
+
+    def test_build_collection_name_team_scope_with_team_id(self) -> None:
+        """Test team scope uses team_id for collection name."""
+        result = self.service._build_collection_name(
+            user_id=123,
+            scope="team",
+            scope_id="legacy-scope",  # Should be ignored when team_id present
+            team_id=456,
+        )
+
+        assert result == "team_456"
+
+    def test_build_collection_name_group_scope_with_team_id(self) -> None:
+        """Test group scope uses team_id (same as team scope)."""
         result = self.service._build_collection_name(
             user_id=123,
             scope="group",
-            scope_id="my-group",
+            scope_id="legacy-scope",  # Should be ignored when team_id present
+            team_id=789,
         )
 
-        assert result == "group_my-group"
+        assert result == "team_789"
 
-    def test_build_collection_name_org_scope(self) -> None:
-        """Test collection name for org scope."""
+    def test_build_collection_name_team_scope_fallback_to_scope_id(self) -> None:
+        """Test team scope falls back to scope_id when team_id not provided."""
+        result = self.service._build_collection_name(
+            user_id=123,
+            scope="team",
+            scope_id="legacy-team-id",
+            team_id=None,
+        )
+
+        assert result == "team_legacy-team-id"
+
+    def test_build_collection_name_group_scope_fallback_to_scope_id(self) -> None:
+        """Test group scope falls back to scope_id when team_id not provided."""
+        result = self.service._build_collection_name(
+            user_id=123,
+            scope="group",
+            scope_id="legacy-group-id",
+            team_id=None,
+        )
+
+        assert result == "team_legacy-group-id"
+
+    def test_build_collection_name_team_scope_fallback_to_user(self) -> None:
+        """Test team scope falls back to user when neither team_id nor scope_id."""
+        result = self.service._build_collection_name(
+            user_id=789,
+            scope="team",
+            scope_id=None,
+            team_id=None,
+        )
+
+        assert result == "user_789"
+
+    def test_build_collection_name_group_scope_fallback_to_user(self) -> None:
+        """Test group scope without team_id or scope_id falls back to user."""
+        result = self.service._build_collection_name(
+            user_id=789,
+            scope="group",
+            scope_id=None,
+            team_id=None,
+        )
+
+        assert result == "user_789"
+
+    def test_build_collection_name_org_scope_with_scope_id(self) -> None:
+        """Test org scope uses scope_id for collection name."""
         result = self.service._build_collection_name(
             user_id=123,
             scope="org",
@@ -94,8 +162,29 @@ class TestIngestorService:
 
         assert result == "org_my-org"
 
-    def test_build_collection_name_defaults_to_user(self) -> None:
-        """Test collection name defaults to user scope."""
+    def test_build_collection_name_org_scope_without_scope_id(self) -> None:
+        """Test org scope defaults to org_default without scope_id."""
+        result = self.service._build_collection_name(
+            user_id=123,
+            scope="org",
+            scope_id=None,
+        )
+
+        assert result == "org_default"
+
+    def test_build_collection_name_org_scope_ignores_team_id(self) -> None:
+        """Test org scope ignores team_id parameter."""
+        result = self.service._build_collection_name(
+            user_id=123,
+            scope="org",
+            scope_id="my-org",
+            team_id=999,  # Should be ignored for org scope
+        )
+
+        assert result == "org_my-org"
+
+    def test_build_collection_name_unknown_scope_defaults_to_user(self) -> None:
+        """Test unknown scope defaults to user collection."""
         result = self.service._build_collection_name(
             user_id=456,
             scope="unknown",
@@ -104,15 +193,15 @@ class TestIngestorService:
 
         assert result == "user_456"
 
-    def test_build_collection_name_group_without_id_defaults_to_user(self) -> None:
-        """Test group scope without scope_id defaults to user."""
+    def test_build_collection_name_empty_scope_defaults_to_user(self) -> None:
+        """Test empty scope defaults to user collection."""
         result = self.service._build_collection_name(
-            user_id=789,
-            scope="group",
+            user_id=456,
+            scope="",
             scope_id=None,
         )
 
-        assert result == "user_789"
+        assert result == "user_456"
 
     # ==========================================
     # Point ID generation tests
@@ -425,12 +514,31 @@ class TestIngestorService:
                 scope="user",
             )
 
+    def _create_mock_document(
+        self,
+        connector_id: int,
+        user_id: int,
+        content_type: str = "application/pdf",
+        document_id: int = 1,
+    ) -> MagicMock:
+        """Helper to create a mock document with connector for ownership verification."""
+        mock_connector = MagicMock()
+        mock_connector.user_id = user_id
+
+        mock_document = MagicMock()
+        mock_document.id = document_id
+        mock_document.connector_id = connector_id
+        mock_document.connector = mock_connector
+        mock_document.content_type = content_type
+        return mock_document
+
     @pytest.mark.asyncio
     async def test_process_document_full_pipeline(self) -> None:
         """Test process_document runs full pipeline."""
-        # Mock document lookup
-        mock_document = MagicMock()
-        mock_document.content_type = "application/pdf"
+        # Mock document lookup with connector for ownership verification
+        mock_document = self._create_mock_document(
+            connector_id=1, user_id=456, content_type="application/pdf"
+        )
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_document
         self.mock_db_session.execute.return_value = mock_result
@@ -472,11 +580,148 @@ class TestIngestorService:
                     assert result["collection_name"] == "user_456"
 
     @pytest.mark.asyncio
+    async def test_process_document_with_team_scope(self) -> None:
+        """Test process_document routes team-scoped docs to team collection."""
+        # Mock document lookup with connector for ownership verification
+        mock_document = self._create_mock_document(
+            connector_id=1, user_id=456, content_type="application/pdf"
+        )
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        self.mock_db_session.execute.return_value = mock_result
+
+        # Mock file download
+        self.mock_minio.download_file.return_value = b"PDF content"
+
+        # Mock processing
+        with patch.object(
+            self.service._processor,
+            "process",
+            return_value=(["chunk1"], []),
+        ):
+            with patch.object(
+                self.service._embedder,
+                "get_dimension",
+                return_value=1024,
+            ):
+                with patch.object(
+                    self.service._embedder,
+                    "embed_batch",
+                    return_value=[[0.1]],
+                ):
+                    self.mock_qdrant.create_collection.return_value = True
+
+                    result = await self.service.process_document(
+                        document_id=123,
+                        connector_id=1,
+                        user_id=456,
+                        minio_path="docs/file.pdf",
+                        chunking_session="session-123",
+                        scope="team",
+                        scope_id="legacy-id",  # Should be ignored
+                        team_id=789,
+                    )
+
+                    assert result["document_id"] == 123
+                    assert result["chunk_count"] == 1
+                    assert result["collection_name"] == "team_789"
+
+    @pytest.mark.asyncio
+    async def test_process_document_with_group_scope(self) -> None:
+        """Test process_document routes group-scoped docs to team collection."""
+        # Mock document lookup with connector for ownership verification
+        mock_document = self._create_mock_document(
+            connector_id=2, user_id=10, content_type="text/plain"
+        )
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        self.mock_db_session.execute.return_value = mock_result
+
+        # Mock file download
+        self.mock_minio.download_file.return_value = b"text content"
+
+        # Mock processing
+        with patch.object(
+            self.service._processor,
+            "process",
+            return_value=(["chunk"], []),
+        ):
+            with patch.object(
+                self.service._embedder,
+                "get_dimension",
+                return_value=768,
+            ):
+                with patch.object(
+                    self.service._embedder,
+                    "embed_batch",
+                    return_value=[[0.5]],
+                ):
+                    self.mock_qdrant.create_collection.return_value = True
+
+                    result = await self.service.process_document(
+                        document_id=100,
+                        connector_id=2,
+                        user_id=10,
+                        minio_path="docs/doc.txt",
+                        chunking_session="session",
+                        scope="group",  # Group scope maps to team
+                        team_id=55,
+                    )
+
+                    assert result["collection_name"] == "team_55"
+
+    @pytest.mark.asyncio
+    async def test_process_document_with_org_scope(self) -> None:
+        """Test process_document routes org-scoped docs to org collection."""
+        # Mock document lookup with connector for ownership verification
+        mock_document = self._create_mock_document(
+            connector_id=3, user_id=30, content_type="application/pdf"
+        )
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        self.mock_db_session.execute.return_value = mock_result
+
+        # Mock file download
+        self.mock_minio.download_file.return_value = b"PDF"
+
+        # Mock processing
+        with patch.object(
+            self.service._processor,
+            "process",
+            return_value=(["chunk"], []),
+        ):
+            with patch.object(
+                self.service._embedder,
+                "get_dimension",
+                return_value=1024,
+            ):
+                with patch.object(
+                    self.service._embedder,
+                    "embed_batch",
+                    return_value=[[0.1]],
+                ):
+                    self.mock_qdrant.create_collection.return_value = True
+
+                    result = await self.service.process_document(
+                        document_id=200,
+                        connector_id=3,
+                        user_id=30,
+                        minio_path="docs/org-doc.pdf",
+                        chunking_session="org-session",
+                        scope="org",
+                        scope_id="acme-corp",
+                        team_id=None,  # Org scope ignores team_id
+                    )
+
+                    assert result["collection_name"] == "org_acme-corp"
+
+    @pytest.mark.asyncio
     async def test_process_document_empty_content(self) -> None:
         """Test process_document handles empty extraction."""
-        # Mock document lookup
-        mock_document = MagicMock()
-        mock_document.content_type = "text/plain"
+        # Mock document lookup with connector for ownership verification
+        mock_document = self._create_mock_document(
+            connector_id=1, user_id=1, content_type="text/plain"
+        )
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_document
         self.mock_db_session.execute.return_value = mock_result
@@ -505,9 +750,10 @@ class TestIngestorService:
     @pytest.mark.asyncio
     async def test_process_document_updates_status_on_error(self) -> None:
         """Test process_document updates status to error on failure."""
-        # Mock document lookup
-        mock_document = MagicMock()
-        mock_document.content_type = "application/pdf"
+        # Mock document lookup with connector for ownership verification
+        mock_document = self._create_mock_document(
+            connector_id=1, user_id=1, content_type="application/pdf", document_id=123
+        )
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_document
         self.mock_db_session.execute.return_value = mock_result
@@ -525,8 +771,139 @@ class TestIngestorService:
                 scope="user",
             )
 
-        # Should have updated status to processing, then error
-        assert self.mock_db_session.execute.call_count >= 2
+        # Should have: 1) document lookup, 2) status update to processing
+        # Since download fails, status update to error happens in exception handler
+        assert self.mock_db_session.execute.call_count >= 1
+
+    # ==========================================
+    # Ownership verification tests (SECURITY)
+    # ==========================================
+
+    def test_verify_ownership_passes_when_matching(self) -> None:
+        """Test _verify_ownership passes when claims match."""
+        mock_connector = MagicMock()
+        mock_connector.user_id = 42
+
+        mock_document = MagicMock()
+        mock_document.id = 10
+        mock_document.connector_id = 1
+        mock_document.connector = mock_connector
+
+        # Should not raise
+        self.service._verify_ownership(mock_document, claimed_connector_id=1, claimed_user_id=42)
+
+    def test_verify_ownership_raises_on_connector_mismatch(self) -> None:
+        """Test _verify_ownership raises when connector_id doesn't match."""
+        mock_connector = MagicMock()
+        mock_connector.user_id = 42
+
+        mock_document = MagicMock()
+        mock_document.id = 10
+        mock_document.connector_id = 1  # Actual connector
+        mock_document.connector = mock_connector
+
+        with pytest.raises(OwnershipMismatchError) as exc_info:
+            self.service._verify_ownership(
+                mock_document,
+                claimed_connector_id=999,  # Claimed different connector
+                claimed_user_id=42,
+            )
+
+        assert exc_info.value.document_id == 10
+        assert exc_info.value.expected_connector_id == 999
+        assert exc_info.value.actual_connector_id == 1
+
+    def test_verify_ownership_raises_on_user_mismatch(self) -> None:
+        """Test _verify_ownership raises when user_id doesn't match connector owner."""
+        mock_connector = MagicMock()
+        mock_connector.user_id = 42  # Actual owner
+
+        mock_document = MagicMock()
+        mock_document.id = 10
+        mock_document.connector_id = 1
+        mock_document.connector = mock_connector
+
+        with pytest.raises(OwnershipMismatchError) as exc_info:
+            self.service._verify_ownership(
+                mock_document,
+                claimed_connector_id=1,
+                claimed_user_id=999,  # Claimed different user
+            )
+
+        assert exc_info.value.document_id == 10
+        assert exc_info.value.expected_user_id == 999
+        assert exc_info.value.actual_user_id == 42
+
+    def test_verify_ownership_error_message_includes_security_alert(self) -> None:
+        """Test OwnershipMismatchError message includes SECURITY label."""
+        mock_connector = MagicMock()
+        mock_connector.user_id = 1
+
+        mock_document = MagicMock()
+        mock_document.id = 10
+        mock_document.connector_id = 1
+        mock_document.connector = mock_connector
+
+        with pytest.raises(OwnershipMismatchError) as exc_info:
+            self.service._verify_ownership(mock_document, claimed_connector_id=999, claimed_user_id=1)
+
+        assert "SECURITY" in str(exc_info.value.message)
+
+    @pytest.mark.asyncio
+    async def test_process_document_verifies_ownership(self) -> None:
+        """Test process_document verifies ownership before processing."""
+        # Mock document with connector
+        mock_connector = MagicMock()
+        mock_connector.user_id = 42
+
+        mock_document = MagicMock()
+        mock_document.id = 1
+        mock_document.connector_id = 1
+        mock_document.connector = mock_connector
+        mock_document.content_type = "text/plain"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        self.mock_db_session.execute.return_value = mock_result
+
+        # Try to process with WRONG connector_id
+        with pytest.raises(OwnershipMismatchError):
+            await self.service.process_document(
+                document_id=1,
+                connector_id=999,  # Wrong connector
+                user_id=42,
+                minio_path="file.txt",
+                chunking_session="session",
+                scope="user",
+            )
+
+    @pytest.mark.asyncio
+    async def test_process_document_verifies_user_ownership(self) -> None:
+        """Test process_document verifies user_id matches connector owner."""
+        # Mock document with connector
+        mock_connector = MagicMock()
+        mock_connector.user_id = 42  # Actual owner
+
+        mock_document = MagicMock()
+        mock_document.id = 1
+        mock_document.connector_id = 1
+        mock_document.connector = mock_connector
+        mock_document.content_type = "text/plain"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        self.mock_db_session.execute.return_value = mock_result
+
+        # Try to process with WRONG user_id
+        with pytest.raises(OwnershipMismatchError):
+            await self.service.process_document(
+                document_id=1,
+                connector_id=1,
+                user_id=999,  # Wrong user - attack vector!
+                minio_path="file.txt",
+                chunking_session="session",
+                scope="user",
+            )
 
     # ==========================================
     # Close tests

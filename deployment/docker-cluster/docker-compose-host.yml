@@ -88,6 +88,13 @@ services:
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
     labels:
       - "traefik.enable=true"
+      # =============================================
+      # Forward Auth Middleware (Authentik Outpost)
+      # Used to protect admin dashboards (Qdrant, MinIO)
+      # =============================================
+      - "traefik.http.middlewares.authentik-forward-auth.forwardAuth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
+      - "traefik.http.middlewares.authentik-forward-auth.forwardAuth.trustForwardHeader=true"
+      - "traefik.http.middlewares.authentik-forward-auth.forwardAuth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-uid,X-authentik-jwt"
 
   # ===============================================
   # PostgreSQL - Shared DB (Authentik + API)
@@ -211,6 +218,7 @@ services:
       - "traefik.http.routers.qdrant.rule=Host(`${QDRANT_DOMAIN}`)"
       - "traefik.http.routers.qdrant.entrypoints=websecure"
       - "traefik.http.routers.qdrant.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.qdrant.middlewares=authentik-forward-auth"
       - "traefik.http.services.qdrant.loadbalancer.server.port=6333"
 
   # ===============================================
@@ -238,10 +246,11 @@ services:
       - backend
     labels:
       - "traefik.enable=true"
-      # MinIO Console
+      # MinIO Console (protected by Authentik Forward Auth)
       - "traefik.http.routers.minio-console.rule=Host(`${MINIO_DOMAIN}`)"
       - "traefik.http.routers.minio-console.entrypoints=websecure"
       - "traefik.http.routers.minio-console.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.minio-console.middlewares=authentik-forward-auth"
       - "traefik.http.routers.minio-console.service=minio-console"
       - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
       # MinIO API (for S3-compatible access)

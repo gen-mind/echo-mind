@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   llm_model.py
-@Time    :   2026-01-28 05:26:40
+@Time    :   2026-02-02 19:39:08
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 

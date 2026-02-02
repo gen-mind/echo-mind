@@ -34,6 +34,8 @@ from echomind_lib.db.models import (  # noqa: F401
     Document,
     EmbeddingModel,
     LLM,
+    Team,
+    TeamMember,
     User,
 )
 

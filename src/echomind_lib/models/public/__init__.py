@@ -10,4 +10,5 @@ from .connector_model import *
 from .document_model import *
 from .embedding_model_model import *
 from .llm_model import *
+from .team_model import *
 from .user_model import *

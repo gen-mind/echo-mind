@@ -30,6 +30,7 @@ from echomind_lib.db.crud.connector import ConnectorCRUD, connector_crud
 from echomind_lib.db.crud.document import DocumentCRUD, document_crud
 from echomind_lib.db.crud.embedding_model import EmbeddingModelCRUD, embedding_model_crud
 from echomind_lib.db.crud.llm import LLMCRUD, llm_crud
+from echomind_lib.db.crud.team import TeamCRUD, team_crud
 from echomind_lib.db.crud.user import UserCRUD, user_crud
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "SoftDeleteMixin",
     # CRUD classes
     "UserCRUD",
+    "TeamCRUD",
     "AssistantCRUD",
     "LLMCRUD",
     "EmbeddingModelCRUD",
@@ -50,6 +52,7 @@ __all__ = [
     "AgentMemoryCRUD",
     # Singleton instances
     "user_crud",
+    "team_crud",
     "assistant_crud",
     "llm_crud",
     "embedding_model_crud",

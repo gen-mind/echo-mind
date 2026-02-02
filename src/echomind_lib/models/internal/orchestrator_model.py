@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 '''
 @File    :   orchestrator_model.py
-@Time    :   2026-01-28 05:26:40
+@Time    :   2026-02-02 19:39:08
 @Desc    :   Generated Pydantic models from protobuf definitions
 '''
 from ..public.connector_model import ConnectorScope, ConnectorType
@@ -43,6 +43,7 @@ class DocumentProcessRequest(BaseModel):
     chunking_session: Optional[str] = _Field(default="")
     scope: Optional[ConnectorScope] = _Field(default=ConnectorScope(0))
     scope_id: Optional[str] = _Field(default="")
+    team_id: Optional[int] = _Field(default=0)
 
     def to_protobuf(self) -> _message.Message:
         """Convert Pydantic model to protobuf message"""

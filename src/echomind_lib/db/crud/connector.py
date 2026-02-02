@@ -198,4 +198,82 @@ class ConnectorCRUD(SoftDeleteMixin[Connector], CRUDBase[Connector]):
         return None
 
 
+    async def get_by_user_and_type(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        connector_type: str,
+        *,
+        system: bool = False,
+    ) -> Connector | None:
+        """
+        Get a connector by user and type.
+
+        Args:
+            session: Database session.
+            user_id: Owner user ID.
+            connector_type: Type of connector (teams, onedrive, google_drive, web, file).
+            system: If True, match only system connectors (config has system=True).
+
+        Returns:
+            Connector or None if not found.
+        """
+        result = await session.execute(
+            select(Connector)
+            .where(Connector.deleted_date.is_(None))
+            .where(Connector.user_id == user_id)
+            .where(Connector.type == connector_type)
+        )
+        connectors = result.scalars().all()
+
+        # Filter by system flag if needed
+        for c in connectors:
+            is_system = c.config.get("system", False) if c.config else False
+            if is_system == system:
+                return c
+
+        return None
+
+    async def get_or_create_upload_connector(
+        self,
+        session: AsyncSession,
+        user_id: int,
+    ) -> Connector:
+        """
+        Get or create the user's system FILE connector for uploads.
+
+        This connector is auto-created per-user on first file upload.
+        It's hidden from the UI but visible in API.
+
+        Args:
+            session: Database session.
+            user_id: User ID.
+
+        Returns:
+            The user's system FILE connector.
+        """
+        connector = await self.get_by_user_and_type(
+            session, user_id, "file", system=True
+        )
+
+        if connector:
+            return connector
+
+        # Create new system FILE connector
+        connector = Connector(
+            name="__system_uploads__",
+            type="file",
+            config={"system": True},
+            state={},
+            user_id=user_id,
+            scope="user",
+            status="active",
+        )
+        session.add(connector)
+        await session.flush()
+        await session.refresh(connector)
+
+        return connector
+
+
 connector_crud = ConnectorCRUD()

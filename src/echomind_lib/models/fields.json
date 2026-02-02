@@ -367,6 +367,76 @@
         "message": "",
         "latency_ms": ""
     },
+    "Team": {
+        "id": "",
+        "name": "",
+        "description": "",
+        "leader_id": "",
+        "created_by": "",
+        "member_count": "",
+        "creation_date": "",
+        "last_update": ""
+    },
+    "TeamMember": {
+        "team_id": "",
+        "user_id": "",
+        "role": "",
+        "added_at": "",
+        "added_by": ""
+    },
+    "TeamMemberWithUser": {
+        "user_id": "",
+        "user_name": "",
+        "email": "",
+        "first_name": "",
+        "last_name": "",
+        "role": "",
+        "added_at": ""
+    },
+    "CreateTeamRequest": {
+        "name": "",
+        "description": "",
+        "leader_id": ""
+    },
+    "UpdateTeamRequest": {
+        "id": "",
+        "name": "",
+        "description": "",
+        "leader_id": ""
+    },
+    "ListTeamsRequest": {
+        "pagination": "",
+        "include_member_count": ""
+    },
+    "ListTeamsResponse": {
+        "teams": "",
+        "pagination": ""
+    },
+    "GetTeamResponse": {
+        "team": "",
+        "members": ""
+    },
+    "AddTeamMemberRequest": {
+        "team_id": "",
+        "user_id": "",
+        "role": ""
+    },
+    "RemoveTeamMemberRequest": {
+        "team_id": "",
+        "user_id": ""
+    },
+    "UpdateTeamMemberRoleRequest": {
+        "team_id": "",
+        "user_id": "",
+        "role": ""
+    },
+    "ListUserTeamsRequest": {
+        "pagination": ""
+    },
+    "ListUserTeamsResponse": {
+        "teams": "",
+        "pagination": ""
+    },
     "UserPreferences": {
         "default_assistant_id": "",
         "theme": "",
@@ -419,7 +489,8 @@
         "minio_path": "",
         "chunking_session": "",
         "scope": "",
-        "scope_id": ""
+        "scope_id": "",
+        "team_id": ""
     },
     "EmbedRequest": {
         "texts": ""

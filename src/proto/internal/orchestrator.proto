@@ -28,4 +28,5 @@ message DocumentProcessRequest {
   string chunking_session = 5;
   echomind.public.ConnectorScope scope = 6;
   optional string scope_id = 7;
+  optional int32 team_id = 8;  // Team ID for team-scoped documents
 }

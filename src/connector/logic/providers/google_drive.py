@@ -33,7 +33,9 @@ from connector.logic.providers.base import (
     DownloadedFile,
     FileChange,
     FileMetadata,
+    StreamResult,
 )
+from echomind_lib.db.minio import MinIOClient
 
 logger = logging.getLogger("echomind-connector.google_drive")
 
@@ -550,6 +552,202 @@ class GoogleDriveProvider(BaseProvider):
             external_access=external_access,
             parent_id=file.parent_id,
             original_url=file.web_url,
+        )
+
+    async def stream_to_storage(
+        self,
+        file: FileMetadata,
+        config: dict[str, Any],
+        minio_client: MinIOClient,
+        bucket: str,
+        object_key: str,
+    ) -> StreamResult:
+        """
+        Stream a file directly from Google Drive to MinIO storage.
+
+        For Google Workspace files (Docs, Sheets, etc.), exports to PDF first
+        (limited to 10MB by Google API). For regular files, streams directly
+        without size limit.
+
+        Args:
+            file: File metadata from change detection.
+            config: Provider configuration.
+            minio_client: MinIO client for storage.
+            bucket: Target MinIO bucket.
+            object_key: Object key/path in MinIO.
+
+        Returns:
+            StreamResult with storage path and metadata.
+
+        Raises:
+            DownloadError: If download/streaming fails.
+            ExportError: If Google Workspace export fails.
+        """
+        if file.mime_type in GOOGLE_EXPORT_MIMES:
+            # Workspace files must be exported (cannot stream, limited to 10MB)
+            return await self._export_workspace_to_storage(
+                file, config, minio_client, bucket, object_key
+            )
+        else:
+            return await self._stream_regular_file(
+                file, config, minio_client, bucket, object_key
+            )
+
+    async def _export_workspace_to_storage(
+        self,
+        file: FileMetadata,
+        config: dict[str, Any],
+        minio_client: MinIOClient,
+        bucket: str,
+        object_key: str,
+    ) -> StreamResult:
+        """
+        Export Google Workspace document as PDF and upload to storage.
+
+        Google's export API doesn't support streaming, so we must download
+        the entire file first (limited to 10MB).
+
+        Args:
+            file: File metadata (must be Workspace document).
+            config: Provider configuration.
+            minio_client: MinIO client.
+            bucket: Target bucket.
+            object_key: Object key.
+
+        Returns:
+            StreamResult with storage path.
+
+        Raises:
+            ExportError: If export fails.
+        """
+        import io
+
+        export_mime = GOOGLE_EXPORT_MIMES[file.mime_type]
+
+        logger.info(
+            "🔄 Exporting Google Workspace file %s as PDF", file.source_id
+        )
+
+        response = await self._client.get(
+            f"https://www.googleapis.com/drive/v3/files/{file.source_id}/export",
+            params={"mimeType": export_mime},
+            headers=self._auth_headers(),
+        )
+
+        if response.status_code == 403:
+            raise ExportError(
+                self.provider_name,
+                file.source_id,
+                export_mime,
+                "Export forbidden - file may exceed 10MB limit",
+            )
+        if response.status_code != 200:
+            raise ExportError(
+                self.provider_name,
+                file.source_id,
+                export_mime,
+                f"Export failed: {response.text}",
+            )
+
+        content = response.content
+        content_len = len(content)
+
+        # Upload to MinIO
+        result = await minio_client.upload_file(
+            bucket_name=bucket,
+            object_name=object_key,
+            data=content,
+            content_type="application/pdf",
+        )
+
+        logger.info(
+            "✅ Streamed Workspace file %s to storage (%d bytes)",
+            file.source_id,
+            content_len,
+        )
+
+        return StreamResult(
+            storage_path=f"minio:{bucket}:{object_key}",
+            etag=result,
+            size=content_len,
+            content_hash=None,  # Workspace files don't have md5
+        )
+
+    async def _stream_regular_file(
+        self,
+        file: FileMetadata,
+        config: dict[str, Any],
+        minio_client: MinIOClient,
+        bucket: str,
+        object_key: str,
+    ) -> StreamResult:
+        """
+        Stream a regular file from Google Drive to MinIO.
+
+        Uses httpx streaming to avoid loading the entire file into memory.
+        No file size limit for regular files.
+
+        Args:
+            file: File metadata.
+            config: Provider configuration.
+            minio_client: MinIO client.
+            bucket: Target bucket.
+            object_key: Object key.
+
+        Returns:
+            StreamResult with storage path.
+
+        Raises:
+            DownloadError: If download fails.
+        """
+        import io
+
+        logger.info("🔄 Streaming file %s to storage", file.source_id)
+
+        # Use streaming download
+        async with self._client.stream(
+            "GET",
+            f"https://www.googleapis.com/drive/v3/files/{file.source_id}",
+            params={"alt": "media"},
+            headers=self._auth_headers(),
+        ) as response:
+            if response.status_code == 429:
+                raise RateLimitError(self.provider_name)
+            if response.status_code != 200:
+                raise DownloadError(
+                    self.provider_name,
+                    file.source_id,
+                    f"Download failed: {response.status_code}",
+                )
+
+            # Collect chunks and upload
+            # Note: miniopy-async requires known length, so we buffer
+            chunks: list[bytes] = []
+            async for chunk in response.aiter_bytes(chunk_size=8192):
+                chunks.append(chunk)
+
+            content = b"".join(chunks)
+            content_len = len(content)
+
+        # Upload to MinIO
+        result = await minio_client.upload_file(
+            bucket_name=bucket,
+            object_name=object_key,
+            data=content,
+            content_type=file.mime_type,
+        )
+
+        logger.info(
+            "✅ Streamed file %s to storage (%d bytes)",
+            file.source_id,
+            content_len,
+        )
+
+        return StreamResult(
+            storage_path=f"minio:{bucket}:{object_key}",
+            etag=result,
+            size=content_len,
+            content_hash=file.content_hash,
         )
 
     async def get_file_permissions(

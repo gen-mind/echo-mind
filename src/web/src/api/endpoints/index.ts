@@ -6,3 +6,13 @@ export { connectorsApi } from './connectors'
 export { documentsApi } from './documents'
 export { embeddingModelsApi } from './embedding-models'
 export { chatApi } from './chat'
+export { uploadApi } from './upload'
+export type {
+  InitiateUploadRequest,
+  InitiateUploadResponse,
+  CompleteUploadRequest,
+  AbortUploadRequest,
+  AbortUploadResponse,
+  UploadProgress,
+  ProgressCallback,
+} from './upload'

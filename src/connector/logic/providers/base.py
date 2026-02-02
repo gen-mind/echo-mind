@@ -7,10 +7,13 @@ All connector providers must implement this interface.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from connector.logic.checkpoint import ConnectorCheckpoint
 from connector.logic.permissions import ExternalAccess
+
+if TYPE_CHECKING:
+    from echomind_lib.db.minio import MinIOClient
 
 
 @dataclass
@@ -76,6 +79,20 @@ class DeletedFile:
     """Represents a file that was deleted from the source."""
 
     source_id: str
+
+
+@dataclass
+class StreamResult:
+    """
+    Result of streaming a file to storage.
+
+    Returned by stream_to_storage() method.
+    """
+
+    storage_path: str  # MinIO path (minio:{bucket}:{path})
+    etag: str  # MinIO ETag for verification
+    size: int  # File size in bytes
+    content_hash: str | None = None  # MD5 hash if available
 
 
 class BaseProvider(ABC):
@@ -163,6 +180,37 @@ class BaseProvider(ABC):
             DownloadError: If download fails.
             ExportError: If Google Workspace export fails.
             FileTooLargeError: If file exceeds size limit.
+        """
+        ...
+
+    @abstractmethod
+    async def stream_to_storage(
+        self,
+        file: FileMetadata,
+        config: dict[str, Any],
+        minio_client: "MinIOClient",
+        bucket: str,
+        object_key: str,
+    ) -> StreamResult:
+        """
+        Stream a file directly from source to MinIO storage.
+
+        Memory-efficient method that streams file content directly to storage
+        without loading the entire file into memory.
+
+        Args:
+            file: File metadata from change detection.
+            config: Provider-specific configuration.
+            minio_client: MinIO client for storage operations.
+            bucket: Target MinIO bucket.
+            object_key: Object key/path in MinIO.
+
+        Returns:
+            StreamResult with storage path and metadata.
+
+        Raises:
+            DownloadError: If download/streaming fails.
+            ExportError: If Google Workspace export fails.
         """
         ...
 

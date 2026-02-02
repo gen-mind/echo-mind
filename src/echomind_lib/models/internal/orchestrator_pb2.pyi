@@ -27,7 +27,7 @@ class ConnectorSyncRequest(_message.Message):
     def __init__(self, connector_id: _Optional[int] = ..., type: _Optional[_Union[_connector_pb2.ConnectorType, str]] = ..., user_id: _Optional[int] = ..., scope: _Optional[_Union[_connector_pb2.ConnectorScope, str]] = ..., scope_id: _Optional[str] = ..., config: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., state: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., chunking_session: _Optional[str] = ...) -> None: ...
 
 class DocumentProcessRequest(_message.Message):
-    __slots__ = ("document_id", "connector_id", "user_id", "minio_path", "chunking_session", "scope", "scope_id")
+    __slots__ = ("document_id", "connector_id", "user_id", "minio_path", "chunking_session", "scope", "scope_id", "team_id")
     DOCUMENT_ID_FIELD_NUMBER: _ClassVar[int]
     CONNECTOR_ID_FIELD_NUMBER: _ClassVar[int]
     USER_ID_FIELD_NUMBER: _ClassVar[int]
@@ -35,6 +35,7 @@ class DocumentProcessRequest(_message.Message):
     CHUNKING_SESSION_FIELD_NUMBER: _ClassVar[int]
     SCOPE_FIELD_NUMBER: _ClassVar[int]
     SCOPE_ID_FIELD_NUMBER: _ClassVar[int]
+    TEAM_ID_FIELD_NUMBER: _ClassVar[int]
     document_id: int
     connector_id: int
     user_id: int
@@ -42,4 +43,5 @@ class DocumentProcessRequest(_message.Message):
     chunking_session: str
     scope: _connector_pb2.ConnectorScope
     scope_id: str
-    def __init__(self, document_id: _Optional[int] = ..., connector_id: _Optional[int] = ..., user_id: _Optional[int] = ..., minio_path: _Optional[str] = ..., chunking_session: _Optional[str] = ..., scope: _Optional[_Union[_connector_pb2.ConnectorScope, str]] = ..., scope_id: _Optional[str] = ...) -> None: ...
+    team_id: int
+    def __init__(self, document_id: _Optional[int] = ..., connector_id: _Optional[int] = ..., user_id: _Optional[int] = ..., minio_path: _Optional[str] = ..., chunking_session: _Optional[str] = ..., scope: _Optional[_Union[_connector_pb2.ConnectorScope, str]] = ..., scope_id: _Optional[str] = ..., team_id: _Optional[int] = ...) -> None: ...

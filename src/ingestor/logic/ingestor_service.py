@@ -13,6 +13,7 @@ from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from echomind_lib.db.minio import MinIOClient
 from echomind_lib.db.models import Document
@@ -26,6 +27,7 @@ from ingestor.logic.exceptions import (
     DocumentNotFoundError,
     FileNotFoundInStorageError,
     MinioError,
+    OwnershipMismatchError,
 )
 
 logger = logging.getLogger("echomind-ingestor.service")
@@ -85,6 +87,7 @@ class IngestorService:
         chunking_session: str,
         scope: str,
         scope_id: str | None = None,
+        team_id: int | None = None,
     ) -> dict[str, Any]:
         """
         Process a document for ingestion.
@@ -97,8 +100,9 @@ class IngestorService:
             user_id: User who owns the connector.
             minio_path: Path to file in MinIO bucket.
             chunking_session: UUID for this processing session.
-            scope: Document scope (user, group, org).
+            scope: Document scope (user, team, org).
             scope_id: Optional scope identifier.
+            team_id: Optional team ID for team-scoped documents.
 
         Returns:
             Dictionary with processing results:
@@ -120,10 +124,14 @@ class IngestorService:
             chunking_session,
         )
 
-        # Load document from database
+        # Load document from database with connector relationship
         document = await self._get_document(document_id)
         if not document:
             raise DocumentNotFoundError(document_id)
+
+        # SECURITY: Verify NATS message claims match database records
+        # Prevents cross-user data poisoning from forged messages
+        self._verify_ownership(document, connector_id, user_id)
 
         # Update status to processing
         await self._update_status(document_id, "processing")
@@ -167,6 +175,7 @@ class IngestorService:
                 user_id=user_id,
                 scope=scope,
                 scope_id=scope_id,
+                team_id=team_id,
             )
 
             # Ensure collection exists
@@ -229,24 +238,93 @@ class IngestorService:
 
     async def _get_document(self, document_id: int) -> Document | None:
         """
-        Load document from database.
+        Load document from database with connector relationship.
+
+        Loads the connector relationship for ownership verification.
 
         Args:
             document_id: Document ID to load.
 
         Returns:
-            Document model or None if not found.
+            Document model with connector loaded, or None if not found.
 
         Raises:
             DatabaseError: If query fails.
         """
         try:
             result = await self._db.execute(
-                select(Document).where(Document.id == document_id)
+                select(Document)
+                .options(selectinload(Document.connector))
+                .where(Document.id == document_id)
             )
             return result.scalar_one_or_none()
         except Exception as e:
             raise DatabaseError("select", str(e)) from e
+
+    def _verify_ownership(
+        self,
+        document: Document,
+        claimed_connector_id: int,
+        claimed_user_id: int,
+    ) -> None:
+        """
+        Verify NATS message claims match actual document ownership.
+
+        Security check to prevent cross-user data poisoning.
+        This prevents a compromised service from processing documents
+        under another user's Qdrant collection.
+
+        Args:
+            document: Document loaded from database with connector.
+            claimed_connector_id: Connector ID from NATS message.
+            claimed_user_id: User ID from NATS message.
+
+        Raises:
+            OwnershipMismatchError: If claims don't match database records.
+        """
+        actual_connector_id = document.connector_id
+        actual_user_id = document.connector.user_id if document.connector else None
+
+        # Verify connector_id matches
+        if actual_connector_id != claimed_connector_id:
+            logger.error(
+                "🚨 SECURITY: Connector mismatch for document %d. "
+                "Message claims connector_id=%d, actual=%d",
+                document.id,
+                claimed_connector_id,
+                actual_connector_id,
+            )
+            raise OwnershipMismatchError(
+                document_id=document.id,
+                expected_connector_id=claimed_connector_id,
+                actual_connector_id=actual_connector_id,
+                expected_user_id=claimed_user_id,
+                actual_user_id=actual_user_id,
+            )
+
+        # Verify user_id matches connector's owner
+        if actual_user_id is not None and actual_user_id != claimed_user_id:
+            logger.error(
+                "🚨 SECURITY: User mismatch for document %d. "
+                "Message claims user_id=%d, connector owned by user_id=%d",
+                document.id,
+                claimed_user_id,
+                actual_user_id,
+            )
+            raise OwnershipMismatchError(
+                document_id=document.id,
+                expected_connector_id=claimed_connector_id,
+                actual_connector_id=actual_connector_id,
+                expected_user_id=claimed_user_id,
+                actual_user_id=actual_user_id,
+            )
+
+        logger.debug(
+            "✅ Ownership verified for document %d (connector=%d, user=%d)",
+            document.id,
+            actual_connector_id,
+            actual_user_id,
+        )
 
     async def _update_status(
         self,
@@ -331,25 +409,46 @@ class IngestorService:
         user_id: int,
         scope: str,
         scope_id: str | None,
+        team_id: int | None = None,
     ) -> str:
         """
         Build Qdrant collection name based on scope.
 
+        Collection naming strategy:
+        - User scope: user_{user_id}
+        - Team scope: team_{team_id}
+        - Org scope: org_{scope_id} or org_default
+
         Args:
             user_id: User ID.
-            scope: Document scope (user, group, org).
-            scope_id: Optional scope identifier.
+            scope: Document scope (user, team, group, org).
+            scope_id: Optional scope identifier (used for org).
+            team_id: Optional team ID for team-scoped documents.
 
         Returns:
             Collection name string.
         """
         if scope == "user":
             return f"user_{user_id}"
-        elif scope == "group" and scope_id:
-            return f"group_{scope_id}"
-        elif scope == "org" and scope_id:
-            return f"org_{scope_id}"
+        elif scope in ("team", "group"):
+            # Team scope - use team_id if available
+            if team_id is not None:
+                return f"team_{team_id}"
+            # Fallback to scope_id for legacy data
+            if scope_id:
+                return f"team_{scope_id}"
+            # Ultimate fallback to user collection
+            logger.warning(
+                "⚠️ Team scope without team_id, falling back to user_%d",
+                user_id,
+            )
+            return f"user_{user_id}"
+        elif scope == "org":
+            if scope_id:
+                return f"org_{scope_id}"
+            return "org_default"
         else:
+            # Unknown scope - fallback to user
             return f"user_{user_id}"
 
     async def _ensure_collection(

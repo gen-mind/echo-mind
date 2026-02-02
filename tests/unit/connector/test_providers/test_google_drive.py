@@ -494,3 +494,179 @@ class TestGoogleDrivePermissions:
 
         assert access.external_user_emails == frozenset()
         assert access.is_public is False
+
+
+class TestGoogleDriveStreamToStorage:
+    """Tests for Google Drive streaming to MinIO storage."""
+
+    @pytest.fixture
+    def mock_client(self) -> AsyncMock:
+        """Create a mock HTTP client."""
+        return AsyncMock(spec=httpx.AsyncClient)
+
+    @pytest.fixture
+    def mock_minio(self) -> AsyncMock:
+        """Create a mock MinIO client."""
+        minio = AsyncMock()
+        minio.upload_file = AsyncMock(return_value="test-etag-123")
+        return minio
+
+    @pytest.fixture
+    def provider(self, mock_client: AsyncMock) -> GoogleDriveProvider:
+        """Create a provider with mock client."""
+        p = GoogleDriveProvider(http_client=mock_client)
+        p._access_token = "valid_token"
+        return p
+
+    @pytest.mark.asyncio
+    async def test_stream_regular_file_to_storage(
+        self,
+        provider: GoogleDriveProvider,
+        mock_client: AsyncMock,
+        mock_minio: AsyncMock,
+    ) -> None:
+        """Test streaming a regular file directly to MinIO."""
+        from connector.logic.providers.base import FileMetadata
+
+        # Mock streaming response
+        async def mock_aiter_bytes(chunk_size=8192):
+            yield b"chunk1"
+            yield b"chunk2"
+            yield b"chunk3"
+
+        mock_stream_response = MagicMock()
+        mock_stream_response.status_code = 200
+        mock_stream_response.aiter_bytes = mock_aiter_bytes
+        mock_stream_response.__aenter__ = AsyncMock(return_value=mock_stream_response)
+        mock_stream_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_client.stream.return_value = mock_stream_response
+
+        file = FileMetadata(
+            source_id="file123",
+            name="document.pdf",
+            mime_type="application/pdf",
+            size=1000,
+            content_hash="abc123",
+        )
+
+        result = await provider.stream_to_storage(
+            file=file,
+            config={},
+            minio_client=mock_minio,
+            bucket="test-bucket",
+            object_key="test/path/doc.pdf",
+        )
+
+        assert result.storage_path == "minio:test-bucket:test/path/doc.pdf"
+        assert result.etag == "test-etag-123"
+        assert result.size == len(b"chunk1chunk2chunk3")
+        assert result.content_hash == "abc123"
+
+        mock_minio.upload_file.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stream_workspace_file_exports_to_pdf(
+        self,
+        provider: GoogleDriveProvider,
+        mock_client: AsyncMock,
+        mock_minio: AsyncMock,
+    ) -> None:
+        """Test streaming a Google Workspace file exports to PDF first."""
+        from connector.logic.providers.base import FileMetadata
+
+        # Mock export response
+        mock_export_response = MagicMock()
+        mock_export_response.status_code = 200
+        mock_export_response.content = b"%PDF-1.4 test content"
+        mock_client.get.return_value = mock_export_response
+
+        file = FileMetadata(
+            source_id="doc123",
+            name="My Document",
+            mime_type="application/vnd.google-apps.document",
+        )
+
+        result = await provider.stream_to_storage(
+            file=file,
+            config={},
+            minio_client=mock_minio,
+            bucket="test-bucket",
+            object_key="test/path/doc.pdf",
+        )
+
+        assert result.storage_path == "minio:test-bucket:test/path/doc.pdf"
+        assert result.size == len(b"%PDF-1.4 test content")
+        # Workspace files don't have content_hash
+        assert result.content_hash is None
+
+        # Verify upload was called with PDF content
+        mock_minio.upload_file.assert_called_once()
+        call_kwargs = mock_minio.upload_file.call_args[1]
+        assert call_kwargs["content_type"] == "application/pdf"
+
+    @pytest.mark.asyncio
+    async def test_stream_handles_rate_limit(
+        self,
+        provider: GoogleDriveProvider,
+        mock_client: AsyncMock,
+        mock_minio: AsyncMock,
+    ) -> None:
+        """Test streaming handles rate limit errors."""
+        from connector.logic.providers.base import FileMetadata
+
+        # Mock rate limited response
+        mock_stream_response = MagicMock()
+        mock_stream_response.status_code = 429
+        mock_stream_response.__aenter__ = AsyncMock(return_value=mock_stream_response)
+        mock_stream_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_client.stream.return_value = mock_stream_response
+
+        file = FileMetadata(
+            source_id="file123",
+            name="document.pdf",
+            mime_type="application/pdf",
+        )
+
+        with pytest.raises(RateLimitError):
+            await provider.stream_to_storage(
+                file=file,
+                config={},
+                minio_client=mock_minio,
+                bucket="bucket",
+                object_key="path/file.pdf",
+            )
+
+    @pytest.mark.asyncio
+    async def test_stream_handles_download_error(
+        self,
+        provider: GoogleDriveProvider,
+        mock_client: AsyncMock,
+        mock_minio: AsyncMock,
+    ) -> None:
+        """Test streaming handles download errors."""
+        from connector.logic.providers.base import FileMetadata
+
+        # Mock error response
+        mock_stream_response = MagicMock()
+        mock_stream_response.status_code = 500
+        mock_stream_response.__aenter__ = AsyncMock(return_value=mock_stream_response)
+        mock_stream_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_client.stream.return_value = mock_stream_response
+
+        file = FileMetadata(
+            source_id="file123",
+            name="document.pdf",
+            mime_type="application/pdf",
+        )
+
+        with pytest.raises(DownloadError):
+            await provider.stream_to_storage(
+                file=file,
+                config={},
+                minio_client=mock_minio,
+                bucket="bucket",
+                object_key="path/file.pdf",
+            )

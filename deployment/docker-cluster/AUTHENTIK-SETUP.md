@@ -13,9 +13,10 @@ Complete guide to configure Authentik as the identity provider for EchoMind, inc
 7. [Create Groups](#create-groups)
 8. [Configure Admin Approval Flow](#configure-admin-approval-flow)
 9. [Configure Portainer OAuth](#configure-portainer-oauth)
-10. [Update EchoMind Configuration](#update-echomind-configuration)
-11. [Testing](#testing)
-12. [Troubleshooting](#troubleshooting)
+10. [Configure Forward Auth for Infrastructure Dashboards](#configure-forward-auth-for-infrastructure-dashboards)
+11. [Update EchoMind Configuration](#update-echomind-configuration)
+12. [Testing](#testing)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -422,6 +423,126 @@ Now only `echomind-superadmins` can access Portainer.
 
 ---
 
+## Configure Forward Auth for Infrastructure Dashboards
+
+Qdrant and MinIO dashboards don't have built-in OAuth support. We use Authentik Forward Auth with Traefik to protect them.
+
+### How Forward Auth Works
+
+```
+┌──────────┐     ┌─────────┐     ┌──────────────────┐     ┌────────┐
+│  User    │────▶│ Traefik │────▶│ Authentik Outpost│────▶│ Qdrant │
+│          │     │         │     │ (forward auth)   │     │ MinIO  │
+└──────────┘     └─────────┘     └──────────────────┘     └────────┘
+                      │                   │
+                      │  401 Unauthorized │
+                      │◀──────────────────│
+                      │                   │
+                      │  Redirect to      │
+                      │  Authentik Login  │
+                      ▼                   │
+               ┌────────────┐             │
+               │ Authentik  │             │
+               │ Login Page │             │
+               └────────────┘             │
+                      │                   │
+                      │  Set auth cookie  │
+                      │──────────────────▶│
+                      │                   │
+                      │  200 OK (allow)   │
+                      │◀──────────────────│
+                      │                   │
+                      │  Proxy to backend │
+                      ▼                   ▼
+```
+
+### Step 1: Create Proxy Provider for Infrastructure
+
+1. Go to **Applications > Providers**
+2. Click **Create**
+3. Select **Proxy Provider**
+4. Configure:
+
+| Field | Value |
+|-------|-------|
+| Name | `infrastructure-forward-auth` |
+| Authentication flow | `default-authentication-flow` |
+| Authorization flow | `default-provider-authorization-explicit-consent` |
+| Mode | `Forward auth (domain level)` |
+| External host | `https://demo.echomind.ch` |
+
+5. Under **Advanced protocol settings**:
+   - Token validity: `hours=24`
+
+6. Click **Finish**
+
+### Step 2: Create Infrastructure Application
+
+1. Go to **Applications > Applications**
+2. Click **Create**
+3. Configure:
+
+| Field | Value |
+|-------|-------|
+| Name | `Infrastructure Dashboards` |
+| Slug | `infrastructure` |
+| Provider | `infrastructure-forward-auth` |
+| Launch URL | `https://qdrant.demo.echomind.ch` |
+
+4. Click **Create**
+
+### Step 3: Restrict to Superadmins
+
+1. Go to **Applications > Applications > Infrastructure Dashboards**
+2. Click **Policy/Group Bindings**
+3. Click **Bind existing policy/group**
+4. Select **Group**: `echomind-superadmins`
+5. Set **Negate**: `No`
+
+Now only `echomind-superadmins` can access Qdrant and MinIO dashboards.
+
+### Step 4: Create Embedded Outpost
+
+Authentik includes an embedded outpost that handles Forward Auth requests.
+
+1. Go to **Applications > Outposts**
+2. You should see **authentik Embedded Outpost**
+3. Click on it to edit
+4. Under **Applications**, add:
+   - `Infrastructure Dashboards`
+5. Click **Update**
+
+The embedded outpost listens at `http://authentik-server:9000/outpost.goauthentik.io/auth/traefik`.
+
+### Step 5: Verify Traefik Configuration
+
+The docker-compose already includes the Forward Auth middleware:
+
+```yaml
+# In traefik service labels:
+- "traefik.http.middlewares.authentik-forward-auth.forwardAuth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
+- "traefik.http.middlewares.authentik-forward-auth.forwardAuth.trustForwardHeader=true"
+- "traefik.http.middlewares.authentik-forward-auth.forwardAuth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-uid,X-authentik-jwt"
+
+# Applied to Qdrant:
+- "traefik.http.routers.qdrant.middlewares=authentik-forward-auth"
+
+# Applied to MinIO Console:
+- "traefik.http.routers.minio-console.middlewares=authentik-forward-auth"
+```
+
+### Protected Services
+
+| Service | URL | Protection |
+|---------|-----|------------|
+| Qdrant Dashboard | `https://qdrant.demo.echomind.ch` | Forward Auth (superadmin) |
+| MinIO Console | `https://minio.demo.echomind.ch` | Forward Auth (superadmin) |
+| MinIO S3 API | `https://s3.demo.echomind.ch` | Access Keys (no Forward Auth) |
+
+**Note**: The MinIO S3 API is NOT protected by Forward Auth since it uses access keys for authentication. This is intentional - the S3 API is used by EchoMind services internally.
+
+---
+
 ## Update EchoMind Configuration
 
 After setting up Authentik, update your `.env` file:
@@ -486,7 +607,25 @@ docker compose -f docker-compose-host.yml up -d
 3. Only `echomind-superadmins` members should succeed
 4. Regular users should see "Access Denied"
 
-### Test 5: Permission Levels
+### Test 5: Qdrant Dashboard (Forward Auth)
+
+1. Open https://qdrant.demo.echomind.ch in incognito
+2. Should redirect to Authentik login
+3. Login as `echomind-superadmins` member
+4. Should be redirected to Qdrant dashboard
+5. Try with `echomind-allowed` user - should see "Access Denied"
+
+### Test 6: MinIO Console (Forward Auth)
+
+1. Open https://minio.demo.echomind.ch in incognito
+2. Should redirect to Authentik login
+3. Login as `echomind-superadmins` member
+4. Should see Authentik auth, then MinIO login prompt
+5. Login with MinIO credentials (`MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`)
+
+**Note**: MinIO still has its own login after Forward Auth. The Forward Auth only controls who can reach the login page.
+
+### Test 7: Permission Levels
 
 | User Group | Expected Access |
 |------------|-----------------|
@@ -543,6 +682,32 @@ docker compose -f docker-compose-host.yml up -d
 
 **Solution**: Check Traefik CORS middleware in docker-compose includes your domain.
 
+### Forward Auth "502 Bad Gateway"
+
+**Cause**: Authentik server not reachable from Traefik.
+
+**Solution**:
+1. Verify authentik-server is running: `docker logs echomind-authentik-server`
+2. Check they're on the same network (backend)
+3. Test connectivity: `docker exec echomind-traefik wget -qO- http://authentik-server:9000/outpost.goauthentik.io/ping`
+
+### Forward Auth redirect loop
+
+**Cause**: Outpost not configured for the application.
+
+**Solution**:
+1. Go to **Applications > Outposts > authentik Embedded Outpost**
+2. Verify "Infrastructure Dashboards" is in the Applications list
+3. Click **Update** to refresh the outpost configuration
+
+### Qdrant/MinIO shows Authentik login but then denies access
+
+**Cause**: User not in `echomind-superadmins` group.
+
+**Solution**:
+1. Add user to `echomind-superadmins` group in Authentik
+2. Have user logout and login again to refresh group membership
+
 ---
 
 ## OAuth Endpoints Reference
@@ -555,6 +720,8 @@ docker compose -f docker-compose-host.yml up -d
 | JWKS (EchoMind) | `https://auth.demo.echomind.ch/application/o/echomind-web/jwks/` |
 | JWKS (Portainer) | `https://auth.demo.echomind.ch/application/o/portainer/jwks/` |
 | OpenID Config | `https://auth.demo.echomind.ch/application/o/echomind-web/.well-known/openid-configuration` |
+| Forward Auth (Traefik) | `http://authentik-server:9000/outpost.goauthentik.io/auth/traefik` |
+| Forward Auth Ping | `http://authentik-server:9000/outpost.goauthentik.io/ping` |
 
 ---
 
@@ -563,6 +730,9 @@ docker compose -f docker-compose-host.yml up -d
 - [Authentik Google OAuth Documentation](https://docs.goauthentik.io/users-sources/sources/social-logins/google/cloud/)
 - [Authentik Microsoft/Entra Documentation](https://docs.goauthentik.io/users-sources/sources/social-logins/entra-id/oauth/)
 - [Authentik Portainer Integration](https://integrations.goauthentik.io/hypervisors-orchestrators/portainer/)
+- [Authentik Forward Auth](https://docs.goauthentik.io/add-secure-apps/providers/proxy/forward_auth/)
+- [Authentik Traefik Integration](https://docs.goauthentik.io/add-secure-apps/providers/proxy/server_traefik/)
+- [Authentik Outposts](https://docs.goauthentik.io/add-secure-apps/outposts/)
 - [Portainer OAuth Documentation](https://docs.portainer.io/admin/settings/authentication/oauth)
 - [Google Cloud Console](https://console.cloud.google.com/)
 - [Azure Portal](https://portal.azure.com/)

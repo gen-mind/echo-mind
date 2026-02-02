@@ -26,7 +26,7 @@ from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 from ..public import connector_pb2 as public_dot_connector__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1binternal/orchestrator.proto\x12\x11\x65\x63homind.internal\x1a\x1cgoogle/protobuf/struct.proto\x1a\x16public/connector.proto\"\xaa\x02\n\x14\x43onnectorSyncRequest\x12\x14\n\x0c\x63onnector_id\x18\x01 \x01(\x05\x12,\n\x04type\x18\x02 \x01(\x0e\x32\x1e.echomind.public.ConnectorType\x12\x0f\n\x07user_id\x18\x03 \x01(\x05\x12.\n\x05scope\x18\x04 \x01(\x0e\x32\x1f.echomind.public.ConnectorScope\x12\x15\n\x08scope_id\x18\x05 \x01(\tH\x00\x88\x01\x01\x12\'\n\x06\x63onfig\x18\x06 \x01(\x0b\x32\x17.google.protobuf.Struct\x12&\n\x05state\x18\x07 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x18\n\x10\x63hunking_session\x18\x08 \x01(\tB\x0b\n\t_scope_id\"\xd6\x01\n\x16\x44ocumentProcessRequest\x12\x13\n\x0b\x64ocument_id\x18\x01 \x01(\x05\x12\x14\n\x0c\x63onnector_id\x18\x02 \x01(\x05\x12\x0f\n\x07user_id\x18\x03 \x01(\x05\x12\x12\n\nminio_path\x18\x04 \x01(\t\x12\x18\n\x10\x63hunking_session\x18\x05 \x01(\t\x12.\n\x05scope\x18\x06 \x01(\x0e\x32\x1f.echomind.public.ConnectorScope\x12\x15\n\x08scope_id\x18\x07 \x01(\tH\x00\x88\x01\x01\x42\x0b\n\t_scope_idB\x19Z\x17\x65\x63homind/proto/internalb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1binternal/orchestrator.proto\x12\x11\x65\x63homind.internal\x1a\x1cgoogle/protobuf/struct.proto\x1a\x16public/connector.proto\"\xaa\x02\n\x14\x43onnectorSyncRequest\x12\x14\n\x0c\x63onnector_id\x18\x01 \x01(\x05\x12,\n\x04type\x18\x02 \x01(\x0e\x32\x1e.echomind.public.ConnectorType\x12\x0f\n\x07user_id\x18\x03 \x01(\x05\x12.\n\x05scope\x18\x04 \x01(\x0e\x32\x1f.echomind.public.ConnectorScope\x12\x15\n\x08scope_id\x18\x05 \x01(\tH\x00\x88\x01\x01\x12\'\n\x06\x63onfig\x18\x06 \x01(\x0b\x32\x17.google.protobuf.Struct\x12&\n\x05state\x18\x07 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x18\n\x10\x63hunking_session\x18\x08 \x01(\tB\x0b\n\t_scope_id\"\xf8\x01\n\x16\x44ocumentProcessRequest\x12\x13\n\x0b\x64ocument_id\x18\x01 \x01(\x05\x12\x14\n\x0c\x63onnector_id\x18\x02 \x01(\x05\x12\x0f\n\x07user_id\x18\x03 \x01(\x05\x12\x12\n\nminio_path\x18\x04 \x01(\t\x12\x18\n\x10\x63hunking_session\x18\x05 \x01(\t\x12.\n\x05scope\x18\x06 \x01(\x0e\x32\x1f.echomind.public.ConnectorScope\x12\x15\n\x08scope_id\x18\x07 \x01(\tH\x00\x88\x01\x01\x12\x14\n\x07team_id\x18\x08 \x01(\x05H\x01\x88\x01\x01\x42\x0b\n\t_scope_idB\n\n\x08_team_idB\x19Z\x17\x65\x63homind/proto/internalb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -37,5 +37,5 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_CONNECTORSYNCREQUEST']._serialized_start=105
   _globals['_CONNECTORSYNCREQUEST']._serialized_end=403
   _globals['_DOCUMENTPROCESSREQUEST']._serialized_start=406
-  _globals['_DOCUMENTPROCESSREQUEST']._serialized_end=620
+  _globals['_DOCUMENTPROCESSREQUEST']._serialized_end=654
 # @@protoc_insertion_point(module_scope)

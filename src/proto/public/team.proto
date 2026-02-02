@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package echomind.public;
+
+option go_package = "echomind/proto/public";
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// Team member role within a team
+enum TeamMemberRole {
+  TEAM_MEMBER_ROLE_UNSPECIFIED = 0;
+  TEAM_MEMBER_ROLE_MEMBER = 1;
+  TEAM_MEMBER_ROLE_LEAD = 2;
+}
+
+// Team within an organization
+message Team {
+  int32 id = 1;
+  string name = 2;
+  string description = 3;
+  optional int32 leader_id = 4;       // User ID of team lead
+  int32 created_by = 5;               // User who created the team
+  int32 member_count = 6;             // Computed field
+  google.protobuf.Timestamp creation_date = 7;
+  optional google.protobuf.Timestamp last_update = 8;
+}
+
+// Team membership record
+message TeamMember {
+  int32 team_id = 1;
+  int32 user_id = 2;
+  TeamMemberRole role = 3;
+  google.protobuf.Timestamp added_at = 4;
+  int32 added_by = 5;
+}
+
+// Team member with user details (for listing team members)
+message TeamMemberWithUser {
+  int32 user_id = 1;
+  string user_name = 2;
+  string email = 3;
+  optional string first_name = 4;
+  optional string last_name = 5;
+  TeamMemberRole role = 6;
+  google.protobuf.Timestamp added_at = 7;
+}
+
+// ===== API Request/Response Messages =====
+
+// Request to create a new team
+message CreateTeamRequest {
+  string name = 1;
+  optional string description = 2;
+  optional int32 leader_id = 3;       // Defaults to creator if not specified
+}
+
+// Request to update a team
+message UpdateTeamRequest {
+  int32 id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional int32 leader_id = 4;
+}
+
+// Request to list teams
+message ListTeamsRequest {
+  echomind.common.PaginationRequest pagination = 1;
+  optional bool include_member_count = 2;
+}
+
+// Response for GET /teams
+message ListTeamsResponse {
+  repeated Team teams = 1;
+  echomind.common.PaginationResponse pagination = 2;
+}
+
+// Response for GET /teams/{id}
+message GetTeamResponse {
+  Team team = 1;
+  repeated TeamMemberWithUser members = 2;
+}
+
+// Request to add a member to a team
+message AddTeamMemberRequest {
+  int32 team_id = 1;
+  int32 user_id = 2;
+  TeamMemberRole role = 3;
+}
+
+// Request to remove a member from a team
+message RemoveTeamMemberRequest {
+  int32 team_id = 1;
+  int32 user_id = 2;
+}
+
+// Request to update a team member's role
+message UpdateTeamMemberRoleRequest {
+  int32 team_id = 1;
+  int32 user_id = 2;
+  TeamMemberRole role = 3;
+}
+
+// Request to list current user's teams
+message ListUserTeamsRequest {
+  echomind.common.PaginationRequest pagination = 1;
+}
+
+// Response for GET /users/me/teams
+message ListUserTeamsResponse {
+  repeated Team teams = 1;
+  echomind.common.PaginationResponse pagination = 2;
+}

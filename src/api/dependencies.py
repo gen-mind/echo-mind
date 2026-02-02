@@ -192,3 +192,27 @@ def get_nats() -> JetStreamPublisher | None:
 
 
 NatsPublisher = Annotated[JetStreamPublisher | None, Depends(get_nats)]
+
+
+def get_minio_client() -> "MinIOClient | None":
+    """
+    Get the MinIO client if available.
+
+    Returns None if MinIO is not initialized (graceful degradation).
+
+    Usage:
+        @app.post("/upload")
+        async def upload(minio: MinioClient):
+            if minio:
+                await minio.upload_file(...)
+    """
+    from echomind_lib.db.minio import MinIOClient, get_minio
+
+    try:
+        return get_minio()
+    except RuntimeError:
+        # MinIO not initialized - return None for graceful degradation
+        return None
+
+
+MinioClient = Annotated["MinIOClient | None", Depends(get_minio_client)]

@@ -9,7 +9,7 @@
 /** Embedding model configuration */
 export interface EmbeddingModel {
   id: number;
-  /** e.g., "sentence-transformers/paraphrase-multilingual-mpnet-base-v2" */
+  /** e.g., "nvidia/llama-nemotron-embed-1b-v2" */
   modelId: string;
   /** Display name */
   modelName: string;

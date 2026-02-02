@@ -1,7 +1,7 @@
 """
 Unit tests for ConnectorService.
 
-Tests connector CRUD operations and NATS sync message publishing.
+Tests connector CRUD operations with RBAC enforcement and NATS sync message publishing.
 """
 
 import uuid
@@ -11,7 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from api.logic.connector_service import ConnectorService
-from api.logic.exceptions import NotFoundError
+from api.logic.exceptions import ForbiddenError, NotFoundError
+from api.logic.permissions import AccessResult
 
 
 class TestConnectorService:
@@ -35,15 +36,40 @@ class TestConnectorService:
         return nats
 
     @pytest.fixture
-    def mock_connector(self):
+    def mock_user(self):
+        """Create a mock TokenUser."""
+        user = MagicMock()
+        user.id = 42
+        user.roles = ["echomind-allowed"]
+        return user
+
+    @pytest.fixture
+    def mock_admin_user(self):
+        """Create a mock admin TokenUser."""
+        user = MagicMock()
+        user.id = 100
+        user.roles = ["echomind-allowed", "echomind-admins"]
+        return user
+
+    @pytest.fixture
+    def mock_superadmin_user(self):
+        """Create a mock superadmin TokenUser."""
+        user = MagicMock()
+        user.id = 1
+        user.roles = ["echomind-allowed", "echomind-admins", "echomind-superadmins"]
+        return user
+
+    @pytest.fixture
+    def mock_connector(self, mock_user):
         """Create a mock connector ORM object."""
         connector = MagicMock()
         connector.id = 1
         connector.name = "Test Connector"
         connector.type = "google_drive"
-        connector.user_id = 42
+        connector.user_id = mock_user.id
         connector.scope = "user"
         connector.scope_id = ""
+        connector.team_id = None
         connector.config = {"folder_id": "abc123"}
         connector.state = {}
         connector.status = "active"
@@ -69,52 +95,109 @@ class TestConnectorService:
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_get_connector_success(self, service, mock_db, mock_connector):
-        """Test getting an existing connector."""
+    async def test_get_connector_success(self, service, mock_db, mock_connector, mock_user):
+        """Test getting an existing connector with permission."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_connector
         mock_db.execute.return_value = mock_result
 
-        result = await service.get_connector(1, 42)
+        with patch.object(
+            service.permissions,
+            "can_view_connector",
+            return_value=AccessResult(True, "owner"),
+        ):
+            result = await service.get_connector(1, mock_user)
 
         assert result == mock_connector
         mock_db.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_connector_not_found(self, service, mock_db):
+    async def test_get_connector_not_found(self, service, mock_db, mock_user):
         """Test getting a non-existent connector raises NotFoundError."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_db.execute.return_value = mock_result
 
         with pytest.raises(NotFoundError) as exc_info:
-            await service.get_connector(999, 42)
+            await service.get_connector(999, mock_user)
 
         assert "Connector" in str(exc_info.value)
         assert "999" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_get_connector_wrong_user(self, service, mock_db):
-        """Test getting a connector owned by different user raises NotFoundError."""
+    async def test_get_connector_forbidden(self, service, mock_db, mock_connector, mock_user):
+        """Test getting a connector without permission raises ForbiddenError."""
+        # Different user's connector
+        mock_connector.user_id = 999
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None  # Query filters by user_id
+        mock_result.scalar_one_or_none.return_value = mock_connector
         mock_db.execute.return_value = mock_result
 
-        with pytest.raises(NotFoundError):
-            await service.get_connector(1, 999)  # Wrong user
+        with patch.object(
+            service.permissions,
+            "can_view_connector",
+            return_value=AccessResult(False, "not owner"),
+        ):
+            with pytest.raises(ForbiddenError):
+                await service.get_connector(1, mock_user)
+
+    # =========================================================================
+    # list_connectors tests
+    # =========================================================================
+
+    @pytest.mark.asyncio
+    async def test_list_connectors_regular_user(self, service, mock_db, mock_connector, mock_user):
+        """Test listing connectors for regular user."""
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_connector]
+        mock_db.execute.return_value = mock_result
+
+        with patch.object(
+            service.permissions,
+            "get_user_team_ids",
+            return_value=[1, 2],
+        ), patch.object(
+            service.permissions,
+            "is_superadmin",
+            return_value=False,
+        ):
+            result = await service.list_connectors(mock_user)
+
+        assert len(result) == 1
+        assert result[0] == mock_connector
+
+    @pytest.mark.asyncio
+    async def test_list_connectors_superadmin_sees_all(
+        self, service, mock_db, mock_connector, mock_superadmin_user
+    ):
+        """Test superadmin can list all connectors."""
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_connector]
+        mock_db.execute.return_value = mock_result
+
+        with patch.object(
+            service.permissions,
+            "is_superadmin",
+            return_value=True,
+        ):
+            result = await service.list_connectors(mock_superadmin_user)
+
+        assert len(result) == 1
 
     # =========================================================================
     # create_connector tests
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_create_connector_success(self, service, mock_db, mock_nats):
-        """Test creating a connector successfully."""
-        # Setup mock to return a connector with ID after flush
+    async def test_create_connector_user_scope_success(
+        self, service, mock_db, mock_nats, mock_user
+    ):
+        """Test creating a user-scoped connector successfully."""
+
         def set_connector_id(connector):
             connector.id = 1
             connector.type = "google_drive"
-            connector.user_id = 42
+            connector.user_id = mock_user.id
             connector.scope = "user"
             connector.scope_id = ""
             connector.config = {}
@@ -122,30 +205,75 @@ class TestConnectorService:
 
         mock_db.refresh.side_effect = set_connector_id
 
-        result = await service.create_connector(
-            name="New Connector",
-            connector_type="google_drive",
-            user_id=42,
-            config={"folder_id": "abc"},
-            trigger_sync=True,
-        )
+        with patch.object(
+            service.permissions,
+            "can_create_connector",
+            return_value=AccessResult(True, "allowed user"),
+        ):
+            result = await service.create_connector(
+                name="New Connector",
+                connector_type="google_drive",
+                user=mock_user,
+                config={"folder_id": "abc"},
+                trigger_sync=True,
+            )
 
         mock_db.add.assert_called_once()
         mock_db.flush.assert_called_once()
         mock_db.refresh.assert_called_once()
         mock_nats.publish.assert_called_once()
 
-        # Verify NATS subject
-        call_args = mock_nats.publish.call_args
-        assert call_args[0][0] == "connector.sync.google_drive"
+    @pytest.mark.asyncio
+    async def test_create_connector_team_scope_requires_admin(
+        self, service, mock_db, mock_user
+    ):
+        """Test creating team-scoped connector requires admin."""
+        with patch.object(
+            service.permissions,
+            "can_create_connector",
+            return_value=AccessResult(False, "admin role required"),
+        ):
+            with pytest.raises(ForbiddenError) as exc_info:
+                await service.create_connector(
+                    name="Team Connector",
+                    connector_type="google_drive",
+                    user=mock_user,
+                    scope="team",
+                    team_id=10,
+                )
+
+        assert "admin" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_create_connector_without_sync(self, service, mock_db, mock_nats):
+    async def test_create_connector_org_scope_requires_superadmin(
+        self, service, mock_db, mock_admin_user
+    ):
+        """Test creating org-scoped connector requires superadmin."""
+        with patch.object(
+            service.permissions,
+            "can_create_connector",
+            return_value=AccessResult(False, "superadmin required"),
+        ):
+            with pytest.raises(ForbiddenError) as exc_info:
+                await service.create_connector(
+                    name="Org Connector",
+                    connector_type="google_drive",
+                    user=mock_admin_user,
+                    scope="org",
+                )
+
+        assert "superadmin" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_create_connector_without_sync(
+        self, service, mock_db, mock_nats, mock_user
+    ):
         """Test creating a connector without triggering sync."""
+
         def set_connector_id(connector):
             connector.id = 1
             connector.type = "google_drive"
-            connector.user_id = 42
+            connector.user_id = mock_user.id
             connector.scope = None
             connector.scope_id = ""
             connector.config = {}
@@ -153,23 +281,31 @@ class TestConnectorService:
 
         mock_db.refresh.side_effect = set_connector_id
 
-        await service.create_connector(
-            name="New Connector",
-            connector_type="google_drive",
-            user_id=42,
-            trigger_sync=False,
-        )
+        with patch.object(
+            service.permissions,
+            "can_create_connector",
+            return_value=AccessResult(True, "allowed user"),
+        ):
+            await service.create_connector(
+                name="New Connector",
+                connector_type="google_drive",
+                user=mock_user,
+                trigger_sync=False,
+            )
 
         mock_db.add.assert_called_once()
         mock_nats.publish.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_create_connector_no_nats_available(self, service_no_nats, mock_db):
+    async def test_create_connector_no_nats_available(
+        self, service_no_nats, mock_db, mock_user
+    ):
         """Test creating a connector when NATS is not available."""
+
         def set_connector_id(connector):
             connector.id = 1
             connector.type = "onedrive"
-            connector.user_id = 42
+            connector.user_id = mock_user.id
             connector.scope = None
             connector.scope_id = ""
             connector.config = {}
@@ -177,13 +313,17 @@ class TestConnectorService:
 
         mock_db.refresh.side_effect = set_connector_id
 
-        # Should not raise even with trigger_sync=True
-        result = await service_no_nats.create_connector(
-            name="New Connector",
-            connector_type="onedrive",
-            user_id=42,
-            trigger_sync=True,
-        )
+        with patch.object(
+            service_no_nats.permissions,
+            "can_create_connector",
+            return_value=AccessResult(True, "allowed user"),
+        ):
+            result = await service_no_nats.create_connector(
+                name="New Connector",
+                connector_type="onedrive",
+                user=mock_user,
+                trigger_sync=True,
+            )
 
         mock_db.add.assert_called_once()
 
@@ -192,24 +332,31 @@ class TestConnectorService:
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_update_connector_success(self, service, mock_db, mock_connector):
-        """Test updating a connector."""
+    async def test_update_connector_success(
+        self, service, mock_db, mock_connector, mock_user
+    ):
+        """Test updating a connector with permission."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_connector
         mock_db.execute.return_value = mock_result
 
-        result = await service.update_connector(
-            connector_id=1,
-            user_id=42,
-            name="Updated Name",
-            config={"new": "config"},
-        )
+        with patch.object(
+            service.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(True, "owner"),
+        ):
+            result = await service.update_connector(
+                connector_id=1,
+                user=mock_user,
+                name="Updated Name",
+                config={"new": "config"},
+            )
 
         assert result.name == "Updated Name"
         assert result.config == {"new": "config"}
 
     @pytest.mark.asyncio
-    async def test_update_connector_not_found(self, service, mock_db):
+    async def test_update_connector_not_found(self, service, mock_db, mock_user):
         """Test updating non-existent connector raises NotFoundError."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -218,12 +365,36 @@ class TestConnectorService:
         with pytest.raises(NotFoundError):
             await service.update_connector(
                 connector_id=999,
-                user_id=42,
+                user=mock_user,
                 name="New Name",
             )
 
     @pytest.mark.asyncio
-    async def test_update_connector_partial(self, service, mock_db, mock_connector):
+    async def test_update_connector_forbidden(
+        self, service, mock_db, mock_connector, mock_user
+    ):
+        """Test updating connector without permission raises ForbiddenError."""
+        mock_connector.user_id = 999
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_connector
+        mock_db.execute.return_value = mock_result
+
+        with patch.object(
+            service.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(False, "not owner"),
+        ):
+            with pytest.raises(ForbiddenError):
+                await service.update_connector(
+                    connector_id=1,
+                    user=mock_user,
+                    name="New Name",
+                )
+
+    @pytest.mark.asyncio
+    async def test_update_connector_partial(
+        self, service, mock_db, mock_connector, mock_user
+    ):
         """Test partial update only changes specified fields."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_connector
@@ -231,55 +402,117 @@ class TestConnectorService:
 
         original_config = mock_connector.config.copy()
 
-        result = await service.update_connector(
-            connector_id=1,
-            user_id=42,
-            name="New Name Only",
-            # config not provided - should not change
-        )
+        with patch.object(
+            service.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(True, "owner"),
+        ):
+            result = await service.update_connector(
+                connector_id=1,
+                user=mock_user,
+                name="New Name Only",
+            )
 
         assert result.name == "New Name Only"
         assert result.config == original_config
+
+    @pytest.mark.asyncio
+    async def test_update_connector_scope_change_requires_permission(
+        self, service, mock_db, mock_connector, mock_user
+    ):
+        """Test changing connector scope requires permission for new scope."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_connector
+        mock_db.execute.return_value = mock_result
+
+        with patch.object(
+            service.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(True, "owner"),
+        ), patch.object(
+            service.permissions,
+            "can_create_connector",
+            return_value=AccessResult(False, "admin required for team scope"),
+        ):
+            with pytest.raises(ForbiddenError):
+                await service.update_connector(
+                    connector_id=1,
+                    user=mock_user,
+                    scope="team",
+                    team_id=10,
+                )
 
     # =========================================================================
     # delete_connector tests
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_delete_connector_success(self, service, mock_db, mock_connector):
+    async def test_delete_connector_success(
+        self, service, mock_db, mock_connector, mock_user
+    ):
         """Test soft deleting a connector."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_connector
         mock_db.execute.return_value = mock_result
 
-        await service.delete_connector(1, 42)
+        with patch.object(
+            service.permissions,
+            "can_delete_connector",
+            return_value=AccessResult(True, "owner"),
+        ):
+            await service.delete_connector(1, mock_user)
 
         assert mock_connector.deleted_date is not None
         assert isinstance(mock_connector.deleted_date, datetime)
 
     @pytest.mark.asyncio
-    async def test_delete_connector_not_found(self, service, mock_db):
+    async def test_delete_connector_not_found(self, service, mock_db, mock_user):
         """Test deleting non-existent connector raises NotFoundError."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_db.execute.return_value = mock_result
 
         with pytest.raises(NotFoundError):
-            await service.delete_connector(999, 42)
+            await service.delete_connector(999, mock_user)
+
+    @pytest.mark.asyncio
+    async def test_delete_connector_forbidden(
+        self, service, mock_db, mock_connector, mock_user
+    ):
+        """Test deleting connector without permission raises ForbiddenError."""
+        mock_connector.user_id = 999
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_connector
+        mock_db.execute.return_value = mock_result
+
+        with patch.object(
+            service.permissions,
+            "can_delete_connector",
+            return_value=AccessResult(False, "not owner"),
+        ):
+            with pytest.raises(ForbiddenError):
+                await service.delete_connector(1, mock_user)
 
     # =========================================================================
     # trigger_sync tests
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_trigger_sync_success(self, service, mock_db, mock_nats, mock_connector):
+    async def test_trigger_sync_success(
+        self, service, mock_db, mock_nats, mock_connector, mock_user
+    ):
         """Test triggering a sync successfully."""
         mock_connector.status = "active"
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_connector
         mock_db.execute.return_value = mock_result
 
-        success, message = await service.trigger_sync(1, 42)
+        with patch.object(
+            service.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(True, "owner"),
+        ):
+            success, message = await service.trigger_sync(1, mock_user)
 
         assert success is True
         assert message == "Sync triggered"
@@ -287,64 +520,102 @@ class TestConnectorService:
         mock_nats.publish.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_trigger_sync_already_syncing(self, service, mock_db, mock_nats, mock_connector):
+    async def test_trigger_sync_already_syncing(
+        self, service, mock_db, mock_nats, mock_connector, mock_user
+    ):
         """Test triggering sync when already syncing returns failure."""
         mock_connector.status = "syncing"
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_connector
         mock_db.execute.return_value = mock_result
 
-        success, message = await service.trigger_sync(1, 42)
+        with patch.object(
+            service.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(True, "owner"),
+        ):
+            success, message = await service.trigger_sync(1, mock_user)
 
         assert success is False
         assert "already in progress" in message
         mock_nats.publish.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_trigger_sync_no_nats(self, service_no_nats, mock_db, mock_connector):
+    async def test_trigger_sync_no_nats(
+        self, service_no_nats, mock_db, mock_connector, mock_user
+    ):
         """Test triggering sync when NATS is not available."""
         mock_connector.status = "active"
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_connector
         mock_db.execute.return_value = mock_result
 
-        success, message = await service_no_nats.trigger_sync(1, 42)
+        with patch.object(
+            service_no_nats.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(True, "owner"),
+        ):
+            success, message = await service_no_nats.trigger_sync(1, mock_user)
 
         assert success is False
         assert "NATS not available" in message
 
     @pytest.mark.asyncio
-    async def test_trigger_sync_not_found(self, service, mock_db):
+    async def test_trigger_sync_not_found(self, service, mock_db, mock_user):
         """Test triggering sync for non-existent connector raises NotFoundError."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_db.execute.return_value = mock_result
 
         with pytest.raises(NotFoundError):
-            await service.trigger_sync(999, 42)
+            await service.trigger_sync(999, mock_user)
+
+    @pytest.mark.asyncio
+    async def test_trigger_sync_forbidden(
+        self, service, mock_db, mock_connector, mock_user
+    ):
+        """Test triggering sync without edit permission raises ForbiddenError."""
+        mock_connector.status = "active"
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_connector
+        mock_db.execute.return_value = mock_result
+
+        with patch.object(
+            service.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(False, "not team lead"),
+        ):
+            with pytest.raises(ForbiddenError):
+                await service.trigger_sync(1, mock_user)
 
     # =========================================================================
     # get_connector_status tests
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_get_connector_status_success(self, service, mock_db, mock_connector):
+    async def test_get_connector_status_success(
+        self, service, mock_db, mock_connector, mock_user
+    ):
         """Test getting connector status."""
         mock_connector.status = "active"
         mock_connector.status_message = "Last sync successful"
         mock_connector.last_sync_at = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         mock_connector.docs_analyzed = 100
 
-        # First call returns connector, second returns count
         mock_result1 = MagicMock()
         mock_result1.scalar_one_or_none.return_value = mock_connector
 
         mock_result2 = MagicMock()
-        mock_result2.scalar.return_value = 5  # 5 pending docs
+        mock_result2.scalar.return_value = 5
 
         mock_db.execute.side_effect = [mock_result1, mock_result2]
 
-        result = await service.get_connector_status(1, 42)
+        with patch.object(
+            service.permissions,
+            "can_view_connector",
+            return_value=AccessResult(True, "owner"),
+        ):
+            result = await service.get_connector_status(1, mock_user)
 
         assert result["status"] == "active"
         assert result["status_message"] == "Last sync successful"
@@ -356,7 +627,9 @@ class TestConnectorService:
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_publish_sync_message_content(self, service, mock_db, mock_nats, mock_connector):
+    async def test_publish_sync_message_content(
+        self, service, mock_db, mock_nats, mock_connector
+    ):
         """Test that sync message contains correct data."""
         with patch("uuid.uuid4") as mock_uuid:
             mock_uuid.return_value = uuid.UUID("12345678-1234-5678-1234-567812345678")
@@ -366,11 +639,9 @@ class TestConnectorService:
         mock_nats.publish.assert_called_once()
         call_args = mock_nats.publish.call_args
 
-        # Check subject
         subject = call_args[0][0]
         assert subject == "connector.sync.google_drive"
 
-        # Check payload is bytes (serialized protobuf)
         payload = call_args[0][1]
         assert isinstance(payload, bytes)
 
@@ -390,6 +661,7 @@ class TestConnectorService:
             connector.user_id = 42
             connector.scope = "user"
             connector.scope_id = ""
+            connector.team_id = None
             connector.config = {}
             connector.state = {}
 
@@ -399,76 +671,150 @@ class TestConnectorService:
             assert call_args[0][0] == expected_subject
 
 
-class TestConnectorServiceIntegration:
-    """Integration-style tests for ConnectorService."""
+class TestConnectorServiceRBAC:
+    """RBAC-specific tests for ConnectorService."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock database session."""
+        db = AsyncMock()
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+        db.refresh = AsyncMock()
+        db.execute = AsyncMock()
+        return db
+
+    @pytest.fixture
+    def mock_nats(self):
+        """Create a mock NATS publisher."""
+        nats = AsyncMock()
+        nats.publish = AsyncMock()
+        return nats
+
+    @pytest.fixture
+    def service(self, mock_db, mock_nats):
+        """Create a ConnectorService."""
+        return ConnectorService(mock_db, mock_nats)
 
     @pytest.mark.asyncio
-    async def test_create_and_trigger_sync_workflow(self):
-        """Test full workflow: create connector -> trigger sync."""
-        mock_db = AsyncMock()
-        mock_nats = AsyncMock()
+    async def test_team_member_can_view_team_connector(self, service, mock_db):
+        """Test team member can view team-scoped connector."""
+        user = MagicMock()
+        user.id = 1
+        user.roles = ["echomind-allowed"]
 
-        # Setup mocks
+        connector = MagicMock()
+        connector.id = 1
+        connector.user_id = 99
+        connector.scope = "team"
+        connector.team_id = 10
+        connector.deleted_date = None
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = connector
+        mock_db.execute.return_value = mock_result
+
+        with patch.object(
+            service.permissions,
+            "can_view_connector",
+            return_value=AccessResult(True, "team member"),
+        ):
+            result = await service.get_connector(1, user)
+
+        assert result == connector
+
+    @pytest.mark.asyncio
+    async def test_superadmin_can_view_any_connector(self, service, mock_db):
+        """Test superadmin can view any connector."""
+        user = MagicMock()
+        user.id = 1
+        user.roles = ["echomind-superadmins"]
+
+        connector = MagicMock()
+        connector.id = 1
+        connector.user_id = 99
+        connector.scope = "user"
+        connector.deleted_date = None
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = connector
+        mock_db.execute.return_value = mock_result
+
+        with patch.object(
+            service.permissions,
+            "can_view_connector",
+            return_value=AccessResult(True, "superadmin"),
+        ):
+            result = await service.get_connector(1, user)
+
+        assert result == connector
+
+    @pytest.mark.asyncio
+    async def test_admin_can_create_team_connector_as_member(
+        self, service, mock_db, mock_nats
+    ):
+        """Test admin who is team member can create team connector."""
+        user = MagicMock()
+        user.id = 100
+        user.roles = ["echomind-allowed", "echomind-admins"]
+
         def set_connector_id(connector):
             connector.id = 1
             connector.type = "google_drive"
-            connector.user_id = 42
-            connector.scope = "user"
+            connector.user_id = user.id
+            connector.scope = "team"
             connector.scope_id = ""
+            connector.team_id = 10
             connector.config = {}
             connector.state = {}
-            connector.status = "pending"
 
         mock_db.refresh.side_effect = set_connector_id
-        mock_db.add = MagicMock()
-        mock_db.flush = AsyncMock()
 
-        service = ConnectorService(mock_db, mock_nats)
+        with patch.object(
+            service.permissions,
+            "can_create_connector",
+            return_value=AccessResult(True, "admin and team member"),
+        ):
+            result = await service.create_connector(
+                name="Team Connector",
+                connector_type="google_drive",
+                user=user,
+                scope="team",
+                team_id=10,
+            )
 
-        # Create connector (triggers initial sync)
-        connector = await service.create_connector(
-            name="Test",
-            connector_type="google_drive",
-            user_id=42,
-            trigger_sync=True,
-        )
+        mock_db.add.assert_called_once()
 
-        # Verify NATS was called during creation
-        assert mock_nats.publish.call_count == 1
+    @pytest.mark.asyncio
+    async def test_team_lead_can_edit_team_connector(self, service, mock_db):
+        """Test team lead can edit team-scoped connector."""
+        user = MagicMock()
+        user.id = 50
+        user.roles = ["echomind-allowed"]
 
-        # Setup for trigger_sync
+        connector = MagicMock()
+        connector.id = 1
+        connector.name = "Original"
+        connector.user_id = 99
+        connector.scope = "team"
+        connector.team_id = 10
+        connector.deleted_date = None
+        connector.last_update = None
+        connector.user_id_last_update = None
+
         mock_result = MagicMock()
-        connector_orm = MagicMock()
-        connector_orm.id = 1
-        connector_orm.type = "google_drive"
-        connector_orm.user_id = 42
-        connector_orm.scope = "user"
-        connector_orm.scope_id = ""
-        connector_orm.config = {}
-        connector_orm.state = {}
-        connector_orm.status = "active"  # Simulate it finished syncing
-        mock_result.scalar_one_or_none.return_value = connector_orm
+        mock_result.scalar_one_or_none.return_value = connector
         mock_db.execute.return_value = mock_result
 
-        # Manually trigger another sync
-        success, message = await service.trigger_sync(1, 42)
+        with patch.object(
+            service.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(True, "team lead"),
+        ):
+            result = await service.update_connector(
+                connector_id=1,
+                user=user,
+                name="Updated by Lead",
+            )
 
-        assert success is True
-        assert mock_nats.publish.call_count == 2  # Initial + manual
-
-
-# Run init file creation
-@pytest.fixture(scope="module", autouse=True)
-def create_init_files():
-    """Create __init__.py files in test directories."""
-    import os
-
-    dirs = [
-        "/Users/gp/Developer/EchoMind/tests/unit/api",
-        "/Users/gp/Developer/EchoMind/tests/unit/api/logic",
-    ]
-    for d in dirs:
-        init_file = os.path.join(d, "__init__.py")
-        if not os.path.exists(init_file):
-            with open(init_file, "w") as f:
-                f.write("")
+        assert result.name == "Updated by Lead"

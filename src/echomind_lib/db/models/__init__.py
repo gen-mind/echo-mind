@@ -19,10 +19,13 @@ from echomind_lib.db.models.connector import Connector
 from echomind_lib.db.models.document import Document
 from echomind_lib.db.models.embedding_model import EmbeddingModel
 from echomind_lib.db.models.llm import LLM
+from echomind_lib.db.models.team import Team, TeamMember
 from echomind_lib.db.models.user import User
 
 __all__ = [
     "User",
+    "Team",
+    "TeamMember",
     "LLM",
     "EmbeddingModel",
     "Assistant",

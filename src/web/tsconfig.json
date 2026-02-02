@@ -26,5 +26,9 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/models/index.echomind*.ts",
+    "src/models/index.google*.ts"
+  ]
 }

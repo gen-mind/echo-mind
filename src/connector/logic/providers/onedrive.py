@@ -31,7 +31,9 @@ from connector.logic.providers.base import (
     DownloadedFile,
     FileChange,
     FileMetadata,
+    StreamResult,
 )
+from echomind_lib.db.minio import MinIOClient
 
 logger = logging.getLogger("echomind-connector.onedrive")
 
@@ -434,6 +436,92 @@ class OneDriveProvider(BaseProvider):
             external_access=external_access,
             parent_id=file.parent_id,
             original_url=file.web_url,
+        )
+
+    async def stream_to_storage(
+        self,
+        file: FileMetadata,
+        config: dict[str, Any],
+        minio_client: MinIOClient,
+        bucket: str,
+        object_key: str,
+    ) -> StreamResult:
+        """
+        Stream a file directly from OneDrive/SharePoint to MinIO storage.
+
+        Uses httpx streaming to avoid loading the entire file into memory.
+        No file size limit when streaming.
+
+        Args:
+            file: File metadata from change detection.
+            config: Provider configuration.
+            minio_client: MinIO client for storage.
+            bucket: Target MinIO bucket.
+            object_key: Object key/path in MinIO.
+
+        Returns:
+            StreamResult with storage path and metadata.
+
+        Raises:
+            DownloadError: If download/streaming fails.
+        """
+        drive_id = file.extra.get("drive_id") or config.get("drive_id")
+
+        logger.info("🔄 Streaming OneDrive file %s to storage", file.source_id)
+
+        # Build download URL
+        if drive_id:
+            url = f"{GRAPH_API_BASE}/drives/{drive_id}/items/{file.source_id}/content"
+        else:
+            url = f"{GRAPH_API_BASE}/me/drive/items/{file.source_id}/content"
+
+        # Use streaming download
+        async with self._client.stream(
+            "GET",
+            url,
+            headers=self._auth_headers(),
+            follow_redirects=True,
+        ) as response:
+            if response.status_code == 429:
+                raise RateLimitError(
+                    self.provider_name,
+                    int(response.headers.get("Retry-After", 60)),
+                )
+            if response.status_code != 200:
+                raise DownloadError(
+                    self.provider_name,
+                    file.source_id,
+                    f"Download failed: {response.status_code}",
+                )
+
+            # Collect chunks and upload
+            # Note: miniopy-async requires known length, so we buffer
+            chunks: list[bytes] = []
+            async for chunk in response.aiter_bytes(chunk_size=8192):
+                chunks.append(chunk)
+
+            content = b"".join(chunks)
+            content_len = len(content)
+
+        # Upload to MinIO
+        result = await minio_client.upload_file(
+            bucket_name=bucket,
+            object_name=object_key,
+            data=content,
+            content_type=file.mime_type,
+        )
+
+        logger.info(
+            "✅ Streamed OneDrive file %s to storage (%d bytes)",
+            file.source_id,
+            content_len,
+        )
+
+        return StreamResult(
+            storage_path=f"minio:{bucket}:{object_key}",
+            etag=result,
+            size=content_len,
+            content_hash=file.content_hash,  # cTag
         )
 
     async def get_file_permissions(

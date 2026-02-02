@@ -65,6 +65,51 @@ class DocumentNotFoundError(IngestorError):
         super().__init__(f"Document {document_id} not found")
 
 
+class OwnershipMismatchError(IngestorError):
+    """
+    Raised when NATS message claims don't match database records.
+
+    Security error - prevents processing documents under wrong user's collection.
+    Terminal error - don't retry, this indicates a forged/corrupted message.
+    """
+
+    def __init__(
+        self,
+        document_id: int,
+        expected_connector_id: int,
+        actual_connector_id: int,
+        expected_user_id: int | None = None,
+        actual_user_id: int | None = None,
+    ) -> None:
+        """
+        Initialize OwnershipMismatchError.
+
+        Args:
+            document_id: The document ID being processed.
+            expected_connector_id: Connector ID from NATS message.
+            actual_connector_id: Connector ID from database.
+            expected_user_id: Optional user ID from NATS message.
+            actual_user_id: Optional user ID from database.
+        """
+        self.document_id = document_id
+        self.expected_connector_id = expected_connector_id
+        self.actual_connector_id = actual_connector_id
+        self.expected_user_id = expected_user_id
+        self.actual_user_id = actual_user_id
+
+        msg = (
+            f"🚨 SECURITY: Ownership mismatch for document {document_id}. "
+            f"Message claims connector_id={expected_connector_id}, "
+            f"but document belongs to connector_id={actual_connector_id}"
+        )
+        if expected_user_id is not None and actual_user_id is not None:
+            msg += (
+                f". Message claims user_id={expected_user_id}, "
+                f"but connector belongs to user_id={actual_user_id}"
+            )
+        super().__init__(msg)
+
+
 class FileNotFoundInStorageError(IngestorError):
     """
     Raised when file is not found in MinIO.
