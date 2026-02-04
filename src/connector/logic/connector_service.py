@@ -119,9 +119,7 @@ class ConnectorService:
             ConnectorError: If sync fails.
         """
         logger.info(
-            "🔄 Starting sync for connector %d (session: %s)",
-            connector_id,
-            chunking_session or "none",
+            f"🔄 Starting sync for connector {connector_id} (session: {chunking_session or 'none'})"
         )
 
         # Load connector from database
@@ -171,9 +169,7 @@ class ConnectorService:
                         docs_processed += 1
                     except Exception as e:
                         logger.warning(
-                            "⚠️ Failed to stream file %s: %s",
-                            change.source_id,
-                            e,
+                            f"⚠️ Failed to stream file {change.source_id}: {e}"
                         )
                         checkpoint.error_count += 1
 
@@ -192,14 +188,12 @@ class ConnectorService:
             await self._db.commit()
 
             logger.info(
-                "✅ Sync completed for connector %d: %d documents processed",
-                connector_id,
-                docs_processed,
+                f"✅ Sync completed for connector {connector_id}: {docs_processed} documents processed"
             )
             return docs_processed
 
         except Exception as e:
-            logger.exception("❌ Sync failed for connector %d", connector_id)
+            logger.exception(f"❌ Sync failed for connector {connector_id}")
             await self._update_connector_status(
                 connector, "error", str(e)
             )
@@ -259,7 +253,7 @@ class ConnectorService:
                 return deserialize_checkpoint(state["checkpoint"])
             except Exception as e:
                 logger.warning(
-                    "⚠️ Failed to deserialize checkpoint, creating new: %s", e
+                    f"⚠️ Failed to deserialize checkpoint, creating new: {e}"
                 )
 
         # Create fresh checkpoint based on provider
@@ -314,7 +308,7 @@ class ConnectorService:
                 data=file.content,
                 content_type=file.mime_type,
             )
-            logger.info("📦 Uploaded %s to MinIO: %s", file.name, object_name)
+            logger.info(f"📦 Uploaded {file.name} to MinIO: {object_name}")
         except Exception as e:
             raise MinioUploadError(object_name, str(e)) from e
 
@@ -356,10 +350,7 @@ class ConnectorService:
                 object_key=object_name,
             )
             logger.info(
-                "📦 Streamed %s to MinIO: %s (%d bytes)",
-                file.name,
-                object_name,
-                result.size,
+                f"📦 Streamed {file.name} to MinIO: {object_name} ({result.size} bytes)"
             )
         except Exception as e:
             raise MinioUploadError(object_name, str(e)) from e
@@ -456,10 +447,7 @@ class ConnectorService:
         await self._db.refresh(doc)
 
         logger.info(
-            "✅ %s document %d for source %s",
-            "Updated" if doc else "Created",
-            doc.id,
-            file.source_id,
+            f"✅ {'Updated' if doc else 'Created'} document {doc.id} for source {file.source_id}"
         )
         return doc
 
@@ -490,9 +478,7 @@ class ConnectorService:
             doc.last_update = datetime.now(timezone.utc)
             await self._db.commit()
             logger.info(
-                "🔄 Marked document %d as deleted (source: %s)",
-                doc.id,
-                file.source_id,
+                f"🔄 Marked document {doc.id} as deleted (source: {file.source_id})"
             )
 
     def _generate_minio_path(
@@ -572,10 +558,7 @@ class ConnectorService:
         await self._db.refresh(doc)
 
         logger.info(
-            "✅ %s document %d for source %s",
-            "Updated" if doc else "Created",
-            doc.id,
-            file.source_id,
+            f"✅ {'Updated' if doc else 'Created'} document {doc.id} for source {file.source_id}"
         )
         return doc
 
@@ -628,7 +611,7 @@ class ConnectorService:
             payload=message.SerializeToString(),
         )
 
-        logger.info("📤 Published document.process for document %d", doc.id)
+        logger.info(f"📤 Published document.process for document {doc.id}")
 
     async def close(self) -> None:
         """

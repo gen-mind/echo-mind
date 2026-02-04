@@ -78,17 +78,14 @@ def wait_for_db(database_url: str, retries: int = 5, delay: int = 5) -> bool:
             return True
         except OperationalError as e:
             logger.warning(
-                "⏳ Waiting for database (attempt %d/%d): %s",
-                attempt + 1,
-                retries,
-                str(e)[:100],
+                f"⏳ Waiting for database (attempt {attempt + 1}/{retries}): {str(e)[:100]}"
             )
             time.sleep(delay)
         except Exception as e:
-            logger.error("❌ Unexpected error connecting to database: %s", e)
+            logger.error(f"❌ Unexpected error connecting to database: {e}")
             time.sleep(delay)
 
-    logger.error("❌ Database not ready after %d retries", retries)
+    logger.error(f"❌ Database not ready after {retries} retries")
     engine.dispose()
     return False
 
@@ -109,7 +106,7 @@ def run_migrations(database_url: str) -> None:
         alembic_ini = os.path.join(script_dir, "alembic.ini")
 
         if not os.path.exists(alembic_ini):
-            logger.error("❌ alembic.ini not found at %s", alembic_ini)
+            logger.error(f"❌ alembic.ini not found at {alembic_ini}")
             sys.exit(1)
 
         # Create Alembic config
@@ -126,7 +123,7 @@ def run_migrations(database_url: str) -> None:
         logger.info("🏁 Migrations completed")
 
     except Exception as e:
-        logger.exception("❌ Migration failed: %s", e)
+        logger.exception(f"❌ Migration failed: {e}")
         sys.exit(1)
 
 
@@ -165,7 +162,7 @@ def get_current_revision(database_url: str) -> str | None:
         return current_rev
 
     except Exception as e:
-        logger.warning("Could not get current revision: %s", e)
+        logger.warning(f"Could not get current revision: {e}")
         return None
 
 
@@ -175,7 +172,7 @@ def main() -> None:
 
     Waits for database, then runs all pending migrations.
     """
-    logger.info("🔄 EchoMind Migration Service starting...")
+    logger.info("🛠️ EchoMind Migration Service starting...")
 
     # Get configuration
     database_url = get_database_url()
@@ -189,7 +186,7 @@ def main() -> None:
     # Log current state
     current_rev = get_current_revision(database_url)
     if current_rev:
-        logger.info("📍 Current revision: %s", current_rev)
+        logger.info(f"📍 Current revision: {current_rev}")
     else:
         logger.info("📍 No migrations applied yet (fresh database)")
 

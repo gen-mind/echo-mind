@@ -237,7 +237,7 @@ class UploadService:
             # Rollback document creation
             await self.db.delete(document)
             await self.db.commit()
-            logger.error("❌ Failed to generate pre-signed URL: %s", e)
+            logger.error(f"❌ Failed to generate pre-signed URL: {e}")
             raise ServiceUnavailableError("MinIO") from e
 
         return InitiateUploadResult(
@@ -297,7 +297,7 @@ class UploadService:
                 self._settings.minio_bucket, object_name
             )
         except Exception as e:
-            logger.error("❌ Failed to check file in MinIO: %s", e)
+            logger.error(f"❌ Failed to check file in MinIO: {e}")
             raise ServiceUnavailableError("MinIO") from e
 
         if not file_exists:
@@ -312,7 +312,7 @@ class UploadService:
             )
             document.signature = file_info.get("etag", "")
         except Exception as e:
-            logger.warning("⚠️ Could not get file info: %s", e)
+            logger.warning(f"⚠️ Could not get file info: {e}")
 
         # Update document status
         document.status = "pending"
@@ -382,9 +382,9 @@ class UploadService:
                 await self.minio.delete_file(
                     self._settings.minio_bucket, object_name
                 )
-                logger.info("🗑️ Deleted MinIO object: %s", object_name)
+                logger.info(f"🗑️ Deleted MinIO object: {object_name}")
         except Exception as e:
-            logger.warning("⚠️ Could not delete MinIO object: %s", e)
+            logger.warning(f"⚠️ Could not delete MinIO object: {e}")
 
         # Delete document record
         await self.db.delete(document)
@@ -455,7 +455,7 @@ class UploadService:
                 subject="document.process",
                 payload=message.SerializeToString(),
             )
-            logger.info("📤 Published document.process for document %d", document.id)
+            logger.info(f"📤 Published document.process for document {document.id}")
         except Exception as e:
             logger.error(
                 "❌ Failed to publish document.process for document %d: %s",

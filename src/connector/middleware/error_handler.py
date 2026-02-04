@@ -48,76 +48,59 @@ async def handle_connector_error(
 
     if isinstance(error, AuthenticationError):
         logger.error(
-            "❌ Authentication failed for %s: %s",
-            error.provider,
-            error.reason,
+            f"❌ Authentication failed for {error.provider}: {error.reason}"
         )
         error_info["should_retry"] = False  # Need manual intervention
 
     elif isinstance(error, RateLimitError):
         logger.warning(
-            "⚠️ Rate limit hit for %s, retry after %s seconds",
-            error.provider,
-            error.retry_after,
+            f"⚠️ Rate limit hit for {error.provider}, retry after {error.retry_after} seconds"
         )
         error_info["should_retry"] = True
         error_info["retry_after"] = error.retry_after or 60
 
     elif isinstance(error, FileTooLargeError):
         logger.warning(
-            "⚠️ File %s too large: %d > %d bytes",
-            error.file_id,
-            error.size,
-            error.limit,
+            f"⚠️ File {error.file_id} too large: {error.size} > {error.limit} bytes"
         )
         error_info["should_retry"] = False  # Skip this file
 
     elif isinstance(error, (DownloadError, ExportError)):
         logger.error(
-            "❌ Download/export error for %s: %s",
-            error.file_id,
-            error.reason,
+            f"❌ Download/export error for {error.file_id}: {error.reason}"
         )
         error_info["should_retry"] = True  # Transient, can retry
 
     elif isinstance(error, MinioUploadError):
         logger.error(
-            "❌ MinIO upload failed for %s: %s",
-            error.object_name,
-            error.reason,
+            f"❌ MinIO upload failed for {error.object_name}: {error.reason}"
         )
         error_info["should_retry"] = True
 
     elif isinstance(error, DatabaseError):
         logger.error(
-            "❌ Database error in %s: %s",
-            error.operation,
-            error.reason,
+            f"❌ Database error in {error.operation}: {error.reason}"
         )
         error_info["should_retry"] = True
 
     elif isinstance(error, CheckpointError):
         logger.error(
-            "❌ Checkpoint error for connector %d: %s",
-            error.connector_id,
-            error.reason,
+            f"❌ Checkpoint error for connector {error.connector_id}: {error.reason}"
         )
         error_info["should_retry"] = False
 
     elif isinstance(error, ProviderNotFoundError):
-        logger.error("❌ Unsupported provider: %s", error.provider_type)
+        logger.error(f"❌ Unsupported provider: {error.provider_type}")
         error_info["should_retry"] = False
 
     elif isinstance(error, ProviderError):
         logger.error(
-            "❌ Provider error from %s: %s",
-            error.provider,
-            error.message,
+            f"❌ Provider error from {error.provider}: {error.message}"
         )
         error_info["should_retry"] = True
 
     else:
-        logger.error("❌ Connector error: %s", error.message)
+        logger.error(f"❌ Connector error: {error.message}")
         error_info["should_retry"] = True
 
     return error_info
@@ -145,7 +128,7 @@ def with_error_handling(
                 raise  # Let caller handle retry
             return None
         except Exception as e:
-            logger.exception("❌ Unexpected error in %s: %s", func.__name__, e)
+            logger.exception(f"❌ Unexpected error in {func.__name__}: {e}")
             raise
 
     return wrapper

@@ -89,7 +89,7 @@ class WebhookAlerter(Alerter):
                 headers=headers,
             )
             response.raise_for_status()
-            logger.debug("✅ Webhook alert sent for seq %d", details.stream_seq)
+            logger.debug(f"📤 Webhook alert sent for seq {details.stream_seq}")
 
         except httpx.HTTPStatusError as e:
             raise WebhookAlertError(

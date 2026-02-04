@@ -154,14 +154,14 @@ class ChatService:
         # Get collections user can search
         collections = await self._permissions.get_search_collections(user)
         if not collections:
-            logger.info("📭 No searchable collections for user %d", user.id)
+            logger.info(f"📭 No searchable collections for user {user.id}")
             return []
 
         # Embed query
         try:
             query_vector = await self._embedder.embed_query(query)
         except Exception as e:
-            logger.error("❌ Failed to embed query: %s", e)
+            logger.error(f"❌ Failed to embed query: {e}")
             raise ServiceUnavailableError("Embedder") from e
 
         # Search each collection
@@ -237,7 +237,7 @@ class ChatService:
         """
         assistant = session.assistant
         if not assistant.llm:
-            logger.error("❌ Assistant %d has no LLM configured", assistant.id)
+            logger.error(f"❌ Assistant {assistant.id} has no LLM configured")
             raise NotFoundError("LLM configuration", assistant.id)
 
         llm = assistant.llm
@@ -354,7 +354,7 @@ class ChatService:
         await self._db.flush()
         await self._db.refresh(message)
 
-        logger.info("💬 Saved user message %d", message.id)
+        logger.info(f"💬 Saved user message {message.id}")
         return message
 
     async def save_assistant_message(

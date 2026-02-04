@@ -102,9 +102,9 @@ class ChatHandler:
         try:
             await self._message_loop(websocket, user)
         except WebSocketDisconnect:
-            logger.info("💔 User %d disconnected", user.id)
+            logger.info(f"💔 User {user.id} disconnected")
         except Exception as e:
-            logger.error("❌ WebSocket error for user %d: %s", user.id, e)
+            logger.error(f"❌ WebSocket error for user {user.id}: {e}")
         finally:
             # Cancel any active generations
             if user.id in self._active_generations:
@@ -172,7 +172,7 @@ class ChatHandler:
         if user.id in self._active_generations:
             self._active_generations[user.id].cancel()
             del self._active_generations[user.id]
-            logger.info("🛑 Cancelled generation for user %d", user.id)
+            logger.info(f"🛑 Cancelled generation for user {user.id}")
 
     async def _process_chat(
         self,
@@ -329,10 +329,10 @@ class ChatHandler:
             )
 
         except asyncio.CancelledError:
-            logger.info("🛑 Generation cancelled for user %d", user.id)
+            logger.info(f"🛑 Generation cancelled for user {user.id}")
             raise
         except Exception as e:
-            logger.exception("❌ Error processing chat for user %d: %s", user.id, e)
+            logger.exception(f"❌ Error processing chat for user {user.id}: {e}")
             await self._send_error(user.id, "GENERATION_ERROR", str(e))
         finally:
             if user.id in self._active_generations:

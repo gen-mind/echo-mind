@@ -67,7 +67,7 @@ class EmbedderClient:
                 ],
             )
             self._stub = EmbedServiceStub(self._channel)
-            logger.info("🔗 Connected to Embedder at %s:%d", self._host, self._port)
+            logger.info(f"🔗 Connected to Embedder at {self._host}:{self._port}")
 
     async def embed_query(self, query: str) -> list[float]:
         """
@@ -96,11 +96,11 @@ class EmbedderClient:
                 raise ServiceUnavailableError("Embedder")
 
             vector = list(response.embeddings[0].vector)
-            logger.debug("🎯 Embedded query (%d dims)", len(vector))
+            logger.debug(f"🎯 Embedded query ({len(vector)} dims)")
             return vector
 
         except grpc.aio.AioRpcError as e:
-            logger.error("❌ Embedder gRPC error: %s", e.details())
+            logger.error(f"❌ Embedder gRPC error: {e.details()}")
             raise ServiceUnavailableError("Embedder") from e
 
     async def close(self) -> None:

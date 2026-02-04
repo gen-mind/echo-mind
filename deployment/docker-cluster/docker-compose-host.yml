@@ -565,29 +565,42 @@ services:
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
 
   # ===============================================
-  # EchoMind Web - React Frontend
+  # EchoMind WebUI - SvelteKit Frontend (Open WebUI Fork)
   # ===============================================
-  web:
-    image: gsantopaolo/echomind-web:${WEB_VERSION:-0.1.0-beta.1}
+  # This is the new frontend based on Open WebUI with EchoMind extensions.
+  # It connects to the EchoMind FastAPI backend via WEBUI_BASE_URL.
+  webui:
+    image: gsantopaolo/echomind-webui:${WEBUI_VERSION:-0.1.0-beta.1}
     build:
-      context: ../../src/web
+      context: ../../../echomind-webui
       dockerfile: Dockerfile
       args:
-        - VITE_API_BASE_URL=${API_URL}/api/v1
-        - VITE_WS_URL=${WS_URL}
-        - VITE_OIDC_AUTHORITY=${WEB_OIDC_AUTHORITY}
-        - VITE_OIDC_CLIENT_ID=${WEB_OIDC_CLIENT_ID}
-        - VITE_OIDC_REDIRECT_URI=${WEB_OIDC_REDIRECT_URI}
-        - VITE_OIDC_POST_LOGOUT_REDIRECT_URI=${WEB_OIDC_POST_LOGOUT_REDIRECT_URI}
-        - VITE_OIDC_SCOPE=${WEB_OIDC_SCOPE}
-    container_name: echomind-web
-    hostname: web
+        - BUILD_HASH=${BUILD_HASH:-dev}
+        - USE_SLIM=true
+    container_name: echomind-webui
+    hostname: webui
+    environment:
+      # Open WebUI connects to EchoMind API backend
+      - WEBUI_URL=${WEBUI_URL:-https://${DOMAIN}}
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      # Disable Open WebUI's default auth - use EchoMind's Authentik OIDC
+      - ENABLE_OAUTH_SIGNUP=true
+      - OAUTH_PROVIDER_NAME=Authentik
+      - OPENID_PROVIDER_URL=${OIDC_AUTHORITY}
+      - OAUTH_CLIENT_ID=${OIDC_CLIENT_ID}
+      - OAUTH_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+      - OAUTH_SCOPES=openid profile email
+      # EchoMind API integration
+      - ECHOMIND_API_URL=http://api:8000
+      # Disable features handled by EchoMind backend
+      - ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION=false
+      - ENABLE_RAG_LOCAL_WEB_FETCH=false
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
-      interval: 10s
-      timeout: 3s
-      start_period: 5s
-      retries: 3
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
     depends_on:
       api:
         condition: service_started
@@ -596,9 +609,55 @@ services:
     restart: unless-stopped
     networks:
       - frontend
+      - backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.web.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.web.entrypoints=websecure"
-      - "traefik.http.routers.web.tls.certresolver=letsencrypt"
-      - "traefik.http.services.web.loadbalancer.server.port=80"
+      - "traefik.http.routers.webui.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.webui.entrypoints=websecure"
+      - "traefik.http.routers.webui.tls.certresolver=letsencrypt"
+      - "traefik.http.services.webui.loadbalancer.server.port=8080"
+
+  # ===============================================
+  # [DEPRECATED] EchoMind Web - React Frontend
+  # ===============================================
+  # NOTE: DO NOT DELETE - Keep for quick rollback if needed.
+  # This is the original React-based frontend. To revert:
+  #   1. Comment out the 'webui' service above
+  #   2. Uncomment this 'web' service
+  #   3. Update Traefik labels if needed
+  # ===============================================
+  # web:
+  #   image: gsantopaolo/echomind-web:${WEB_VERSION:-0.1.0-beta.1}
+  #   build:
+  #     context: ../../src/web
+  #     dockerfile: Dockerfile
+  #     args:
+  #       - VITE_API_BASE_URL=${API_URL}/api/v1
+  #       - VITE_WS_URL=${WS_URL}
+  #       - VITE_OIDC_AUTHORITY=${WEB_OIDC_AUTHORITY}
+  #       - VITE_OIDC_CLIENT_ID=${WEB_OIDC_CLIENT_ID}
+  #       - VITE_OIDC_REDIRECT_URI=${WEB_OIDC_REDIRECT_URI}
+  #       - VITE_OIDC_POST_LOGOUT_REDIRECT_URI=${WEB_OIDC_POST_LOGOUT_REDIRECT_URI}
+  #       - VITE_OIDC_SCOPE=${WEB_OIDC_SCOPE}
+  #   container_name: echomind-web
+  #   hostname: web
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost/health"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     start_period: 5s
+  #     retries: 3
+  #   depends_on:
+  #     api:
+  #       condition: service_started
+  #     authentik-server:
+  #       condition: service_started
+  #   restart: unless-stopped
+  #   networks:
+  #     - frontend
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.web.rule=Host(`${DOMAIN}`)"
+  #     - "traefik.http.routers.web.entrypoints=websecure"
+  #     - "traefik.http.routers.web.tls.certresolver=letsencrypt"
+  #     - "traefik.http.services.web.loadbalancer.server.port=80"

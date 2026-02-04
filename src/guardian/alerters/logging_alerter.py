@@ -39,14 +39,8 @@ class LoggingAlerter(Alerter):
         summary = AdvisoryParser.get_advisory_summary(details)
 
         logger.critical(
-            "💀 DLQ Alert | type=%s stream=%s consumer=%s seq=%d "
-            "deliveries=%s reason=%s subject=%s | %s",
-            details.advisory_type,
-            details.stream,
-            details.consumer,
-            details.stream_seq,
-            details.deliveries or "N/A",
-            details.reason or "N/A",
-            details.original_subject or "unknown",
-            summary,
+            f"💀 DLQ Alert | type={details.advisory_type} stream={details.stream} "
+            f"consumer={details.consumer} seq={details.stream_seq} "
+            f"deliveries={details.deliveries or 'N/A'} reason={details.reason or 'N/A'} "
+            f"subject={details.original_subject or 'unknown'} | {summary}"
         )

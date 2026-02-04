@@ -207,7 +207,7 @@ class DocumentService:
         # Step 3: Delete database record
         await self.db.delete(document)
 
-        logger.info("🗑️ Deleted document %d by user %d", document_id, user.id)
+        logger.info(f"🗑️ Deleted document {document_id} by user {user.id}")
 
     async def _delete_document_vectors(
         self,

@@ -81,7 +81,7 @@ class SlackAlerter(Alerter):
             client = await self._get_client()
             response = await client.post(self._webhook_url, json=payload)
             response.raise_for_status()
-            logger.debug("✅ Slack alert sent for seq %d", details.stream_seq)
+            logger.debug(f"📤 Slack alert sent for seq {details.stream_seq}")
 
         except httpx.HTTPStatusError as e:
             raise SlackAlertError(

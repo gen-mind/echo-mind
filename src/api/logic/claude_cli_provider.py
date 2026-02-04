@@ -265,7 +265,7 @@ class ClaudeCliProvider:
             self._credentials_path.write_text(json.dumps(credentials, indent=2))
             self._credentials_path.chmod(0o600)  # Secure permissions
             self._credentials_written = True
-            logger.info("📝 Wrote credentials file to %s", self._credentials_path)
+            logger.info(f"📝 Wrote credentials file to {self._credentials_path}")
         except OSError as e:
             raise ClaudeCliCredentialsError(
                 f"Failed to write credentials file {self._credentials_path}: {e}"
@@ -513,13 +513,13 @@ class ClaudeCliProvider:
             session_key: Application session identifier.
         """
         self._sessions.pop(session_key, None)
-        logger.info("🗑️ Cleared CLI session for key: %s", session_key)
+        logger.info(f"🗑️ Cleared CLI session for key: {session_key}")
 
     def clear_all_sessions(self) -> None:
         """Clear all stored sessions."""
         count = len(self._sessions)
         self._sessions.clear()
-        logger.info("🗑️ Cleared %d CLI sessions", count)
+        logger.info(f"🗑️ Cleared {count} CLI sessions")
 
     async def complete(
         self,
@@ -609,7 +609,7 @@ class ClaudeCliProvider:
             )
             raise ClaudeCliTimeoutError(resolved_timeout)
         except OSError as e:
-            logger.error("❌ Failed to execute Claude CLI: %s", e)
+            logger.error(f"❌ Failed to execute Claude CLI: {e}")
             raise ClaudeCliError(f"Failed to execute Claude CLI: {e}") from e
 
         stdout = stdout_bytes.decode("utf-8", errors="replace")

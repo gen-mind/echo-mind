@@ -167,7 +167,7 @@ class LLMClient:
         try:
             provider = normalize_provider(config.provider)
         except ValueError:
-            logger.error("❌ Unsupported LLM provider: %s", config.provider)
+            logger.error(f"❌ Unsupported LLM provider: {config.provider}")
             raise ServiceUnavailableError(f"LLM provider '{config.provider}'")
 
         if provider == "openai-compatible":
@@ -246,7 +246,7 @@ class LLMClient:
                             continue
 
         except httpx.HTTPError as e:
-            logger.error("❌ HTTP error calling LLM: %s", e)
+            logger.error(f"❌ HTTP error calling LLM: {e}")
             raise ServiceUnavailableError(f"LLM ({config.provider})") from e
 
     async def _stream_anthropic(
@@ -287,7 +287,7 @@ class LLMClient:
         if system_message:
             payload["system"] = system_message
 
-        logger.info("🤖 Streaming from Anthropic (%s)", config.model_id)
+        logger.info(f"🤖 Streaming from Anthropic ({config.model_id})")
 
         try:
             async with client.stream(
@@ -321,7 +321,7 @@ class LLMClient:
                             continue
 
         except httpx.HTTPError as e:
-            logger.error("❌ HTTP error calling Anthropic: %s", e)
+            logger.error(f"❌ HTTP error calling Anthropic: {e}")
             raise ServiceUnavailableError("LLM (anthropic)") from e
 
     async def _complete_anthropic_token(
@@ -399,10 +399,10 @@ class LLMClient:
             return response.text
 
         except ClaudeCliTimeoutError as e:
-            logger.error("❌ Claude CLI timed out: %s", e)
+            logger.error(f"❌ Claude CLI timed out: {e}")
             raise ServiceUnavailableError("LLM (anthropic-token): timeout") from e
         except ClaudeCliError as e:
-            logger.error("❌ Claude CLI error: %s", e)
+            logger.error(f"❌ Claude CLI error: {e}")
             raise ServiceUnavailableError(
                 f"LLM (anthropic-token): {e.message[:100]}"
             ) from e

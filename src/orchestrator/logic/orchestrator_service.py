@@ -65,7 +65,7 @@ class OrchestratorService:
     Usage:
         service = OrchestratorService(db_session, nats_publisher)
         triggered = await service.check_and_trigger_syncs()
-        logger.info("📊 Triggered %d syncs", triggered)
+        logger.info(f"📊 Triggered {triggered} syncs")
     """
 
     def __init__(
@@ -113,15 +113,13 @@ class OrchestratorService:
                 await self._trigger_sync(connector)
                 triggered += 1
             except SyncTriggerError as e:
-                logger.error("❌ %s", e.message)
+                logger.error(f"❌ {e.message}")
             except Exception as e:
                 logger.exception(
-                    "❌ Unexpected error triggering sync for connector %d: %s",
-                    connector.id,
-                    e,
+                    f"❌ Unexpected error triggering sync for connector {connector.id}: {e}"
                 )
 
-        logger.info("✅ Triggered %d sync(s)", triggered)
+        logger.info(f"📤 Triggered {triggered} sync(s)")
         return triggered
 
     async def _trigger_sync(self, connector: Connector) -> str:
@@ -170,10 +168,7 @@ class OrchestratorService:
             raise SyncTriggerError(connector.id, f"NATS publish failed: {e}") from e
 
         logger.info(
-            "📤 Triggered sync for connector %d (%s) - session: %s",
-            connector.id,
-            connector.type,
-            chunking_session,
+            f"📤 Triggered sync for connector {connector.id} ({connector.type}) - session: {chunking_session}"
         )
 
         return chunking_session
@@ -235,11 +230,7 @@ class OrchestratorService:
             request.state.CopyFrom(state_struct)
 
         logger.debug(
-            "🔧 Built sync request: connector_id=%d, type=%s, scope=%s, session=%s",
-            connector.id,
-            connector_type,
-            connector_scope,
-            chunking_session,
+            f"🔧 Built sync request: connector_id={connector.id}, type={connector_type}, scope={connector_scope}, session={chunking_session}"
         )
 
         return request

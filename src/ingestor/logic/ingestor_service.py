@@ -117,12 +117,7 @@ class IngestorService:
             ChunkingError: If chunking fails.
             EmbeddingError: If embedding generation fails.
         """
-        logger.info(
-            "🔄 Processing document %d (path: %s, session: %s)",
-            document_id,
-            minio_path,
-            chunking_session,
-        )
+        logger.info(f"🔄 Processing document {document_id} (path: {minio_path}, session: {chunking_session})")
 
         # Load document from database with connector relationship
         document = await self._get_document(document_id)
@@ -138,7 +133,7 @@ class IngestorService:
 
         try:
             # Download file from MinIO
-            logger.info("📥 Downloading from MinIO: %s", minio_path)
+            logger.info(f"📥 Downloading from MinIO: {minio_path}")
             file_bytes = await self._download_file(minio_path)
 
             # Get file metadata
@@ -146,7 +141,7 @@ class IngestorService:
             mime_type = document.content_type or "application/octet-stream"
 
             # Extract and chunk content
-            logger.info("📄 Extracting and chunking: %s (%s)", file_name, mime_type)
+            logger.info(f"📄 Extracting and chunking: {file_name} ({mime_type})")
             chunks, structured_images = await self._processor.process(
                 file_bytes=file_bytes,
                 document_id=document_id,
@@ -155,10 +150,7 @@ class IngestorService:
             )
 
             if not chunks and not structured_images:
-                logger.warning(
-                    "⚠️ No content extracted from document %d",
-                    document_id,
-                )
+                logger.warning(f"⚠️ No content extracted from document {document_id}")
                 await self._update_status(
                     document_id,
                     "completed",
@@ -185,7 +177,7 @@ class IngestorService:
             # Embed and store text chunks
             total_stored = 0
             if chunks:
-                logger.info("🧠 Embedding %d text chunks", len(chunks))
+                logger.info(f"🧠 Embedding {len(chunks)} text chunks")
                 stored = await self._embed_and_store(
                     texts=chunks,
                     document_id=document_id,
@@ -197,10 +189,7 @@ class IngestorService:
 
             # Handle structured images (tables/charts)
             if structured_images and self._settings.yolox_enabled:
-                logger.info(
-                    "🖼️ %d structured images extracted (multimodal embedding not implemented)",
-                    len(structured_images),
-                )
+                logger.info(f"🖼️ {len(structured_images)} structured images extracted (multimodal embedding not implemented)")
                 # TODO: Implement multimodal embedding when embedder supports it
 
             # Update document status
@@ -211,12 +200,7 @@ class IngestorService:
                 chunking_session=chunking_session,
             )
 
-            logger.info(
-                "✅ Document %d processed: %d chunks in %s",
-                document_id,
-                total_stored,
-                collection_name,
-            )
+            logger.info(f"✅ Document {document_id} processed: {total_stored} chunks in {collection_name}")
 
             return {
                 "document_id": document_id,
@@ -225,10 +209,7 @@ class IngestorService:
             }
 
         except Exception as e:
-            logger.exception(
-                "❌ Processing failed for document %d",
-                document_id,
-            )
+            logger.exception(f"❌ Processing failed for document {document_id}")
             await self._update_status(
                 document_id,
                 "error",
@@ -288,11 +269,8 @@ class IngestorService:
         # Verify connector_id matches
         if actual_connector_id != claimed_connector_id:
             logger.error(
-                "🚨 SECURITY: Connector mismatch for document %d. "
-                "Message claims connector_id=%d, actual=%d",
-                document.id,
-                claimed_connector_id,
-                actual_connector_id,
+                f"🚨 SECURITY: Connector mismatch for document {document.id}. "
+                f"Message claims connector_id={claimed_connector_id}, actual={actual_connector_id}"
             )
             raise OwnershipMismatchError(
                 document_id=document.id,
@@ -305,11 +283,8 @@ class IngestorService:
         # Verify user_id matches connector's owner
         if actual_user_id is not None and actual_user_id != claimed_user_id:
             logger.error(
-                "🚨 SECURITY: User mismatch for document %d. "
-                "Message claims user_id=%d, connector owned by user_id=%d",
-                document.id,
-                claimed_user_id,
-                actual_user_id,
+                f"🚨 SECURITY: User mismatch for document {document.id}. "
+                f"Message claims user_id={claimed_user_id}, connector owned by user_id={actual_user_id}"
             )
             raise OwnershipMismatchError(
                 document_id=document.id,
@@ -319,12 +294,7 @@ class IngestorService:
                 actual_user_id=actual_user_id,
             )
 
-        logger.debug(
-            "✅ Ownership verified for document %d (connector=%d, user=%d)",
-            document.id,
-            actual_connector_id,
-            actual_user_id,
-        )
+        logger.debug(f"✅ Ownership verified for document {document.id} (connector={actual_connector_id}, user={actual_user_id})")
 
     async def _update_status(
         self,
@@ -438,10 +408,7 @@ class IngestorService:
             if scope_id:
                 return f"team_{scope_id}"
             # Ultimate fallback to user collection
-            logger.warning(
-                "⚠️ Team scope without team_id, falling back to user_%d",
-                user_id,
-            )
+            logger.warning(f"⚠️ Team scope without team_id, falling back to user_{user_id}")
             return f"user_{user_id}"
         elif scope == "org":
             if scope_id:
@@ -469,18 +436,10 @@ class IngestorService:
                 vector_size=dimension,
             )
             if created:
-                logger.info(
-                    "📦 Created collection: %s (dim=%d)",
-                    collection_name,
-                    dimension,
-                )
+                logger.info(f"📦 Created collection: {collection_name} (dim={dimension})")
         except Exception as e:
             # Collection may already exist
-            logger.debug(
-                "Collection %s already exists or creation failed: %s",
-                collection_name,
-                e,
-            )
+            logger.debug(f"Collection {collection_name} already exists or creation failed: {e}")
 
     async def _embed_and_store(
         self,
@@ -517,11 +476,7 @@ class IngestorService:
         )
 
         if len(vectors) != len(texts):
-            logger.warning(
-                "⚠️ Vector count mismatch: %d texts, %d vectors",
-                len(texts),
-                len(vectors),
-            )
+            logger.warning(f"⚠️ Vector count mismatch: {len(texts)} texts, {len(vectors)} vectors")
 
         # Build point IDs and payloads
         ids: list[str] = []
@@ -548,11 +503,7 @@ class IngestorService:
             ids=ids,
         )
 
-        logger.info(
-            "💾 Stored %d vectors in %s",
-            len(vectors),
-            collection_name,
-        )
+        logger.info(f"💾 Stored {len(vectors)} vectors in {collection_name}")
 
         return len(vectors)
 
@@ -599,17 +550,9 @@ class IngestorService:
                     ]
                 },
             )
-            logger.info(
-                "🗑️ Deleted vectors for document %d from %s",
-                document_id,
-                collection_name,
-            )
+            logger.info(f"🗑️ Deleted vectors for document {document_id} from {collection_name}")
         except Exception as e:
-            logger.warning(
-                "⚠️ Failed to delete vectors for document %d: %s",
-                document_id,
-                e,
-            )
+            logger.warning(f"⚠️ Failed to delete vectors for document {document_id}: {e}")
 
     async def close(self) -> None:
         """

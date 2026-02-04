@@ -59,7 +59,7 @@ class SentenceEncoder:
         """
         with cls._lock:
             cls._cache_limit = max(1, limit)
-            logger.info("📦 Model cache limit set to %d", cls._cache_limit)
+            logger.info(f"🔧 Model cache limit set to {cls._cache_limit}")
 
     @classmethod
     def set_device(cls, device: str | None = None) -> None:
@@ -71,7 +71,7 @@ class SentenceEncoder:
         """
         with cls._lock:
             cls._device = device or get_device()
-            logger.info("🖥️ Device set to: %s", cls._device)
+            logger.info(f"🖥️ Device set to: {cls._device}")
 
     @classmethod
     def _get_device(cls) -> str:
@@ -99,19 +99,19 @@ class SentenceEncoder:
         with cls._lock:
             # Return cached model if available
             if model_name in cls._model_cache:
-                logger.debug("📦 Cache hit for model: %s", model_name)
+                logger.debug(f"🧠 Cache hit for model: {model_name}")
                 return cls._model_cache[model_name]
 
             # Evict oldest model if cache is full
             if len(cls._model_cache) >= cls._cache_limit:
                 oldest = next(iter(cls._model_cache))
                 del cls._model_cache[oldest]
-                logger.info("🗑️ Evicted model from cache: %s", oldest)
+                logger.info(f"🗑️ Evicted model from cache: {oldest}")
 
             # Load new model
             try:
                 device = cls._get_device()
-                logger.info("📥 Loading model: %s on %s", model_name, device)
+                logger.info(f"📥 Loading model: {model_name} on {device}")
 
                 # Check if this is an NVIDIA model requiring special handling
                 is_nvidia_model = any(
@@ -133,10 +133,10 @@ class SentenceEncoder:
                     model = SentenceTransformer(model_name, device=device)
 
                 cls._model_cache[model_name] = model
-                logger.info("🧠 Model loaded: %s (dim=%d)", model_name, model.get_sentence_embedding_dimension())
+                logger.info(f"🧠 Model loaded: {model_name} (dim={model.get_sentence_embedding_dimension()})")
                 return model
             except Exception as e:
-                logger.error("❌ Failed to load model %s: %s", model_name, e)
+                logger.error(f"❌ Failed to load model {model_name}: {e}")
                 raise ModelNotFoundError(model_name) from e
 
     @classmethod
@@ -208,7 +208,7 @@ class SentenceEncoder:
 
             return [emb.tolist() for emb in embeddings]
         except Exception as e:
-            logger.error("❌ Encoding failed: %s", e)
+            logger.error(f"❌ Encoding failed: {e}")
             raise EncodingError(str(e), len(texts)) from e
 
     @classmethod

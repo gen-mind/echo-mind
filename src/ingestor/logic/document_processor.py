@@ -77,12 +77,7 @@ class DocumentProcessor:
         if not self._router.is_supported(mime_type):
             raise UnsupportedMimeTypeError(mime_type)
 
-        logger.info(
-            "📄 Processing document %d: %s (%s)",
-            document_id,
-            file_name,
-            mime_type,
-        )
+        logger.info(f"📄 Processing document {document_id}: {file_name} ({mime_type})")
 
         # Build input DataFrame
         df = self._build_dataframe(file_bytes, document_id, file_name, mime_type)
@@ -96,12 +91,7 @@ class DocumentProcessor:
         # Extract structured images (tables/charts)
         structured_images = self._extract_structured_images(extracted_df)
 
-        logger.info(
-            "🏁 Processed document %d: %d chunks, %d images",
-            document_id,
-            len(chunks),
-            len(structured_images),
-        )
+        logger.info(f"🏁 Processed document {document_id}: {len(chunks)} chunks, {len(structured_images)} images")
 
         return chunks, structured_images
 
@@ -233,11 +223,7 @@ class DocumentProcessor:
         except UnsupportedMimeTypeError:
             raise
         except Exception as e:
-            logger.exception(
-                "❌ Extraction failed for document %d: %s",
-                document_id,
-                e,
-            )
+            logger.exception(f"❌ Extraction failed for document {document_id}: {e}")
             raise ExtractionError(
                 source_type=extractor_type,
                 reason=str(e),
@@ -283,7 +269,7 @@ class DocumentProcessor:
                     },
                 }
             except Exception as e:
-                logger.warning("⚠️ HTML extraction warning: %s", e)
+                logger.warning(f"⚠️ HTML extraction warning: {e}")
 
         return df
 
@@ -384,22 +370,12 @@ class DocumentProcessor:
                 if text and isinstance(text, str) and text.strip():
                     chunks.append(text.strip())
 
-            logger.info(
-                "✂️ Chunked document %d: %d chunks (size=%d, overlap=%d)",
-                document_id,
-                len(chunks),
-                self._settings.chunk_size,
-                self._settings.chunk_overlap,
-            )
+            logger.info(f"✂️ Chunked document {document_id}: {len(chunks)} chunks (size={self._settings.chunk_size}, overlap={self._settings.chunk_overlap})")
 
             return chunks
 
         except Exception as e:
-            logger.exception(
-                "❌ Chunking failed for document %d: %s",
-                document_id,
-                e,
-            )
+            logger.exception(f"❌ Chunking failed for document {document_id}: {e}")
             raise ChunkingError(str(e), document_id) from e
 
     def _extract_structured_images(self, df: pd.DataFrame) -> list[bytes]:
@@ -433,9 +409,6 @@ class DocumentProcessor:
                         images.append(image_data)
 
         if images:
-            logger.info(
-                "🖼️ Extracted %d structured images (tables/charts)",
-                len(images),
-            )
+            logger.info(f"🖼️ Extracted {len(images)} structured images (tables/charts)")
 
         return images

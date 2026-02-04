@@ -3,39 +3,58 @@
 
 # EchoMind
 
-### Your Organization's AI Adoption Starts Now. **For Free** 🆓🚀
+### OpenClaw for Business — With Zero Security Risk
 
 [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](license)
 [![Deploy Anywhere](https://img.shields.io/badge/Deploy-Anywhere-brightgreen.svg)](#deployment-modes)
 
-**EchoMind is OpenClaw for business with no security risk**
-**From single container to cluster. From one user to the whole org.**<br/>
-**One platform. $0 forever. No trials. No limits.** ✨
+**The power of personal AI assistants like OpenClaw — but for your entire organization.**<br/>
+**Your company knowledge + your business tools. Fully sandboxed. Completely free.**
 
-[Documentation](docs/architecture.md) · [Why EchoMind?](#why-echomind)
+[Documentation](docs/architecture.md) · [Why EchoMind?](#why-echomind) · [OpenClaw vs EchoMind](#openclaw-vs-echomind)
 
 </div>
 
 ---
 
 ## 🧠 What is it?
-EchoMind is the free, deploy-anywhere **agentic AI platform** that automates workflows —
-so your teams move faster and handle significantly more work with the same headcount.
 
-EchoMind is an **AI agent**:
-it **thinks** about what the workflow needs, **retrieves** the right internal context, **acts** using tools,
-then **verifies** the result before responding.
+EchoMind brings the power of personal AI assistants to the enterprise — **without the security nightmares**.
 
-> EchoMind is built for real work: support automation, IT deflection, meeting follow-ups, contract review,
-> AP/invoice handling, onboarding, and any process where the bottleneck is “finding the right info + doing the next step”.
+Like [OpenClaw](https://openclaw.ai/), EchoMind is an AI agent that can access your data, execute workflows, and automate tasks. But instead of running with unrestricted access on personal devices, EchoMind runs in **isolated, ephemeral sandboxes** with enterprise-grade authentication and permission controls.
+
+**EchoMind connects to:**
+- **Organizational knowledge** — Teams, SharePoint, Google Drive, internal wikis, policies, and documents
+- **Personal business tools** — Email, calendar, CRM, and the apps your teams use daily
+
+**EchoMind is an AI agent** that **thinks** about what the workflow needs, **retrieves** the right internal context, **acts** using tools, then **verifies** the result — all within a secure, permission-aware sandbox.
+
+> Built for real work: support automation, IT deflection, meeting follow-ups, contract review,
+> AP/invoice handling, onboarding, and any process where the bottleneck is "finding the right info + doing the next step".
+
+## 🔒 Secure by Design — Sandboxed Execution
+
+Unlike personal AI assistants that run with full system access, EchoMind executes every workflow in an **ephemeral, isolated sandbox**:
+
+| Security Feature | How It Works |
+|------------------|--------------|
+| **Ephemeral Sandboxes** | Each workflow runs in a fresh container that's destroyed after completion — no state leaks between runs |
+| **Delegated Authorization** | Sandboxes call your tools with user-scoped tokens; permissions enforced at every layer |
+| **No Direct System Access** | Workflows can't execute arbitrary shell commands on your infrastructure |
+| **Lease-Based Execution** | Exclusive access with TTL prevents runaway processes and resource exhaustion |
+| **Air-Gap Ready** | Deploy fully disconnected — no internet, no telemetry, no phone-home |
+
+**The result:** Your teams get the productivity of an AI assistant. Your security team sleeps at night.
+
+---
 
 ## ⚡ AI in Minutes (Not Months)
 
 **Skip procurement. Start building today.**
 
-No budget approvals. No vendor negotiations.  
-Deploy EchoMind now and ship your first internal AI workflow this week. ✅
+No budget approvals. No vendor negotiations.
+Deploy EchoMind now and ship your first internal AI workflow this week.
 
 ---
 ### 🤝 Need help getting started? Let’s jump on a quick call (free)
@@ -83,15 +102,16 @@ EchoMind is built for *process automation*, not just Q&A:
 - Approval routing + audit-ready explanations
 
 
-## 🚀Why EchoMind?
-Because teams shouldn’t need a budget to start using AI. EchoMind is **$0, MIT-licensed, and self-hostable** 🆓🏠.
+## 🚀 Why EchoMind?
 
+**Enterprise AI assistants without the enterprise price tag — or the security risks.**
 
-### 🆓 Free. Forever.
-**MIT Licensed. $0. No strings attached.**
-
-From startups to Fortune 500—EchoMind stays free.  
-No usage limits. No “enterprise” paywalls. No vendor lock-in. 🔓
+| Why It Matters | EchoMind Delivers |
+|----------------|-------------------|
+| **Free forever** | MIT licensed. $0. No usage caps. No "enterprise" tier. |
+| **Secure by default** | Sandboxed execution, not "trust the user" security |
+| **Your infrastructure** | Self-host on-prem, in your cloud, or air-gapped |
+| **Your data stays yours** | No telemetry, no phone-home, no vendor lock-in |
 
 ---
 
@@ -241,6 +261,26 @@ We're building EchoMind in Python and welcome contributions in:
 
 - [Architecture](docs/architecture.md) - Technical design with Mermaid diagrams
 - API Documentation - *Coming soon*
+
+---
+
+## OpenClaw vs EchoMind
+
+[OpenClaw](https://openclaw.ai/) is an open-source personal AI assistant that runs locally with full system access — shell commands, file operations, browser control. It's powerful for individuals, but [security researchers have flagged serious concerns](https://blogs.cisco.com/ai/personal-ai-agents-like-openclaw-are-a-security-nightmare) for organizational use: credential exposure, malicious skill injection, and no secure-by-default setup.
+
+**EchoMind is OpenClaw for business** — the same AI agent capabilities, redesigned for enterprise security:
+
+| Capability | OpenClaw | EchoMind |
+|------------|----------|----------|
+| AI-powered workflows | Personal device | Isolated sandbox |
+| System access | Unrestricted shell/files | Permission-controlled APIs |
+| Data sources | Local files, messaging apps | Org knowledge + business tools |
+| Security model | User responsibility | Enterprise-grade (OIDC, LDAP, air-gap) |
+| Execution environment | Persistent on device | Ephemeral containers |
+| Target use case | Personal productivity | Team/org automation |
+| Cost | Free + API costs | Free (MIT) + API costs |
+
+**Bottom line:** If you want an AI assistant for personal use, OpenClaw is excellent. If you want to deploy AI assistants across your organization without creating security vulnerabilities, EchoMind is built for that.
 
 ---
 

@@ -56,25 +56,21 @@ async def handle_ingestor_error(error: IngestorError) -> dict[str, Any]:
 
     # Terminal errors - don't retry
     if isinstance(error, ValidationError):
-        logger.error("❌ Validation error: %s", error.message)
+        logger.error(f"❌ Validation error: {error.message}")
         error_info["should_retry"] = False
         error_info["details"]["field"] = error.field
 
     elif isinstance(error, DocumentNotFoundError):
-        logger.error("❌ Document not found: %d", error.document_id)
+        logger.error(f"❌ Document not found: {error.document_id}")
         error_info["should_retry"] = False
         error_info["details"]["document_id"] = error.document_id
 
     elif isinstance(error, OwnershipMismatchError):
         # SECURITY: Never retry - indicates forged or corrupted message
         logger.critical(
-            "🚨 SECURITY: Ownership mismatch detected! Document %d - "
-            "claimed connector=%d (actual=%d), claimed user=%s (actual=%s)",
-            error.document_id,
-            error.expected_connector_id,
-            error.actual_connector_id,
-            error.expected_user_id,
-            error.actual_user_id,
+            f"🚨 SECURITY: Ownership mismatch detected! Document {error.document_id} - "
+            f"claimed connector={error.expected_connector_id} (actual={error.actual_connector_id}), "
+            f"claimed user={error.expected_user_id} (actual={error.actual_user_id})"
         )
         error_info["should_retry"] = False
         error_info["details"]["document_id"] = error.document_id
@@ -85,14 +81,14 @@ async def handle_ingestor_error(error: IngestorError) -> dict[str, Any]:
         error_info["details"]["security_alert"] = True
 
     elif isinstance(error, UnsupportedMimeTypeError):
-        logger.error("❌ Unsupported MIME type: %s", error.mime_type)
+        logger.error(f"❌ Unsupported MIME type: {error.mime_type}")
         error_info["should_retry"] = False
         error_info["details"]["mime_type"] = error.mime_type
 
     # Transient errors - should retry
     elif isinstance(error, FileNotFoundInStorageError):
         # File may still be uploading
-        logger.warning("⚠️ File not found (may be uploading): %s", error.file_path)
+        logger.warning(f"⚠️ File not found (may be uploading): {error.file_path}")
         error_info["should_retry"] = True
         error_info["retry_after"] = 5.0
         error_info["details"]["file_path"] = error.file_path
@@ -101,17 +97,17 @@ async def handle_ingestor_error(error: IngestorError) -> dict[str, Any]:
     # Note: AudioExtractionError must come before ExtractionError (inheritance)
     elif isinstance(error, AudioExtractionError):
         # Riva NIM may be unavailable
-        logger.warning("⚠️ Audio extraction failed (Riva NIM): %s", error.message)
+        logger.warning(f"⚠️ Audio extraction failed (Riva NIM): {error.message}")
         error_info["should_retry"] = True
         error_info["retry_after"] = 30.0
 
     elif isinstance(error, ExtractionError):
         if error.is_transient:
-            logger.warning("⚠️ Transient extraction error: %s", error.message)
+            logger.warning(f"⚠️ Transient extraction error: {error.message}")
             error_info["should_retry"] = True
             error_info["retry_after"] = 10.0
         else:
-            logger.error("❌ Terminal extraction error: %s", error.message)
+            logger.error(f"❌ Terminal extraction error: {error.message}")
             error_info["should_retry"] = False
         error_info["details"]["source_type"] = error.source_type
         error_info["details"]["document_id"] = error.document_id
@@ -119,50 +115,50 @@ async def handle_ingestor_error(error: IngestorError) -> dict[str, Any]:
     elif isinstance(error, ChunkingError):
         if error.is_transient:
             # Tokenizer may need download
-            logger.warning("⚠️ Chunking error (transient): %s", error.message)
+            logger.warning(f"⚠️ Chunking error (transient): {error.message}")
             error_info["should_retry"] = True
             error_info["retry_after"] = 5.0
         else:
-            logger.error("❌ Chunking error (terminal): %s", error.message)
+            logger.error(f"❌ Chunking error (terminal): {error.message}")
             error_info["should_retry"] = False
         error_info["details"]["document_id"] = error.document_id
 
     elif isinstance(error, EmbeddingError):
         # Embedder service may be overloaded
-        logger.warning("⚠️ Embedding error: %s", error.message)
+        logger.warning(f"⚠️ Embedding error: {error.message}")
         error_info["should_retry"] = True
         error_info["retry_after"] = 10.0
         error_info["details"]["document_id"] = error.document_id
         error_info["details"]["chunk_index"] = error.chunk_index
 
     elif isinstance(error, MinioError):
-        logger.warning("⚠️ MinIO error in %s: %s", error.operation, error.reason)
+        logger.warning(f"⚠️ MinIO error in {error.operation}: {error.reason}")
         error_info["should_retry"] = True
         error_info["retry_after"] = 5.0
         error_info["details"]["operation"] = error.operation
 
     elif isinstance(error, DatabaseError):
-        logger.warning("⚠️ Database error in %s: %s", error.operation, error.reason)
+        logger.warning(f"⚠️ Database error in {error.operation}: {error.reason}")
         error_info["should_retry"] = True
         error_info["retry_after"] = 5.0
         error_info["details"]["operation"] = error.operation
 
     elif isinstance(error, GrpcError):
-        logger.warning("⚠️ gRPC error to %s: %s", error.service, error.reason)
+        logger.warning(f"⚠️ gRPC error to {error.service}: {error.reason}")
         error_info["should_retry"] = True
         error_info["retry_after"] = 10.0
         error_info["details"]["service"] = error.service
         error_info["details"]["code"] = error.code
 
     elif isinstance(error, NatsError):
-        logger.warning("⚠️ NATS error in %s: %s", error.operation, error.reason)
+        logger.warning(f"⚠️ NATS error in {error.operation}: {error.reason}")
         error_info["should_retry"] = True
         error_info["retry_after"] = 5.0
         error_info["details"]["operation"] = error.operation
 
     else:
         # Unknown IngestorError - retry by default
-        logger.error("❌ Unknown ingestor error: %s", error.message)
+        logger.error(f"❌ Unknown ingestor error: {error.message}")
         error_info["should_retry"] = True
         error_info["retry_after"] = 30.0
 

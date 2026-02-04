@@ -83,20 +83,15 @@ class GuardianService:
         self._advisories_processed += 1
 
         logger.info(
-            "📥 Processing advisory: type=%s stream=%s consumer=%s seq=%d",
-            details.advisory_type,
-            details.stream,
-            details.consumer,
-            details.stream_seq,
+            f"📥 Processing advisory: type={details.advisory_type} stream={details.stream} "
+            f"consumer={details.consumer} seq={details.stream_seq}"
         )
 
         # Check rate limit
         if not self._rate_limiter.allow(details.original_subject):
             self._alerts_rate_limited += 1
             logger.warning(
-                "🚫 Rate limited alert for subject: %s (seq=%d)",
-                details.original_subject,
-                details.stream_seq,
+                f"🚫 Rate limited alert for subject: {details.original_subject} (seq={details.stream_seq})"
             )
             return details
 
@@ -119,25 +114,17 @@ class GuardianService:
                 await alerter.send_alert(details)
                 self._alerts_sent += 1
                 logger.debug(
-                    "✅ Alert sent via %s for seq %d",
-                    alerter.name,
-                    details.stream_seq,
+                    f"✅ Alert sent via {alerter.name} for seq {details.stream_seq}"
                 )
             except AlerterError as e:
                 self._alerts_failed += 1
                 logger.error(
-                    "❌ Alerter %s failed for seq %d: %s",
-                    alerter.name,
-                    details.stream_seq,
-                    e.message,
+                    f"❌ Alerter {alerter.name} failed for seq {details.stream_seq}: {e.message}"
                 )
             except Exception as e:
                 self._alerts_failed += 1
                 logger.exception(
-                    "💀 Unexpected error in alerter %s for seq %d: %s",
-                    alerter.name,
-                    details.stream_seq,
-                    e,
+                    f"💀 Unexpected error in alerter {alerter.name} for seq {details.stream_seq}: {e}"
                 )
 
     def get_stats(self) -> dict[str, Any]:
@@ -161,4 +148,4 @@ class GuardianService:
             try:
                 await alerter.close()
             except Exception as e:
-                logger.warning("⚠️ Error closing alerter %s: %s", alerter.name, e)
+                logger.warning(f"⚠️ Error closing alerter {alerter.name}: {e}")

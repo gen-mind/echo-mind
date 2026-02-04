@@ -313,7 +313,7 @@ class ConnectorService:
         connector.last_update = datetime.now(timezone.utc)
         connector.user_id_last_update = user.id
 
-        logger.info("🔄 Updated connector %d by user %d", connector_id, user.id)
+        logger.info(f"🔄 Updated connector {connector_id} by user {user.id}")
 
         return connector
 
@@ -358,7 +358,7 @@ class ConnectorService:
         connector.deleted_date = datetime.now(timezone.utc)
         connector.user_id_last_update = user.id
 
-        logger.info("🗑️ Deleted connector %d by user %d", connector_id, user.id)
+        logger.info(f"🗑️ Deleted connector {connector_id} by user {user.id}")
 
     async def trigger_sync(
         self,

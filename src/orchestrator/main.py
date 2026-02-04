@@ -75,18 +75,18 @@ class Orchestrator:
         """
         logger.info("🚀 EchoMind Orchestrator Service starting...")
         logger.info("📋 Configuration:")
-        logger.info("   ⚙️ Enabled: %s", self._settings.enabled)
-        logger.info("   ⏱️ Check interval: %d seconds", self._settings.check_interval_seconds)
-        logger.info("   🔌 Health port: %d", self._settings.health_port)
-        logger.info("   🗄️ Database: %s", self._mask_url(self._settings.database_url))
-        logger.info("   📡 NATS: %s", self._settings.nats_url)
+        logger.info(f"   ⚙️ Enabled: {self._settings.enabled}")
+        logger.info(f"   ⏱️ Check interval: {self._settings.check_interval_seconds} seconds")
+        logger.info(f"   🔌 Health port: {self._settings.health_port}")
+        logger.info(f"   🗄️ Database: {self._mask_url(self._settings.database_url)}")
+        logger.info(f"   📡 NATS: {self._settings.nats_url}")
 
         if not self._settings.enabled:
             logger.warning("⚠️ Orchestrator is disabled via configuration")
             return
 
         # Initialize database
-        logger.info("🔌 Connecting to database...")
+        logger.info("🛠️ Connecting to database...")
         try:
             await init_db(
                 self._settings.database_url,
@@ -94,11 +94,11 @@ class Orchestrator:
             )
             logger.info("🗄️ Database connected")
         except Exception as e:
-            logger.error("❌ Database connection failed: %s", e)
+            logger.error(f"❌ Database connection failed: {e}")
             raise
 
         # Initialize NATS publisher
-        logger.info("🔌 Connecting to NATS...")
+        logger.info("🛠️ Connecting to NATS...")
         try:
             publisher = await init_nats_publisher(
                 servers=[self._settings.nats_url],
@@ -118,12 +118,12 @@ class Orchestrator:
                     ],
                 )
                 logger.info(
-                    "✅ NATS stream '%s' ready", self._settings.nats_stream_name
+                    f"✅ NATS stream '{self._settings.nats_stream_name}' ready"
                 )
             except Exception as e:
                 # Stream might already exist, which is fine
                 if "already in use" not in str(e).lower():
-                    logger.warning("⚠️ Stream creation warning: %s", e)
+                    logger.warning(f"⚠️ Stream creation warning: {e}")
 
             # Create DLQ advisory stream for Guardian service
             try:
@@ -135,15 +135,15 @@ class Orchestrator:
                     ],
                 )
                 logger.info(
-                    "✅ NATS DLQ stream '%s' ready", self._settings.nats_dlq_stream_name
+                    f"✅ NATS DLQ stream '{self._settings.nats_dlq_stream_name}' ready"
                 )
             except Exception as e:
                 # Stream might already exist, which is fine
                 if "already in use" not in str(e).lower():
-                    logger.warning("⚠️ DLQ stream creation warning: %s", e)
+                    logger.warning(f"⚠️ DLQ stream creation warning: {e}")
 
         except Exception as e:
-            logger.error("❌ NATS connection failed: %s", e)
+            logger.error(f"❌ NATS connection failed: {e}")
             await close_db()
             raise
 
@@ -151,7 +151,7 @@ class Orchestrator:
         self._health_server = HealthServer(port=self._settings.health_port)
         health_thread = threading.Thread(target=self._health_server.start, daemon=True)
         health_thread.start()
-        logger.info("💓 Health server started on port %d", self._settings.health_port)
+        logger.info(f"💓 Health server started on port {self._settings.health_port}")
 
         # Initialize scheduler
         self._scheduler = AsyncIOScheduler()
@@ -164,8 +164,7 @@ class Orchestrator:
         )
         self._scheduler.start()
         logger.info(
-            "🕐 Scheduler started (interval: %d seconds)",
-            self._settings.check_interval_seconds,
+            f"🕐 Scheduler started (interval: {self._settings.check_interval_seconds} seconds)"
         )
 
         # Mark as ready
@@ -219,10 +218,10 @@ class Orchestrator:
                 triggered = await service.check_and_trigger_syncs()
 
                 if triggered > 0:
-                    logger.info("📊 Sync check complete: %d triggered", triggered)
+                    logger.info(f"📊 Sync check complete: {triggered} triggered")
 
         except Exception as e:
-            logger.exception("❌ Sync check job failed: %s", e)
+            logger.exception(f"❌ Sync check job failed: {e}")
 
     def _mask_url(self, url: str) -> str:
         """Mask password in connection URL for logging."""
@@ -257,7 +256,7 @@ async def main() -> None:
     except KeyboardInterrupt:
         logger.info("🛑 Received keyboard interrupt")
     except Exception as e:
-        logger.exception("💀 Fatal error: %s", e)
+        logger.exception(f"💀 Fatal error: {e}")
         sys.exit(1)
     finally:
         await orchestrator.stop()

@@ -435,9 +435,7 @@ class GoogleDriveProvider(BaseProvider):
         """
         export_mime = GOOGLE_EXPORT_MIMES[file.mime_type]
 
-        logger.info(
-            "🔄 Exporting Google Workspace file %s as PDF", file.source_id
-        )
+        logger.info(f"🔄 Exporting Google Workspace file {file.source_id} as PDF")
 
         response = await self._client.get(
             f"https://www.googleapis.com/drive/v3/files/{file.source_id}/export",
@@ -513,7 +511,7 @@ class GoogleDriveProvider(BaseProvider):
                 self._max_file_size,
             )
 
-        logger.info("🔄 Downloading file %s", file.source_id)
+        logger.info(f"🔄 Downloading file {file.source_id}")
 
         response = await self._client.get(
             f"https://www.googleapis.com/drive/v3/files/{file.source_id}",
@@ -624,9 +622,7 @@ class GoogleDriveProvider(BaseProvider):
 
         export_mime = GOOGLE_EXPORT_MIMES[file.mime_type]
 
-        logger.info(
-            "🔄 Exporting Google Workspace file %s as PDF", file.source_id
-        )
+        logger.info(f"🔄 Exporting Google Workspace file {file.source_id} as PDF")
 
         response = await self._client.get(
             f"https://www.googleapis.com/drive/v3/files/{file.source_id}/export",
@@ -661,9 +657,7 @@ class GoogleDriveProvider(BaseProvider):
         )
 
         logger.info(
-            "📦 Streamed Workspace file %s to storage (%d bytes)",
-            file.source_id,
-            content_len,
+            f"📦 Streamed Workspace file {file.source_id} to storage ({content_len} bytes)"
         )
 
         return StreamResult(
@@ -702,7 +696,7 @@ class GoogleDriveProvider(BaseProvider):
         """
         import io
 
-        logger.info("🔄 Streaming file %s to storage", file.source_id)
+        logger.info(f"🔄 Streaming file {file.source_id} to storage")
 
         # Use streaming download
         async with self._client.stream(
@@ -738,9 +732,7 @@ class GoogleDriveProvider(BaseProvider):
         )
 
         logger.info(
-            "📦 Streamed file %s to storage (%d bytes)",
-            file.source_id,
-            content_len,
+            f"📦 Streamed file {file.source_id} to storage ({content_len} bytes)"
         )
 
         return StreamResult(
@@ -774,9 +766,7 @@ class GoogleDriveProvider(BaseProvider):
 
             if response.status_code != 200:
                 logger.warning(
-                    "⚠️ Failed to fetch permissions for %s: %s",
-                    file.source_id,
-                    response.text,
+                    f"⚠️ Failed to fetch permissions for {file.source_id}: {response.text}"
                 )
                 return ExternalAccess.empty()
 
@@ -799,7 +789,7 @@ class GoogleDriveProvider(BaseProvider):
 
         except Exception as e:
             logger.warning(
-                "⚠️ Error fetching permissions for %s: %s", file.source_id, e
+                f"⚠️ Error fetching permissions for {file.source_id}: {e}"
             )
             return ExternalAccess.empty()
 
@@ -843,10 +833,10 @@ class GoogleDriveProvider(BaseProvider):
                     downloaded = await self.download_file(change.file, config)
                     yield downloaded
                 except FileTooLargeError as e:
-                    logger.warning("⚠️ Skipping large file: %s", e)
+                    logger.warning(f"⚠️ Skipping large file: {e}")
                     checkpoint.error_count += 1
                 except (DownloadError, ExportError) as e:
-                    logger.error("❌ Download/export error: %s", e)
+                    logger.error(f"❌ Download/export error: {e}")
                     checkpoint.error_count += 1
 
         checkpoint.has_more = False

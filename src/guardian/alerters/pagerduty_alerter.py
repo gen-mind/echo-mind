@@ -84,7 +84,7 @@ class PagerDutyAlerter(Alerter):
             client = await self._get_client()
             response = await client.post(PAGERDUTY_EVENTS_URL, json=payload)
             response.raise_for_status()
-            logger.debug("✅ PagerDuty alert sent for seq %d", details.stream_seq)
+            logger.debug(f"📤 PagerDuty alert sent for seq {details.stream_seq}")
 
         except httpx.HTTPStatusError as e:
             raise PagerDutyAlertError(

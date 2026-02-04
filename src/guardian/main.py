@@ -81,16 +81,15 @@ class GuardianApp:
         """
         logger.info("🛡️ Starting EchoMind Guardian Service...")
         logger.info("📋 Configuration:")
-        logger.info("   Enabled: %s", self._settings.enabled)
-        logger.info("   Health port: %d", self._settings.health_port)
-        logger.info("   NATS: %s", self._settings.nats_url)
-        logger.info("   Source stream: %s", self._settings.nats_source_stream)
-        logger.info("   DLQ stream: %s", self._settings.nats_stream_name)
-        logger.info("   Alerters: %s", self._settings.alerters)
+        logger.info(f"   Enabled: {self._settings.enabled}")
+        logger.info(f"   Health port: {self._settings.health_port}")
+        logger.info(f"   NATS: {self._settings.nats_url}")
+        logger.info(f"   Source stream: {self._settings.nats_source_stream}")
+        logger.info(f"   DLQ stream: {self._settings.nats_stream_name}")
+        logger.info(f"   Alerters: {self._settings.alerters}")
         logger.info(
-            "   Rate limit: %d per %ds",
-            self._settings.alert_rate_limit_per_subject,
-            self._settings.alert_rate_limit_window_seconds,
+            f"   Rate limit: {self._settings.alert_rate_limit_per_subject} per "
+            f"{self._settings.alert_rate_limit_window_seconds}s"
         )
 
         if not self._settings.enabled:
@@ -104,11 +103,11 @@ class GuardianApp:
             daemon=True,
         )
         health_thread.start()
-        logger.info("💓 Health server started on port %d", self._settings.health_port)
+        logger.info(f"💓 Health server started on port {self._settings.health_port}")
 
         # Initialize alerters
         alerters = self._create_alerters()
-        logger.info("✅ Initialized %d alerter(s)", len(alerters))
+        logger.info(f"🛠️ Initialized {len(alerters)} alerter(s)")
 
         # Initialize rate limiter
         rate_limiter = RateLimiter(
@@ -123,7 +122,7 @@ class GuardianApp:
         )
 
         # Initialize NATS with graceful degradation
-        logger.info("🔌 Connecting to NATS...")
+        logger.info("🛠️ Connecting to NATS...")
         try:
             self._subscriber = await init_nats_subscriber(
                 servers=[self._settings.nats_url],
@@ -145,7 +144,7 @@ class GuardianApp:
             await self._setup_subscriptions()
 
         except Exception as e:
-            logger.warning("⚠️ NATS connection failed: %s", e)
+            logger.warning(f"⚠️ NATS connection failed: {e}")
             logger.info("🔄 Will retry NATS connection in background...")
             self._retry_tasks.append(
                 asyncio.create_task(self._retry_nats_connection())
@@ -174,7 +173,7 @@ class GuardianApp:
             alerter = self._create_alerter(name)
             if alerter:
                 alerters.append(alerter)
-                logger.info("   📢 Configured alerter: %s", name)
+                logger.info(f"   📢 Configured alerter: {name}")
 
         # Always have at least logging alerter
         if not alerters:
@@ -225,7 +224,7 @@ class GuardianApp:
             )
 
         else:
-            logger.warning("⚠️ Unknown alerter: %s", name)
+            logger.warning(f"⚠️ Unknown alerter: {name}")
             return None
 
     async def _retry_nats_connection(self) -> None:
@@ -251,7 +250,7 @@ class GuardianApp:
                 await self._setup_subscriptions()
                 self._update_readiness()
             except Exception as e:
-                logger.warning("⚠️ NATS reconnection attempt failed: %s", e)
+                logger.warning(f"⚠️ NATS reconnection attempt failed: {e}")
 
     def _is_ready(self) -> bool:
         """Check if all required services are connected."""
@@ -289,9 +288,9 @@ class GuardianApp:
                     subject=subject,
                     handler=self._handle_advisory,
                 )
-                logger.info("📥 Subscribed to %s", subject)
+                logger.info(f"📥 Subscribed to {subject}")
             except Exception as e:
-                logger.warning("⚠️ Failed to subscribe to %s: %s", subject, e)
+                logger.warning(f"⚠️ Failed to subscribe to {subject}: {e}")
 
     async def _handle_advisory(self, msg: Msg) -> None:
         """
@@ -314,19 +313,17 @@ class GuardianApp:
             # ACK message on success
             await msg.ack()
             logger.info(
-                "✅ Advisory processed: type=%s seq=%d",
-                details.advisory_type,
-                details.stream_seq,
+                f"✅ Advisory processed: type={details.advisory_type} seq={details.stream_seq}"
             )
 
         except Exception as e:
-            logger.exception("❌ Advisory processing failed: %s", e)
+            logger.exception(f"❌ Advisory processing failed: {e}")
             # NAK to retry
             await msg.nak()
 
         finally:
             elapsed = asyncio.get_event_loop().time() - start_time
-            logger.debug("⏰ Processing time: %.2fs", elapsed)
+            logger.debug(f"⏰ Processing time: {elapsed:.2f}s")
 
     async def stop(self) -> None:
         """Stop the Guardian service gracefully."""
@@ -378,7 +375,7 @@ async def main() -> None:
         logger.info("⚠️ Received keyboard interrupt")
 
     except Exception as e:
-        logger.exception("💀 Fatal error: %s", e)
+        logger.exception(f"💀 Fatal error: {e}")
 
     finally:
         await app.stop()

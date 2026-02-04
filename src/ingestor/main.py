@@ -84,19 +84,15 @@ class IngestorApp:
         """
         logger.info("🛠️ Starting EchoMind Ingestor Service...")
         logger.info("📋 Configuration:")
-        logger.info("   Enabled: %s", self._settings.enabled)
-        logger.info("   Health port: %d", self._settings.health_port)
-        logger.info("   Database: %s", self._mask_url(self._settings.database_url))
-        logger.info("   NATS: %s", self._settings.nats_url)
-        logger.info("   MinIO: %s", self._settings.minio_endpoint)
-        logger.info(
-            "   Embedder: %s:%d",
-            self._settings.embedder_host,
-            self._settings.embedder_port,
-        )
-        logger.info("   Extract method: %s", self._settings.extract_method)
-        logger.info("   Chunk size: %d tokens", self._settings.chunk_size)
-        logger.info("   Tokenizer: %s", self._settings.tokenizer)
+        logger.info(f"   Enabled: {self._settings.enabled}")
+        logger.info(f"   Health port: {self._settings.health_port}")
+        logger.info(f"   Database: {self._mask_url(self._settings.database_url)}")
+        logger.info(f"   NATS: {self._settings.nats_url}")
+        logger.info(f"   MinIO: {self._settings.minio_endpoint}")
+        logger.info(f"   Embedder: {self._settings.embedder_host}:{self._settings.embedder_port}")
+        logger.info(f"   Extract method: {self._settings.extract_method}")
+        logger.info(f"   Chunk size: {self._settings.chunk_size} tokens")
+        logger.info(f"   Tokenizer: {self._settings.tokenizer}")
 
         if not self._settings.enabled:
             logger.warning("⚠️ Ingestor is disabled via configuration")
@@ -109,13 +105,13 @@ class IngestorApp:
             daemon=True,
         )
         health_thread.start()
-        logger.info("💓 Health server started on port %d", self._settings.health_port)
+        logger.info(f"💓 Health server started on port {self._settings.health_port}")
 
         # Initialize services with graceful degradation
         # Each service failure spawns a background retry task
 
         # Initialize database
-        logger.info("🔌 Connecting to database...")
+        logger.info("🛠️ Connecting to database...")
         try:
             await init_db(
                 self._settings.database_url,
@@ -124,14 +120,14 @@ class IngestorApp:
             self._db_connected = True
             logger.info("🗄️ Database connected")
         except Exception as e:
-            logger.warning("⚠️ Database connection failed: %s", e)
+            logger.warning(f"⚠️ Database connection failed: {e}")
             logger.info("🔄 Will retry database connection in background...")
             self._retry_tasks.append(
                 asyncio.create_task(self._retry_db_connection())
             )
 
         # Initialize MinIO
-        logger.info("🔌 Connecting to MinIO...")
+        logger.info("🛠️ Connecting to MinIO...")
         try:
             await init_minio(
                 endpoint=self._settings.minio_endpoint,
@@ -142,14 +138,14 @@ class IngestorApp:
             self._minio_connected = True
             logger.info("📦 MinIO connected")
         except Exception as e:
-            logger.warning("⚠️ MinIO connection failed: %s", e)
+            logger.warning(f"⚠️ MinIO connection failed: {e}")
             logger.info("🔄 Will retry MinIO connection in background...")
             self._retry_tasks.append(
                 asyncio.create_task(self._retry_minio_connection())
             )
 
         # Initialize Qdrant
-        logger.info("🔌 Connecting to Qdrant...")
+        logger.info("🛠️ Connecting to Qdrant...")
         try:
             await init_qdrant(
                 host=self._settings.qdrant_host,
@@ -159,14 +155,14 @@ class IngestorApp:
             self._qdrant_connected = True
             logger.info("🔍 Qdrant connected")
         except Exception as e:
-            logger.warning("⚠️ Qdrant connection failed: %s", e)
+            logger.warning(f"⚠️ Qdrant connection failed: {e}")
             logger.info("🔄 Will retry Qdrant connection in background...")
             self._retry_tasks.append(
                 asyncio.create_task(self._retry_qdrant_connection())
             )
 
         # Initialize NATS subscriber
-        logger.info("🔌 Connecting to NATS...")
+        logger.info("🛠️ Connecting to NATS...")
         try:
             self._subscriber = await init_nats_subscriber(
                 servers=[self._settings.nats_url],
@@ -183,7 +179,7 @@ class IngestorApp:
             # Setup subscriptions only if NATS connected
             await self._setup_subscriptions()
         except Exception as e:
-            logger.warning("⚠️ NATS connection failed: %s", e)
+            logger.warning(f"⚠️ NATS connection failed: {e}")
             logger.info("🔄 Will retry NATS connection in background...")
             self._retry_tasks.append(
                 asyncio.create_task(self._retry_nats_connection())
@@ -211,7 +207,7 @@ class IngestorApp:
                 logger.info("🗄️ Database reconnected")
                 self._update_readiness()
             except Exception as e:
-                logger.warning("⚠️ Database reconnection attempt failed: %s", e)
+                logger.warning(f"⚠️ Database reconnection attempt failed: {e}")
 
     async def _retry_minio_connection(self) -> None:
         """Background task to retry MinIO connection."""
@@ -228,7 +224,7 @@ class IngestorApp:
                 logger.info("📦 MinIO reconnected")
                 self._update_readiness()
             except Exception as e:
-                logger.warning("⚠️ MinIO reconnection attempt failed: %s", e)
+                logger.warning(f"⚠️ MinIO reconnection attempt failed: {e}")
 
     async def _retry_qdrant_connection(self) -> None:
         """Background task to retry Qdrant connection."""
@@ -244,7 +240,7 @@ class IngestorApp:
                 logger.info("🔍 Qdrant reconnected")
                 self._update_readiness()
             except Exception as e:
-                logger.warning("⚠️ Qdrant reconnection attempt failed: %s", e)
+                logger.warning(f"⚠️ Qdrant reconnection attempt failed: {e}")
 
     async def _retry_nats_connection(self) -> None:
         """Background task to retry NATS connection."""
@@ -265,7 +261,7 @@ class IngestorApp:
                 await self._setup_subscriptions()
                 self._update_readiness()
             except Exception as e:
-                logger.warning("⚠️ NATS reconnection attempt failed: %s", e)
+                logger.warning(f"⚠️ NATS reconnection attempt failed: {e}")
 
     def _is_ready(self) -> bool:
         """Check if all required services are connected."""
@@ -303,7 +299,7 @@ class IngestorApp:
             subject=subject,
             handler=self._handle_message,
         )
-        logger.info("📥 Subscribed to %s", subject)
+        logger.info(f"📥 Subscribed to {subject}")
 
     async def _handle_message(self, msg: Msg) -> None:
         """
@@ -330,11 +326,7 @@ class IngestorApp:
             request = DocumentProcessRequest.from_protobuf(proto_request)
             document_id = request.document_id
 
-            logger.info(
-                "📥 Processing document %d (path: %s)",
-                document_id,
-                request.minio_path,
-            )
+            logger.info(f"📥 Processing document {document_id} (path: {request.minio_path})")
 
             # Get database session and clients
             db = get_db_manager()
@@ -373,22 +365,14 @@ class IngestorApp:
 
                     # ACK message on success
                     await msg.ack()
-                    logger.info(
-                        "✅ Document %d processed: %d chunks",
-                        document_id,
-                        result.get("chunk_count", 0),
-                    )
+                    logger.info(f"✅ Document {document_id} processed: {result.get('chunk_count', 0)} chunks")
 
                 finally:
                     await service.close()
 
         except IngestorError as e:
             error_info = await handle_ingestor_error(e)
-            logger.error(
-                "❌ Ingestor error for document %s: %s",
-                document_id,
-                e.message,
-            )
+            logger.error(f"❌ Ingestor error for document {document_id}: {e.message}")
 
             if error_info["should_retry"]:
                 await msg.nak()  # NATS will redeliver
@@ -396,16 +380,12 @@ class IngestorApp:
                 await msg.term()  # Terminal failure, don't retry
 
         except Exception as e:
-            logger.exception(
-                "💀 Unexpected error processing document %s: %s",
-                document_id,
-                e,
-            )
+            logger.exception(f"💀 Unexpected error processing document {document_id}: {e}")
             await msg.nak()  # Allow retry for unexpected errors
 
         finally:
             elapsed = asyncio.get_event_loop().time() - start_time
-            logger.info("⏰ Elapsed: %.2fs", elapsed)
+            logger.info(f"⏰ Elapsed: {elapsed:.2f}s")
 
     async def stop(self) -> None:
         """
@@ -499,7 +479,7 @@ async def main() -> None:
         logger.info("⚠️ Received keyboard interrupt")
 
     except Exception as e:
-        logger.exception("💀 Fatal error: %s", e)
+        logger.exception(f"💀 Fatal error: {e}")
 
     finally:
         await app.stop()

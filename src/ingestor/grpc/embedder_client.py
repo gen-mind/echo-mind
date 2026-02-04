@@ -75,7 +75,7 @@ class EmbedderClient:
                 ],
             )
             self._stub = EmbedServiceStub(self._channel)
-            logger.info("🔗 Connected to Embedder at %s:%d", self._host, self._port)
+            logger.info(f"🔗 Connected to Embedder at {self._host}:{self._port}")
 
     async def get_dimension(self) -> int:
         """
@@ -99,11 +99,7 @@ class EmbedderClient:
                 timeout=self._timeout,
             )
             self._dimension = response.dimension
-            logger.info(
-                "📐 Embedder dimension: %d (model: %s)",
-                response.dimension,
-                response.model_id,
-            )
+            logger.info(f"📐 Embedder dimension: {response.dimension} (model: {response.model_id})")
             return response.dimension
 
         except grpc.aio.AioRpcError as e:
@@ -151,31 +147,19 @@ class EmbedderClient:
                 for embedding in response.embeddings
             ]
 
-            logger.info(
-                "🎯 Embedded %d texts for document %s",
-                len(vectors),
-                document_id or "N/A",
-            )
+            logger.info(f"🎯 Embedded {len(vectors)} texts for document {document_id or 'N/A'}")
 
             return vectors
 
         except grpc.aio.AioRpcError as e:
-            logger.error(
-                "❌ gRPC error embedding texts for document %s: %s",
-                document_id,
-                e.details(),
-            )
+            logger.error(f"❌ gRPC error embedding texts for document {document_id}: {e.details()}")
             raise GrpcError(
                 service="embedder",
                 reason=str(e.details()),
                 code=e.code().name,
             ) from e
         except Exception as e:
-            logger.exception(
-                "❌ Embedding failed for document %s: %s",
-                document_id,
-                e,
-            )
+            logger.exception(f"❌ Embedding failed for document {document_id}: {e}")
             raise EmbeddingError(str(e), document_id=document_id) from e
 
     async def embed_batch(
@@ -209,13 +193,7 @@ class EmbedderClient:
             batch_num = (i // batch_size) + 1
             total_batches = (len(texts) + batch_size - 1) // batch_size
 
-            logger.debug(
-                "🔄 Embedding batch %d/%d (%d texts) for document %s",
-                batch_num,
-                total_batches,
-                len(batch),
-                document_id or "N/A",
-            )
+            logger.debug(f"🔄 Embedding batch {batch_num}/{total_batches} ({len(batch)} texts) for document {document_id or 'N/A'}")
 
             vectors = await self.embed_texts(batch, document_id)
             all_vectors.extend(vectors)

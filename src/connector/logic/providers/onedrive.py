@@ -388,7 +388,7 @@ class OneDriveProvider(BaseProvider):
 
         drive_id = file.extra.get("drive_id") or config.get("drive_id")
 
-        logger.info("🔄 Downloading OneDrive file %s", file.source_id)
+        logger.info(f"🔄 Downloading OneDrive file {file.source_id}")
 
         # Get download URL
         if drive_id:
@@ -467,7 +467,7 @@ class OneDriveProvider(BaseProvider):
         """
         drive_id = file.extra.get("drive_id") or config.get("drive_id")
 
-        logger.info("🔄 Streaming OneDrive file %s to storage", file.source_id)
+        logger.info(f"🔄 Streaming OneDrive file {file.source_id} to storage")
 
         # Build download URL
         if drive_id:
@@ -512,9 +512,7 @@ class OneDriveProvider(BaseProvider):
         )
 
         logger.info(
-            "📦 Streamed OneDrive file %s to storage (%d bytes)",
-            file.source_id,
-            content_len,
+            f"📦 Streamed OneDrive file {file.source_id} to storage ({content_len} bytes)"
         )
 
         return StreamResult(
@@ -551,9 +549,7 @@ class OneDriveProvider(BaseProvider):
 
             if response.status_code != 200:
                 logger.warning(
-                    "⚠️ Failed to fetch permissions for %s: %s",
-                    file.source_id,
-                    response.text,
+                    f"⚠️ Failed to fetch permissions for {file.source_id}: {response.text}"
                 )
                 return ExternalAccess.empty()
 
@@ -596,7 +592,7 @@ class OneDriveProvider(BaseProvider):
 
         except Exception as e:
             logger.warning(
-                "⚠️ Error fetching permissions for %s: %s", file.source_id, e
+                f"⚠️ Error fetching permissions for {file.source_id}: {e}"
             )
             return ExternalAccess.empty()
 
@@ -640,10 +636,10 @@ class OneDriveProvider(BaseProvider):
                     downloaded = await self.download_file(change.file, config)
                     yield downloaded
                 except FileTooLargeError as e:
-                    logger.warning("⚠️ Skipping large file: %s", e)
+                    logger.warning(f"⚠️ Skipping large file: {e}")
                     checkpoint.error_count += 1
                 except DownloadError as e:
-                    logger.error("❌ Download error: %s", e)
+                    logger.error(f"❌ Download error: {e}")
                     checkpoint.error_count += 1
 
         checkpoint.has_more = False

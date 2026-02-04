@@ -84,11 +84,11 @@ class ConnectorApp:
         """
         logger.info("🛠️ Starting EchoMind Connector Service...")
         logger.info("📋 Configuration:")
-        logger.info("   Enabled: %s", self._settings.enabled)
-        logger.info("   Health port: %d", self._settings.health_port)
-        logger.info("   Database: %s", self._mask_url(self._settings.database_url))
-        logger.info("   NATS: %s", self._settings.nats_url)
-        logger.info("   MinIO: %s", self._settings.minio_endpoint)
+        logger.info(f"   Enabled: {self._settings.enabled}")
+        logger.info(f"   Health port: {self._settings.health_port}")
+        logger.info(f"   Database: {self._mask_url(self._settings.database_url)}")
+        logger.info(f"   NATS: {self._settings.nats_url}")
+        logger.info(f"   MinIO: {self._settings.minio_endpoint}")
 
         if not self._settings.enabled:
             logger.warning("⚠️ Connector is disabled via configuration")
@@ -101,13 +101,13 @@ class ConnectorApp:
             daemon=True,
         )
         health_thread.start()
-        logger.info("💓 Health server started on port %d", self._settings.health_port)
+        logger.info(f"💓 Health server started on port {self._settings.health_port}")
 
         # Initialize services with graceful degradation
         # Each service failure spawns a background retry task
 
         # Initialize database
-        logger.info("🔌 Connecting to database...")
+        logger.info("🛠️ Connecting to database...")
         try:
             await init_db(
                 self._settings.database_url,
@@ -116,14 +116,14 @@ class ConnectorApp:
             self._db_connected = True
             logger.info("🗄️ Database connected")
         except Exception as e:
-            logger.warning("⚠️ Database connection failed: %s", e)
+            logger.warning(f"⚠️ Database connection failed: {e}")
             logger.info("🔄 Will retry database connection in background...")
             self._retry_tasks.append(
                 asyncio.create_task(self._retry_db_connection())
             )
 
         # Initialize MinIO
-        logger.info("🔌 Connecting to MinIO...")
+        logger.info("🛠️ Connecting to MinIO...")
         try:
             await init_minio(
                 endpoint=self._settings.minio_endpoint,
@@ -134,14 +134,14 @@ class ConnectorApp:
             self._minio_connected = True
             logger.info("📦 MinIO connected")
         except Exception as e:
-            logger.warning("⚠️ MinIO connection failed: %s", e)
+            logger.warning(f"⚠️ MinIO connection failed: {e}")
             logger.info("🔄 Will retry MinIO connection in background...")
             self._retry_tasks.append(
                 asyncio.create_task(self._retry_minio_connection())
             )
 
         # Initialize NATS publisher
-        logger.info("🔌 Connecting to NATS (publisher)...")
+        logger.info("🛠️ Connecting to NATS (publisher)...")
         try:
             await init_nats_publisher(
                 servers=[self._settings.nats_url],
@@ -155,14 +155,14 @@ class ConnectorApp:
             self._nats_pub_connected = True
             logger.info("📡 NATS publisher connected")
         except Exception as e:
-            logger.warning("⚠️ NATS publisher connection failed: %s", e)
+            logger.warning(f"⚠️ NATS publisher connection failed: {e}")
             logger.info("🔄 Will retry NATS publisher connection in background...")
             self._retry_tasks.append(
                 asyncio.create_task(self._retry_nats_pub_connection())
             )
 
         # Initialize NATS subscriber
-        logger.info("🔌 Connecting to NATS (subscriber)...")
+        logger.info("🛠️ Connecting to NATS (subscriber)...")
         try:
             self._subscriber = await init_nats_subscriber(
                 servers=[self._settings.nats_url],
@@ -179,7 +179,7 @@ class ConnectorApp:
             # Setup subscriptions only if NATS connected
             await self._setup_subscriptions()
         except Exception as e:
-            logger.warning("⚠️ NATS subscriber connection failed: %s", e)
+            logger.warning(f"⚠️ NATS subscriber connection failed: {e}")
             logger.info("🔄 Will retry NATS subscriber connection in background...")
             self._retry_tasks.append(
                 asyncio.create_task(self._retry_nats_sub_connection())
@@ -207,7 +207,7 @@ class ConnectorApp:
                 logger.info("🗄️ Database reconnected")
                 self._update_readiness()
             except Exception as e:
-                logger.warning("⚠️ Database reconnection attempt failed: %s", e)
+                logger.warning(f"⚠️ Database reconnection attempt failed: {e}")
 
     async def _retry_minio_connection(self) -> None:
         """Background task to retry MinIO connection."""
@@ -224,7 +224,7 @@ class ConnectorApp:
                 logger.info("📦 MinIO reconnected")
                 self._update_readiness()
             except Exception as e:
-                logger.warning("⚠️ MinIO reconnection attempt failed: %s", e)
+                logger.warning(f"⚠️ MinIO reconnection attempt failed: {e}")
 
     async def _retry_nats_pub_connection(self) -> None:
         """Background task to retry NATS publisher connection."""
@@ -248,7 +248,7 @@ class ConnectorApp:
                 logger.info("📡 NATS publisher reconnected")
                 self._update_readiness()
             except Exception as e:
-                logger.warning("⚠️ NATS publisher reconnection attempt failed: %s", e)
+                logger.warning(f"⚠️ NATS publisher reconnection attempt failed: {e}")
 
     async def _retry_nats_sub_connection(self) -> None:
         """Background task to retry NATS subscriber connection."""
@@ -273,7 +273,7 @@ class ConnectorApp:
                 await self._setup_subscriptions()
                 self._update_readiness()
             except Exception as e:
-                logger.warning("⚠️ NATS subscriber reconnection attempt failed: %s", e)
+                logger.warning(f"⚠️ NATS subscriber reconnection attempt failed: {e}")
 
     def _is_ready(self) -> bool:
         """Check if all required services are connected."""
@@ -309,7 +309,7 @@ class ConnectorApp:
                 subject=subject,
                 handler=self._handle_sync_message,
             )
-            logger.info("📥 Subscribed to %s", subject)
+            logger.info(f"📥 Subscribed to {subject}")
 
     async def _handle_sync_message(self, msg: Any) -> None:
         """
@@ -337,9 +337,7 @@ class ConnectorApp:
             request.ParseFromString(msg.data)
 
             connector_id = request.connector_id
-            logger.info(
-                "🔄 Received sync request for connector %d", connector_id
-            )
+            logger.info(f"🔄 Received sync request for connector {connector_id}")
 
             # Process sync
             db = get_db_manager()
@@ -360,21 +358,19 @@ class ConnectorApp:
                         chunking_session=request.chunking_session,
                     )
                     logger.info(
-                        "✅ Sync completed for connector %d: %d documents",
-                        connector_id,
-                        docs_processed,
+                        f"✅ Sync completed for connector {connector_id}: {docs_processed} documents"
                     )
                     await msg.ack()
                 finally:
                     await service.close()
 
         except Exception as e:
-            logger.exception("❌ Sync message handling failed: %s", e)
+            logger.exception(f"❌ Sync message handling failed: {e}")
             await msg.nak()
 
         finally:
             elapsed = asyncio.get_event_loop().time() - start_time
-            logger.info("⏰ Message processing time: %.2fs", elapsed)
+            logger.info(f"⏰ Message processing time: {elapsed:.2f}s")
 
     async def stop(self) -> None:
         """
@@ -455,7 +451,7 @@ async def main() -> None:
         logger.info("⚠️ Received keyboard interrupt")
 
     except Exception as e:
-        logger.exception("💀 Fatal error: %s", e)
+        logger.exception(f"💀 Fatal error: {e}")
 
     finally:
         await app.stop()

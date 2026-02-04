@@ -91,7 +91,7 @@ class EmbedServicer(EmbedServiceServicer):
                     "texts cannot be empty",
                 )
 
-            logger.info("📨 Embed request: %d texts", texts_count)
+            logger.info(f"📨 Embed request: {texts_count} texts")
 
             # Encode texts
             vectors = SentenceEncoder.encode(
@@ -106,17 +106,17 @@ class EmbedServicer(EmbedServiceServicer):
                 for vec in vectors
             ]
 
-            logger.info("🎯 Embedded %d texts", texts_count)
+            logger.info(f"🎯 Embedded {texts_count} texts")
             return EmbedResponse(embeddings=embeddings)
 
         except ModelNotFoundError as e:
-            logger.error("❌ Model not found: %s", e.model_name)
+            logger.error(f"❌ Model not found: {e.model_name}")
             context.abort(
                 grpc.StatusCode.NOT_FOUND,
                 f"Model not found: {e.model_name}",
             )
         except EncoderError as e:
-            logger.error("❌ Encoding error: %s", e)
+            logger.error(f"❌ Encoding error: {e}")
             context.abort(
                 grpc.StatusCode.INTERNAL,
                 str(e),
@@ -131,7 +131,7 @@ class EmbedServicer(EmbedServiceServicer):
             )
         finally:
             elapsed = time.time() - start_time
-            logger.info("⏰ Embed request completed in %.2fs", elapsed)
+            logger.info(f"⏰ Embed request completed in {elapsed:.2f}s")
 
     def GetDimension(self, request, context) -> DimensionResponse:
         """
@@ -151,7 +151,7 @@ class EmbedServicer(EmbedServiceServicer):
                 model_id=self._default_model,
             )
         except ModelNotFoundError as e:
-            logger.error("❌ Model not found: %s", e.model_name)
+            logger.error(f"❌ Model not found: {e.model_name}")
             context.abort(
                 grpc.StatusCode.NOT_FOUND,
                 f"Model not found: {e.model_name}",
@@ -174,28 +174,28 @@ def serve() -> None:
 
     logger.info("🚀 EchoMind Embedder Service starting...")
     logger.info("📋 Configuration:")
-    logger.info("   gRPC port: %d", settings.grpc_port)
-    logger.info("   Health port: %d", settings.health_port)
-    logger.info("   Model: %s", settings.model_name)
-    logger.info("   Cache limit: %d", settings.model_cache_limit)
-    logger.info("   Batch size: %d", settings.batch_size)
+    logger.info(f"   gRPC port: {settings.grpc_port}")
+    logger.info(f"   Health port: {settings.health_port}")
+    logger.info(f"   Model: {settings.model_name}")
+    logger.info(f"   Cache limit: {settings.model_cache_limit}")
+    logger.info(f"   Batch size: {settings.batch_size}")
 
     # Check device
     checker = DeviceChecker(prefer_gpu=settings.prefer_gpu)
     device = checker.get_best_device()
-    logger.info("🖥️ Device: %s (%s)", device.device_type.value, device.device_name)
+    logger.info(f"🖥️ Device: {device.device_type.value} ({device.device_name})")
 
     # Configure encoder
     SentenceEncoder.set_cache_limit(settings.model_cache_limit)
     SentenceEncoder.set_device(checker.get_torch_device())
 
     # Pre-load default model
-    logger.info("🧠 Pre-loading model: %s", settings.model_name)
+    logger.info(f"🧠 Pre-loading model: {settings.model_name}")
     try:
         dim = SentenceEncoder.get_dimension(settings.model_name)
-        logger.info("🧠 Model loaded, dimension: %d", dim)
+        logger.info(f"🧠 Model loaded, dimension: {dim}")
     except Exception as e:
-        logger.error("❌ Failed to load model: %s", e)
+        logger.error(f"❌ Failed to load model: {e}")
         sys.exit(1)
 
     # Start health server
@@ -203,7 +203,7 @@ def serve() -> None:
     health_thread = threading.Thread(target=health_server.start, daemon=True)
     health_thread.start()
     health_server.set_ready(True)
-    logger.info("💓 Health server started on port %d", settings.health_port)
+    logger.info(f"💓 Health server started on port {settings.health_port}")
 
     # Create gRPC server
     server = grpc.server(
@@ -224,7 +224,7 @@ def serve() -> None:
     # Start server
     server.add_insecure_port(f"0.0.0.0:{settings.grpc_port}")
     server.start()
-    logger.info("👂 gRPC server listening on port %d", settings.grpc_port)
+    logger.info(f"👂 gRPC server listening on port {settings.grpc_port}")
 
     # Wait for termination
     try:
