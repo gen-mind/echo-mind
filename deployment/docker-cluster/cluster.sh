@@ -34,7 +34,7 @@
 #   ./cluster.sh --host start       # Start production cluster (demo.echomind.ch)
 #   ./cluster.sh -H logs api        # View API logs on host
 #   ./cluster.sh -L build           # Build all local services
-#   ./cluster.sh -H rebuild web     # Rebuild web on host
+#   ./cluster.sh -H rebuild webui   # Rebuild webui on host
 #
 # REQUIREMENTS:
 #   - Docker and Docker Compose installed
@@ -362,7 +362,7 @@ build_services() {
         echo ""
 
         # All services with build contexts
-        local services=("api" "migration" "embedder" "orchestrator" "connector" "ingestor" "guardian" "web")
+        local services=("api" "migration" "embedder" "orchestrator" "connector" "ingestor" "guardian" "webui")
 
         for svc in "${services[@]}"; do
             log_info "Building ${svc}..."
@@ -547,7 +547,7 @@ show_help() {
     echo -e "  ${YELLOW}./cluster.sh --host start${NC}       # Start production cluster"
     echo -e "  ${YELLOW}./cluster.sh -H logs api${NC}        # View API logs on host"
     echo -e "  ${YELLOW}./cluster.sh -L build${NC}           # Build all local services"
-    echo -e "  ${YELLOW}./cluster.sh -H rebuild web${NC}     # Rebuild web on host"
+    echo -e "  ${YELLOW}./cluster.sh -H rebuild webui${NC}   # Rebuild webui on host"
     echo -e "  ${YELLOW}./cluster.sh -L stop${NC}            # Stop local cluster"
     echo ""
 }
