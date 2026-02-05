@@ -340,6 +340,18 @@ services:
       - "traefik.http.middlewares.api-cors.headers.accesscontrolallowcredentials=true"
       - "traefik.http.middlewares.api-cors.headers.accesscontrolmaxage=100"
       - "traefik.http.middlewares.api-cors.headers.addvaryheader=true"
+      # =============================================
+      # Path-based routing for WebUI domain
+      # Routes /api/v1/* from main domain to API backend
+      # This allows the SvelteKit frontend to call /api/v1/*
+      # on same origin, with Traefik forwarding to EchoMind API
+      # =============================================
+      - "traefik.http.routers.api-webui.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/v1`)"
+      - "traefik.http.routers.api-webui.entrypoints=websecure"
+      - "traefik.http.routers.api-webui.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.api-webui.middlewares=api-cors"
+      - "traefik.http.routers.api-webui.service=api"
+      - "traefik.http.routers.api-webui.priority=100"
 
   # ===============================================
   # EchoMind Migration - Database Migrations
@@ -616,6 +628,8 @@ services:
       - "traefik.http.routers.webui.entrypoints=websecure"
       - "traefik.http.routers.webui.tls.certresolver=letsencrypt"
       - "traefik.http.services.webui.loadbalancer.server.port=8080"
+      # Low priority - API routes (priority=100) take precedence
+      - "traefik.http.routers.webui.priority=1"
 
   # ===============================================
   # [DEPRECATED] EchoMind Web - React Frontend
