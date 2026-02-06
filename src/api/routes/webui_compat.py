@@ -819,3 +819,25 @@ async def get_model_profile_image(model_id: str) -> Response:
         <path d="M 35 55 Q 50 60 65 55" stroke="white" stroke-width="2" fill="none"/>
     </svg>"""
     return Response(content=svg, media_type="image/svg+xml")
+
+
+@router.get("/v1/models/model/profile/image")
+async def get_model_profile_image_legacy() -> Response:
+    """
+    Get model profile image - legacy endpoint (returns placeholder SVG).
+
+    This is a fallback for older frontend code that calls /model/profile/image
+    instead of /{model_id}/profile/image.
+
+    Returns:
+        SVG placeholder image.
+    """
+    # Generate a simple geometric SVG icon (no emojis)
+    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="50" fill="#10b981"/>
+        <rect x="30" y="35" width="40" height="30" rx="5" fill="white"/>
+        <circle cx="40" cy="45" r="3" fill="#10b981"/>
+        <circle cx="60" cy="45" r="3" fill="#10b981"/>
+        <path d="M 35 55 Q 50 60 65 55" stroke="white" stroke-width="2" fill="none"/>
+    </svg>"""
+    return Response(content=svg, media_type="image/svg+xml")
