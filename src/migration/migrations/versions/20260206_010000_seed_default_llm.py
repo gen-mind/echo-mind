@@ -1,7 +1,7 @@
 """Seed default LLM for Open WebUI.
 
 Revision ID: 20260206_010000
-Revises: 20260203_010000
+Revises: 003_normalize_llm_providers
 Create Date: 2026-02-06 01:00:00.000000
 """
 
