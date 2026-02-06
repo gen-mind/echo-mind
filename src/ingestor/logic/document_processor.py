@@ -15,13 +15,33 @@ import pandas as pd
 
 from ingestor.config import IngestorSettings
 from ingestor.logic.exceptions import (
+    AudioExtractionError,
     ChunkingError,
+    DocxExtractionError,
     ExtractionError,
+    HtmlExtractionError,
+    ImageExtractionError,
+    PDFExtractionError,
+    PptxExtractionError,
+    TextExtractionError,
     UnsupportedMimeTypeError,
+    VideoExtractionError,
 )
 from ingestor.logic.mime_router import MimeRouter
 
 logger = logging.getLogger("echomind-ingestor.processor")
+
+# Map extractor type → specific exception class for precise error handling
+_EXTRACTOR_ERROR_MAP: dict[str, type[ExtractionError]] = {
+    "pdf": PDFExtractionError,
+    "docx": DocxExtractionError,
+    "pptx": PptxExtractionError,
+    "html": HtmlExtractionError,
+    "image": ImageExtractionError,
+    "audio": AudioExtractionError,
+    "video": VideoExtractionError,
+    "text": TextExtractionError,
+}
 
 
 class DocumentProcessor:
@@ -271,6 +291,14 @@ class DocumentProcessor:
             raise
         except Exception as e:
             logger.exception(f"❌ Extraction failed for document {document_id}: {e}")
+
+            # Raise type-specific exception for better error handling
+            error_cls = _EXTRACTOR_ERROR_MAP.get(extractor_type)
+            if error_cls:
+                raise error_cls(
+                    reason=str(e),
+                    document_id=document_id,
+                ) from e
             raise ExtractionError(
                 source_type=extractor_type,
                 reason=str(e),

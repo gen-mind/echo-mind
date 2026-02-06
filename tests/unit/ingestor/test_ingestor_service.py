@@ -10,6 +10,7 @@ from ingestor.logic.ingestor_service import IngestorService
 from ingestor.logic.exceptions import (
     DatabaseError,
     DocumentNotFoundError,
+    EmbeddingError,
     FileNotFoundInStorageError,
     MinioError,
     OwnershipMismatchError,
@@ -467,6 +468,32 @@ class TestIngestorService:
             assert payload["chunking_session"] == "session-id"
             assert payload["content_type"] == "text"
             assert "text" in payload  # Truncated text for preview
+
+    @pytest.mark.asyncio
+    async def test_embed_and_store_raises_on_vector_count_mismatch(self) -> None:
+        """Test _embed_and_store raises EmbeddingError when vector count != text count.
+
+        If the embedder returns fewer vectors than texts (e.g., partial failure),
+        continuing would corrupt Qdrant with misaligned vectors/payloads.
+        """
+        with patch.object(
+            self.service._embedder,
+            "embed_batch",
+            return_value=[[0.1]],  # Only 1 vector for 3 texts
+        ):
+            with pytest.raises(EmbeddingError) as exc_info:
+                await self.service._embed_and_store(
+                    texts=["chunk1", "chunk2", "chunk3"],
+                    document_id=99,
+                    collection_name="test",
+                    chunking_session="session",
+                )
+
+            assert "mismatch" in exc_info.value.message.lower()
+            assert exc_info.value.document_id == 99
+
+            # Verify Qdrant was NOT called (data integrity protection)
+            self.mock_qdrant.upsert.assert_not_called()
 
     # ==========================================
     # Delete vectors tests

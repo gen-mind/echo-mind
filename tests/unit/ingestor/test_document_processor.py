@@ -9,7 +9,9 @@ from ingestor.config import IngestorSettings, reset_settings
 from ingestor.logic.document_processor import DocumentProcessor
 from ingestor.logic.exceptions import (
     ChunkingError,
+    DocxExtractionError,
     ExtractionError,
+    PDFExtractionError,
     UnsupportedMimeTypeError,
 )
 
@@ -636,6 +638,48 @@ class TestDocumentProcessor:
 
                 assert exc_info.value.document_id == 42
                 assert "pdfium crashed" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_extract_raises_type_specific_exception_for_pdf(self) -> None:
+        """Test PDF extraction failures raise PDFExtractionError (not generic)."""
+        mock_fn = MagicMock(side_effect=RuntimeError("bad PDF"))
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_pdf_pdfium",
+                mock_fn,
+            ):
+                df = pd.DataFrame({"test": [1]})
+
+                with pytest.raises(PDFExtractionError) as exc_info:
+                    await self.processor._extract(df, "application/pdf", document_id=1)
+
+                assert exc_info.value.source_type == "PDF"
+
+    @pytest.mark.asyncio
+    async def test_extract_raises_type_specific_exception_for_docx(self) -> None:
+        """Test DOCX extraction failures raise DocxExtractionError."""
+        mock_fn = MagicMock(side_effect=RuntimeError("not a zip"))
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_docx",
+                mock_fn,
+            ):
+                df = pd.DataFrame({"test": [1]})
+
+                with pytest.raises(DocxExtractionError) as exc_info:
+                    await self.processor._extract(
+                        df,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        document_id=2,
+                    )
+
+                assert exc_info.value.source_type == "DOCX"
 
     # ==========================================
     # Video extraction tests

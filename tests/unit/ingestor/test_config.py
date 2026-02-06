@@ -175,6 +175,48 @@ class TestIngestorSettings:
             with pytest.raises(ValueError):
                 IngestorSettings()
 
+    def test_chunk_overlap_must_be_less_than_chunk_size(self) -> None:
+        """Test chunk_overlap >= chunk_size is rejected.
+
+        An overlap equal to or greater than size causes the tokenizer
+        to enter an infinite loop or produce zero-length chunks.
+        """
+        # overlap == size
+        with patch.dict(
+            os.environ,
+            {"INGESTOR_CHUNK_SIZE": "100", "INGESTOR_CHUNK_OVERLAP": "100"},
+        ):
+            with pytest.raises(ValueError, match="chunk_overlap.*must be less than.*chunk_size"):
+                IngestorSettings()
+
+        # overlap > size
+        with patch.dict(
+            os.environ,
+            {"INGESTOR_CHUNK_SIZE": "100", "INGESTOR_CHUNK_OVERLAP": "200"},
+        ):
+            with pytest.raises(ValueError, match="chunk_overlap.*must be less than.*chunk_size"):
+                IngestorSettings()
+
+    def test_chunk_overlap_less_than_size_is_valid(self) -> None:
+        """Test chunk_overlap < chunk_size is accepted."""
+        with patch.dict(
+            os.environ,
+            {"INGESTOR_CHUNK_SIZE": "100", "INGESTOR_CHUNK_OVERLAP": "99"},
+        ):
+            settings = IngestorSettings()
+            assert settings.chunk_overlap == 99
+            assert settings.chunk_size == 100
+
+    def test_riva_endpoint_default_is_grpc_format(self) -> None:
+        """Test Riva endpoint default uses gRPC format (no http:// prefix).
+
+        gRPC endpoints are host:port strings. HTTP prefix would confuse
+        the nv-ingest-api audio extractor which passes this as the gRPC endpoint.
+        """
+        settings = IngestorSettings()
+        assert settings.riva_endpoint == "riva:50051"
+        assert not settings.riva_endpoint.startswith("http://")
+
 
 class TestGetSettings:
     """Tests for get_settings function."""

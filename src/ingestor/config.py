@@ -150,8 +150,8 @@ class IngestorSettings(BaseSettings):
         description="Enable Riva NIM for audio transcription",
     )
     riva_endpoint: str = Field(
-        "http://riva:50051",
-        description="Riva NIM endpoint",
+        "riva:50051",
+        description="Riva NIM gRPC endpoint (host:port, no http:// prefix)",
     )
 
     # Retry Settings
