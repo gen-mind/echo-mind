@@ -19,6 +19,8 @@ from api.config import get_settings
 from api.dependencies import DbSession, OptionalVerifiedUser
 from echomind_lib.db.models import LLM as LLMORM
 from echomind_lib.db.models import User as UserORM
+import jwt as pyjwt
+
 from echomind_lib.helpers.auth import extract_bearer_token, get_jwt_validator
 
 logger = logging.getLogger(__name__)
@@ -882,6 +884,14 @@ async def get_session_user(
             detail=f"Invalid token: {str(e)}",
         )
 
+    # Extract token expiry for frontend timer
+    # jwt.decode without verify to get exp (token already validated above)
+    try:
+        unverified = pyjwt.decode(token, options={"verify_signature": False})
+        expires_at = unverified.get("exp")
+    except Exception:
+        expires_at = None
+
     # Look up user in database
     result = await db.execute(
         select(UserORM).where(UserORM.external_id == token_user.external_id)
@@ -902,6 +912,7 @@ async def get_session_user(
         "role": "admin" if "superadmin" in (db_user.roles or []) else "user",
         "profile_image_url": f"/api/v1/users/{db_user.id}/profile/image",
         "token": token,  # Return the token back
+        "expires_at": expires_at,  # For frontend token expiry timer
         "permissions": {
             "chat": {
                 "controls": True,
