@@ -175,16 +175,16 @@ class DocumentProcessor:
                     extract_primitives_from_pdf_pdfium,
                 )
 
-                # PDFiumConfigSchema ALWAYS validates yolox_endpoints
-                # (line 78: unpacks the tuple). Passing None crashes with
-                # TypeError. Must always supply a valid (gRPC, HTTP) tuple.
-                # When yolox_enabled=True the YOLOX NIM must be reachable.
+                # All extraction flags enabled for maximum RAG precision.
+                # PDFiumConfigSchema ALWAYS validates yolox_endpoints —
+                # passing None crashes with TypeError.
                 return extract_primitives_from_pdf_pdfium(
                     df_extraction_ledger=df,
                     extract_text=True,
-                    extract_tables=self._settings.yolox_enabled,
-                    extract_charts=self._settings.yolox_enabled,
-                    extract_images=False,
+                    extract_tables=True,
+                    extract_charts=True,
+                    extract_images=True,
+                    extract_infographics=True,
                     yolox_endpoints=self._build_yolox_endpoints(),
                 )
 
@@ -196,10 +196,10 @@ class DocumentProcessor:
                 return extract_primitives_from_docx(
                     df_ledger=df,
                     extract_text=True,
-                    extract_tables=self._settings.yolox_enabled,
-                    extract_charts=self._settings.yolox_enabled,
-                    extract_images=False,
-                    yolox_endpoints=self._build_yolox_endpoints() if self._settings.yolox_enabled else None,
+                    extract_tables=True,
+                    extract_charts=True,
+                    extract_images=True,
+                    yolox_endpoints=self._build_yolox_endpoints(),
                 )
 
             elif extractor_type == "pptx":
@@ -210,10 +210,10 @@ class DocumentProcessor:
                 return extract_primitives_from_pptx(
                     df_ledger=df,
                     extract_text=True,
-                    extract_tables=self._settings.yolox_enabled,
-                    extract_charts=self._settings.yolox_enabled,
-                    extract_images=False,
-                    yolox_endpoints=self._build_yolox_endpoints() if self._settings.yolox_enabled else None,
+                    extract_tables=True,
+                    extract_charts=True,
+                    extract_images=True,
+                    yolox_endpoints=self._build_yolox_endpoints(),
                 )
 
             elif extractor_type == "html":
@@ -228,10 +228,10 @@ class DocumentProcessor:
                 return extract_primitives_from_image(
                     df_ledger=df,
                     extract_text=True,
-                    extract_tables=self._settings.yolox_enabled,
-                    extract_charts=self._settings.yolox_enabled,
+                    extract_tables=True,
+                    extract_charts=True,
                     extract_images=True,
-                    yolox_endpoints=self._build_yolox_endpoints() if self._settings.yolox_enabled else None,
+                    yolox_endpoints=self._build_yolox_endpoints(),
                 )
 
             elif extractor_type == "audio":
