@@ -47,6 +47,22 @@ class DocumentProcessor:
         self._settings = settings
         self._router = MimeRouter()
 
+    def _build_yolox_endpoints(self) -> tuple[str | None, str]:
+        """
+        Build YOLOX endpoint tuple for nv-ingest-api config schemas.
+
+        PDFiumConfigSchema always validates that at least one YOLOX endpoint
+        is non-empty — even when table/chart extraction is disabled by task
+        flags. This method returns a tuple that passes validation.
+
+        When ``yolox_enabled`` is ``False``, the endpoint is never contacted
+        because extract_tables and extract_charts are set to ``False``.
+
+        Returns:
+            Tuple of (gRPC endpoint, HTTP endpoint) for YOLOX services.
+        """
+        return (None, self._settings.yolox_endpoint)
+
     async def process(
         self,
         file_bytes: bytes,
@@ -159,28 +175,49 @@ class DocumentProcessor:
                 from nv_ingest_api.interface.extract import (
                     extract_primitives_from_pdf_pdfium,
                 )
+
+                # PDFiumConfigSchema ALWAYS validates yolox_endpoints (even
+                # for text-only extraction). When YOLOX is disabled the
+                # endpoint is never contacted — the task flags
+                # extract_tables/charts=False prevent it — but we still must
+                # pass a value that satisfies the Pydantic validator.
+                yolox_eps = self._build_yolox_endpoints()
+
                 return extract_primitives_from_pdf_pdfium(
                     df_extraction_ledger=df,
                     extract_text=True,
                     extract_tables=self._settings.yolox_enabled,
                     extract_charts=self._settings.yolox_enabled,
                     extract_images=False,
+                    yolox_endpoints=yolox_eps,
                 )
 
             elif extractor_type == "docx":
                 from nv_ingest_api.interface.extract import (
                     extract_primitives_from_docx,
                 )
+
                 return extract_primitives_from_docx(
-                    df_extraction_ledger=df,
+                    df_ledger=df,
+                    extract_text=True,
+                    extract_tables=self._settings.yolox_enabled,
+                    extract_charts=self._settings.yolox_enabled,
+                    extract_images=False,
+                    yolox_endpoints=self._build_yolox_endpoints() if self._settings.yolox_enabled else None,
                 )
 
             elif extractor_type == "pptx":
                 from nv_ingest_api.interface.extract import (
                     extract_primitives_from_pptx,
                 )
+
                 return extract_primitives_from_pptx(
-                    df_extraction_ledger=df,
+                    df_ledger=df,
+                    extract_text=True,
+                    extract_tables=self._settings.yolox_enabled,
+                    extract_charts=self._settings.yolox_enabled,
+                    extract_images=False,
+                    yolox_endpoints=self._build_yolox_endpoints() if self._settings.yolox_enabled else None,
                 )
 
             elif extractor_type == "html":
@@ -191,8 +228,14 @@ class DocumentProcessor:
                 from nv_ingest_api.interface.extract import (
                     extract_primitives_from_image,
                 )
+
                 return extract_primitives_from_image(
-                    df_extraction_ledger=df,
+                    df_ledger=df,
+                    extract_text=True,
+                    extract_tables=self._settings.yolox_enabled,
+                    extract_charts=self._settings.yolox_enabled,
+                    extract_images=True,
+                    yolox_endpoints=self._build_yolox_endpoints() if self._settings.yolox_enabled else None,
                 )
 
             elif extractor_type == "audio":
@@ -205,9 +248,11 @@ class DocumentProcessor:
                 from nv_ingest_api.interface.extract import (
                     extract_primitives_from_audio,
                 )
+
                 return extract_primitives_from_audio(
-                    df_extraction_ledger=df,
-                    grpc_endpoint=self._settings.riva_endpoint,
+                    df_ledger=df,
+                    audio_endpoints=(self._settings.riva_endpoint, ""),
+                    audio_infer_protocol="grpc",
                 )
 
             elif extractor_type == "video":

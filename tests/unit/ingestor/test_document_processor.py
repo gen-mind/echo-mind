@@ -309,6 +309,26 @@ class TestDocumentProcessor:
             assert len(result) == 3
 
     # ==========================================
+    # YOLOX endpoints helper tests
+    # ==========================================
+
+    def test_build_yolox_endpoints_returns_tuple(self) -> None:
+        """Test _build_yolox_endpoints returns correct tuple format."""
+        result = self.processor._build_yolox_endpoints()
+
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert result[0] is None
+        assert result[1] == self.settings.yolox_endpoint
+
+    def test_build_yolox_endpoints_uses_setting(self) -> None:
+        """Test _build_yolox_endpoints reflects current yolox_endpoint setting."""
+        with patch.object(self.processor._settings, "yolox_endpoint", "http://custom:9000"):
+            result = self.processor._build_yolox_endpoints()
+
+            assert result == (None, "http://custom:9000")
+
+    # ==========================================
     # Extraction routing tests
     # ==========================================
 
@@ -331,8 +351,151 @@ class TestDocumentProcessor:
             assert extractor == expected_extractor, f"{mime_type} should use {expected_extractor}"
 
     # ==========================================
-    # Audio extraction tests
+    # nv-ingest-api call signature tests
     # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_extract_pdf_passes_correct_kwargs(self) -> None:
+        """Test PDF extraction passes df_extraction_ledger and yolox_endpoints."""
+        mock_fn = MagicMock(return_value=pd.DataFrame())
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_pdf_pdfium",
+                mock_fn,
+            ):
+                df = pd.DataFrame({"test": [1]})
+                await self.processor._extract(df, "application/pdf", document_id=1)
+
+                mock_fn.assert_called_once()
+                kwargs = mock_fn.call_args[1]
+                # Must use df_extraction_ledger (PDF uses decorator path)
+                assert "df_extraction_ledger" in kwargs
+                # Must always pass yolox_endpoints (PDFiumConfigSchema requires it)
+                assert "yolox_endpoints" in kwargs
+                assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
+                assert kwargs["extract_text"] is True
+                assert kwargs["extract_tables"] is False  # yolox_enabled=False
+                assert kwargs["extract_charts"] is False
+                assert kwargs["extract_images"] is False
+
+    @pytest.mark.asyncio
+    async def test_extract_pdf_with_yolox_enabled(self) -> None:
+        """Test PDF extraction enables tables/charts when YOLOX is on."""
+        mock_fn = MagicMock(return_value=pd.DataFrame())
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_pdf_pdfium",
+                mock_fn,
+            ):
+                with patch.object(self.processor._settings, "yolox_enabled", True):
+                    df = pd.DataFrame({"test": [1]})
+                    await self.processor._extract(df, "application/pdf", document_id=1)
+
+                    kwargs = mock_fn.call_args[1]
+                    assert kwargs["extract_tables"] is True
+                    assert kwargs["extract_charts"] is True
+
+    @pytest.mark.asyncio
+    async def test_extract_docx_passes_correct_kwargs(self) -> None:
+        """Test DOCX extraction uses df_ledger (not df_extraction_ledger)."""
+        mock_fn = MagicMock(return_value=pd.DataFrame())
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_docx",
+                mock_fn,
+            ):
+                df = pd.DataFrame({"test": [1]})
+                await self.processor._extract(
+                    df,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    document_id=1,
+                )
+
+                mock_fn.assert_called_once()
+                kwargs = mock_fn.call_args[1]
+                assert "df_ledger" in kwargs
+                assert "df_extraction_ledger" not in kwargs
+                assert kwargs["extract_text"] is True
+
+    @pytest.mark.asyncio
+    async def test_extract_pptx_passes_correct_kwargs(self) -> None:
+        """Test PPTX extraction uses df_ledger (not df_extraction_ledger)."""
+        mock_fn = MagicMock(return_value=pd.DataFrame())
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_pptx",
+                mock_fn,
+            ):
+                df = pd.DataFrame({"test": [1]})
+                await self.processor._extract(
+                    df,
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    document_id=1,
+                )
+
+                mock_fn.assert_called_once()
+                kwargs = mock_fn.call_args[1]
+                assert "df_ledger" in kwargs
+                assert "df_extraction_ledger" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_extract_image_passes_correct_kwargs(self) -> None:
+        """Test image extraction uses df_ledger and extract_images=True."""
+        mock_fn = MagicMock(return_value=pd.DataFrame())
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_image",
+                mock_fn,
+            ):
+                df = pd.DataFrame({"test": [1]})
+                await self.processor._extract(df, "image/png", document_id=1)
+
+                mock_fn.assert_called_once()
+                kwargs = mock_fn.call_args[1]
+                assert "df_ledger" in kwargs
+                assert "df_extraction_ledger" not in kwargs
+                assert kwargs["extract_images"] is True
+                assert kwargs["extract_text"] is True
+
+    @pytest.mark.asyncio
+    async def test_extract_audio_passes_correct_kwargs(self) -> None:
+        """Test audio extraction uses df_ledger and audio_endpoints tuple."""
+        mock_fn = MagicMock(return_value=pd.DataFrame())
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_audio",
+                mock_fn,
+            ):
+                with patch.object(self.processor._settings, "riva_enabled", True):
+                    df = pd.DataFrame({"test": [1]})
+                    await self.processor._extract(df, "audio/mpeg", document_id=1)
+
+                    mock_fn.assert_called_once()
+                    kwargs = mock_fn.call_args[1]
+                    assert "df_ledger" in kwargs
+                    assert "df_extraction_ledger" not in kwargs
+                    assert "audio_endpoints" in kwargs
+                    assert isinstance(kwargs["audio_endpoints"], tuple)
+                    assert kwargs["audio_endpoints"][0] == self.settings.riva_endpoint
+                    assert kwargs["audio_infer_protocol"] == "grpc"
 
     @pytest.mark.asyncio
     async def test_extract_audio_returns_empty_when_riva_disabled(self) -> None:
@@ -343,6 +506,74 @@ class TestDocumentProcessor:
         result = await self.processor._extract(df, "audio/mpeg", document_id=1)
 
         assert result.empty
+
+    @pytest.mark.asyncio
+    async def test_extract_docx_no_yolox_endpoints_when_disabled(self) -> None:
+        """Test DOCX doesn't pass yolox_endpoints when YOLOX disabled."""
+        mock_fn = MagicMock(return_value=pd.DataFrame())
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_docx",
+                mock_fn,
+            ):
+                df = pd.DataFrame({"test": [1]})
+                await self.processor._extract(
+                    df,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    document_id=1,
+                )
+
+                kwargs = mock_fn.call_args[1]
+                # YOLOX disabled: yolox_endpoints should be None
+                assert kwargs["yolox_endpoints"] is None
+
+    @pytest.mark.asyncio
+    async def test_extract_docx_with_yolox_enabled(self) -> None:
+        """Test DOCX passes yolox_endpoints when YOLOX enabled."""
+        mock_fn = MagicMock(return_value=pd.DataFrame())
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_docx",
+                mock_fn,
+            ):
+                with patch.object(self.processor._settings, "yolox_enabled", True):
+                    df = pd.DataFrame({"test": [1]})
+                    await self.processor._extract(
+                        df,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        document_id=1,
+                    )
+
+                    kwargs = mock_fn.call_args[1]
+                    assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
+                    assert kwargs["extract_tables"] is True
+                    assert kwargs["extract_charts"] is True
+
+    @pytest.mark.asyncio
+    async def test_extract_wraps_exception_in_extraction_error(self) -> None:
+        """Test extraction errors are wrapped in ExtractionError."""
+        mock_fn = MagicMock(side_effect=RuntimeError("pdfium crashed"))
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_pdf_pdfium",
+                mock_fn,
+            ):
+                df = pd.DataFrame({"test": [1]})
+
+                with pytest.raises(ExtractionError) as exc_info:
+                    await self.processor._extract(df, "application/pdf", document_id=42)
+
+                assert exc_info.value.document_id == 42
+                assert "pdfium crashed" in str(exc_info.value)
 
     # ==========================================
     # Video extraction tests
