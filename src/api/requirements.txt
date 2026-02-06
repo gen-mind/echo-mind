@@ -36,5 +36,8 @@ protobuf-pydantic-gen==0.1.8
 # HTTP Client
 httpx==0.28.1
 
+# Real-time Communication
+python-socketio==5.11.4
+
 # Utilities
 python-dateutil==2.9.0

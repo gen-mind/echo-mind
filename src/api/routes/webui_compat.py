@@ -584,6 +584,17 @@ async def get_chats_all_tags(user: OptionalVerifiedUser) -> list[Any]:
     return []
 
 
+@router.get("/v1/chats/pinned")
+async def get_pinned_chats(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Get pinned chats (stub).
+
+    Returns:
+        Empty list of pinned chats.
+    """
+    return []
+
+
 @router.get("/v1/models/list")
 async def get_models_list(
     user: OptionalVerifiedUser,
@@ -744,7 +755,7 @@ async def get_session_user(
         "email": db_user.email,
         "name": f"{db_user.first_name} {db_user.last_name}".strip() or db_user.user_name,
         "role": "admin" if "superadmin" in (db_user.roles or []) else "user",
-        "profile_image_url": "",
+        "profile_image_url": f"/api/v1/users/{db_user.id}/profile/image",
         "token": token,  # Return the token back
         "permissions": {
             "chat": {
@@ -779,29 +790,32 @@ async def get_user_profile_image(user_id: str) -> Response:
     Returns:
         SVG placeholder image.
     """
-    # Generate a simple SVG avatar with user emoji
+    # Generate a simple geometric SVG avatar (no emojis)
     svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
         <circle cx="50" cy="50" r="50" fill="#6366f1"/>
-        <text x="50" y="50" text-anchor="middle" dy=".35em" fill="white" font-size="40" font-family="Arial">
-            👤
-        </text>
+        <circle cx="50" cy="35" r="15" fill="white"/>
+        <ellipse cx="50" cy="75" rx="25" ry="20" fill="white"/>
     </svg>"""
     return Response(content=svg, media_type="image/svg+xml")
 
 
-@router.get("/v1/models/model/profile/image")
-async def get_model_profile_image() -> Response:
+@router.get("/v1/models/{model_id}/profile/image")
+async def get_model_profile_image(model_id: str) -> Response:
     """
     Get model profile image (returns placeholder SVG).
+
+    Args:
+        model_id: Model ID.
 
     Returns:
         SVG placeholder image.
     """
-    # Generate a simple SVG icon for models
+    # Generate a simple geometric SVG icon (no emojis)
     svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
         <circle cx="50" cy="50" r="50" fill="#10b981"/>
-        <text x="50" y="50" text-anchor="middle" dy=".35em" fill="white" font-size="40" font-family="Arial">
-            🤖
-        </text>
+        <rect x="30" y="35" width="40" height="30" rx="5" fill="white"/>
+        <circle cx="40" cy="45" r="3" fill="#10b981"/>
+        <circle cx="60" cy="45" r="3" fill="#10b981"/>
+        <path d="M 35 55 Q 50 60 65 55" stroke="white" stroke-width="2" fill="none"/>
     </svg>"""
     return Response(content=svg, media_type="image/svg+xml")

@@ -36,6 +36,7 @@ from api.routes import (
 )
 from api.logic.embedder_client import close_embedder_client, init_embedder_client
 from api.logic.llm_client import close_llm_client
+from api.socketio_server import socket_app
 from api.websocket.chat_handler import create_chat_handler
 from echomind_lib.db.connection import close_db, get_db_manager, init_db
 from echomind_lib.db.minio import close_minio, init_minio
@@ -447,6 +448,10 @@ def create_app() -> FastAPI:
         async with db_manager.session() as db:
             handler = create_chat_handler(db)
             await handler.handle_connection(websocket, token)
+
+    # Mount Socket.IO for Open WebUI real-time communication
+    app.mount("/ws/socket.io", socket_app)
+    logger.info("🌐 Socket.IO mounted at /ws/socket.io")
 
     return app
 
