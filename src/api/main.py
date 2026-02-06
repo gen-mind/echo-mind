@@ -28,6 +28,7 @@ from api.routes import (
     embedding_models,
     health,
     llms,
+    oauth,
     teams,
     upload,
     users,
@@ -403,6 +404,10 @@ def create_app() -> FastAPI:
     app.include_router(
         webui_compat.router, prefix="/api", tags=["WebUI Compatibility"]
     )
+
+    # OAuth endpoints for WebUI SSO login
+    # Mounted at /oauth (not /api/oauth) as expected by Open WebUI frontend
+    app.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
     app.include_router(

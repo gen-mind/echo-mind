@@ -10,10 +10,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from api.config import get_settings
 from api.dependencies import DbSession, OptionalVerifiedUser
 from echomind_lib.db.models import LLM as LLMORM
 
@@ -139,12 +140,19 @@ async def get_config(
     # Use authenticated features if user is logged in
     features = AUTHENTICATED_FEATURES if user else DEFAULT_FEATURES
 
+    # Build OAuth providers config
+    settings = get_settings()
+    oauth_providers: dict[str, Any] = {}
+    if settings.oauth_client_id and settings.oauth_authorize_url:
+        # OIDC provider configured (Authentik)
+        oauth_providers["oidc"] = settings.oauth_provider_name
+
     return WebUIConfigResponse(
         status=True,
         name="EchoMind",
         version="0.1.0",
         default_locale="en-US",
-        oauth={"providers": {}},
+        oauth={"providers": oauth_providers},
         features=features,
         default_models="",
         default_prompt_suggestions=[
@@ -408,3 +416,4 @@ async def stop_task(task_id: str) -> dict[str, bool]:
         Success status.
     """
     return {"success": True}
+

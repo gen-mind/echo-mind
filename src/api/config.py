@@ -79,6 +79,40 @@ class Settings(BaseSettings):
         default=None,
         description="Secret for HS256 validation (dev only)",
     )
+
+    # OAuth/OIDC (for WebUI SSO login)
+    oauth_client_id: str | None = Field(
+        default=None,
+        description="OAuth client ID for OIDC provider",
+    )
+    oauth_client_secret: str | None = Field(
+        default=None,
+        description="OAuth client secret",
+    )
+    oauth_provider_name: str = Field(
+        default="Authentik",
+        description="OAuth provider display name",
+    )
+    oauth_authorize_url: str | None = Field(
+        default=None,
+        description="OAuth authorization endpoint",
+    )
+    oauth_token_url: str | None = Field(
+        default=None,
+        description="OAuth token endpoint",
+    )
+    oauth_userinfo_url: str | None = Field(
+        default=None,
+        description="OAuth userinfo endpoint",
+    )
+    oauth_redirect_uri: str | None = Field(
+        default=None,
+        description="OAuth redirect URI (callback URL)",
+    )
+    oauth_scope: str = Field(
+        default="openid profile email",
+        description="OAuth scopes to request",
+    )
     
     
     # Embedder gRPC
