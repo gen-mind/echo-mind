@@ -88,7 +88,7 @@ class TestIngestorSettings:
         """Test optional NIMs have correct defaults."""
         settings = IngestorSettings()
 
-        assert settings.yolox_enabled is True
+        assert settings.yolox_enabled is False
         assert settings.riva_enabled is False
 
     def test_env_prefix(self) -> None:

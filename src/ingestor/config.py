@@ -5,7 +5,7 @@ Uses Pydantic Settings to load environment variables.
 All settings prefixed with INGESTOR_ for namespace isolation.
 """
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -138,8 +138,8 @@ class IngestorSettings(BaseSettings):
 
     # Optional NIMs
     yolox_enabled: bool = Field(
-        True,
-        description="Enable YOLOX NIM for table/chart detection",
+        False,
+        description="Enable YOLOX NIM for table/chart detection (requires yolox-nim service)",
     )
     yolox_endpoint: str = Field(
         "http://yolox-nim:8000",
@@ -217,6 +217,27 @@ class IngestorSettings(BaseSettings):
         if v not in valid_methods:
             raise ValueError(f"Invalid extract method: {v}. Must be one of {valid_methods}")
         return v
+
+    @model_validator(mode="after")
+    def validate_chunk_overlap_less_than_size(self) -> "IngestorSettings":
+        """
+        Validate chunk_overlap is strictly less than chunk_size.
+
+        An overlap >= size causes the tokenizer to enter an infinite loop
+        or produce zero-length chunks.
+
+        Returns:
+            Validated settings instance.
+
+        Raises:
+            ValueError: If chunk_overlap >= chunk_size.
+        """
+        if self.chunk_overlap >= self.chunk_size:
+            raise ValueError(
+                f"chunk_overlap ({self.chunk_overlap}) must be less than "
+                f"chunk_size ({self.chunk_size})"
+            )
+        return self
 
 
 _settings: IngestorSettings | None = None

@@ -5,7 +5,9 @@ Handles extraction and chunking for all 18 supported file types.
 Uses NVIDIA's tokenizer-based splitter (not langchain character-based).
 """
 
+import asyncio
 import base64
+import functools
 import logging
 from typing import Any
 
@@ -170,21 +172,25 @@ class DocumentProcessor:
 
         try:
             # Import nv_ingest_api functions lazily to avoid startup cost
+            #
+            # YOLOX-dependent flags (tables, charts, images, infographics)
+            # are gated on yolox_enabled. When YOLOX NIM is not deployed,
+            # these flags cause nv-ingest to hang ~30s/page retrying.
+            # yolox_endpoints tuple is ALWAYS passed — schema crashes on None.
+            yolox_on = self._settings.yolox_enabled
+
             if extractor_type == "pdf":
                 from nv_ingest_api.interface.extract import (
                     extract_primitives_from_pdf_pdfium,
                 )
 
-                # All extraction flags enabled for maximum RAG precision.
-                # PDFiumConfigSchema ALWAYS validates yolox_endpoints —
-                # passing None crashes with TypeError.
                 return extract_primitives_from_pdf_pdfium(
                     df_extraction_ledger=df,
                     extract_text=True,
-                    extract_tables=True,
-                    extract_charts=True,
-                    extract_images=True,
-                    extract_infographics=True,
+                    extract_tables=yolox_on,
+                    extract_charts=yolox_on,
+                    extract_images=yolox_on,
+                    extract_infographics=yolox_on,
                     yolox_endpoints=self._build_yolox_endpoints(),
                 )
 
@@ -196,9 +202,9 @@ class DocumentProcessor:
                 return extract_primitives_from_docx(
                     df_ledger=df,
                     extract_text=True,
-                    extract_tables=True,
-                    extract_charts=True,
-                    extract_images=True,
+                    extract_tables=yolox_on,
+                    extract_charts=yolox_on,
+                    extract_images=yolox_on,
                     yolox_endpoints=self._build_yolox_endpoints(),
                 )
 
@@ -210,9 +216,9 @@ class DocumentProcessor:
                 return extract_primitives_from_pptx(
                     df_ledger=df,
                     extract_text=True,
-                    extract_tables=True,
-                    extract_charts=True,
-                    extract_images=True,
+                    extract_tables=yolox_on,
+                    extract_charts=yolox_on,
+                    extract_images=yolox_on,
                     yolox_endpoints=self._build_yolox_endpoints(),
                 )
 
@@ -228,9 +234,9 @@ class DocumentProcessor:
                 return extract_primitives_from_image(
                     df_ledger=df,
                     extract_text=True,
-                    extract_tables=True,
-                    extract_charts=True,
-                    extract_images=True,
+                    extract_tables=yolox_on,
+                    extract_charts=yolox_on,
+                    extract_images=yolox_on,
                     yolox_endpoints=self._build_yolox_endpoints(),
                 )
 
@@ -302,11 +308,13 @@ class DocumentProcessor:
                 # Convert to markdown
                 markdown = h.handle(str(soup))
 
+                text = markdown.strip()
                 df.at[idx, "metadata"] = {
                     **row["metadata"],
+                    "content": text,
                     "content_metadata": {
                         **row["metadata"].get("content_metadata", {}),
-                        "text": markdown.strip(),
+                        "text": text,
                     },
                 }
             except Exception as e:
@@ -329,23 +337,21 @@ class DocumentProcessor:
         for idx, row in df.iterrows():
             try:
                 content = base64.b64decode(row["content"]).decode("utf-8")
-                df.at[idx, "metadata"] = {
-                    **row["metadata"],
-                    "content_metadata": {
-                        **row["metadata"].get("content_metadata", {}),
-                        "text": content,
-                    },
-                }
             except UnicodeDecodeError:
                 # Try with latin-1 as fallback
                 content = base64.b64decode(row["content"]).decode("latin-1")
-                df.at[idx, "metadata"] = {
-                    **row["metadata"],
-                    "content_metadata": {
-                        **row["metadata"].get("content_metadata", {}),
-                        "text": content,
-                    },
-                }
+
+            # Set text in both locations:
+            # - metadata["content"]: where nv-ingest chunker reads from
+            # - content_metadata["text"]: for consistency
+            df.at[idx, "metadata"] = {
+                **row["metadata"],
+                "content": content,
+                "content_metadata": {
+                    **row["metadata"].get("content_metadata", {}),
+                    "text": content,
+                },
+            }
 
         return df
 
@@ -393,21 +399,28 @@ class DocumentProcessor:
                 transform_text_split_and_tokenize,
             )
 
-            chunked_df = transform_text_split_and_tokenize(
-                inputs=extracted_df,
-                tokenizer=self._settings.tokenizer,
-                chunk_size=self._settings.chunk_size,
-                chunk_overlap=self._settings.chunk_overlap,
-                split_source_types=["text", "PDF", "DOCX", "PPTX", "HTML"],
+            # Tokenization is CPU-bound; run in executor to avoid
+            # blocking the event loop for large documents.
+            loop = asyncio.get_running_loop()
+            chunked_df = await loop.run_in_executor(
+                None,
+                functools.partial(
+                    transform_text_split_and_tokenize,
+                    inputs=extracted_df,
+                    tokenizer=self._settings.tokenizer,
+                    chunk_size=self._settings.chunk_size,
+                    chunk_overlap=self._settings.chunk_overlap,
+                    split_source_types=["text", "PDF", "DOCX", "PPTX", "HTML"],
+                ),
             )
 
-            # Extract text from chunked DataFrame
+            # Extract text from chunked DataFrame.
+            # nv-ingest stores chunk text in metadata["content"],
+            # NOT in metadata["content_metadata"]["text"].
             chunks: list[str] = []
             for _, row in chunked_df.iterrows():
                 metadata = row.get("metadata", {})
-                content_meta = metadata.get("content_metadata", {})
-
-                text = content_meta.get("text")
+                text = metadata.get("content")
                 if text and isinstance(text, str) and text.strip():
                     chunks.append(text.strip())
 

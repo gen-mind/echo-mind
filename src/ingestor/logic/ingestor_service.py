@@ -25,6 +25,7 @@ from ingestor.logic.document_processor import DocumentProcessor
 from ingestor.logic.exceptions import (
     DatabaseError,
     DocumentNotFoundError,
+    EmbeddingError,
     FileNotFoundInStorageError,
     MinioError,
     OwnershipMismatchError,
@@ -476,7 +477,10 @@ class IngestorService:
         )
 
         if len(vectors) != len(texts):
-            logger.warning(f"⚠️ Vector count mismatch: {len(texts)} texts, {len(vectors)} vectors")
+            raise EmbeddingError(
+                reason=f"Vector count mismatch: expected {len(texts)}, got {len(vectors)}",
+                document_id=document_id,
+            )
 
         # Build point IDs and payloads
         ids: list[str] = []

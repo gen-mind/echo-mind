@@ -154,7 +154,7 @@ class TestDocumentProcessor:
     # ==========================================
 
     def test_extract_text_basic(self) -> None:
-        """Test _extract_text extracts plain text."""
+        """Test _extract_text extracts plain text to both metadata fields."""
         import base64
 
         content = "Hello, World!"
@@ -167,8 +167,11 @@ class TestDocumentProcessor:
 
         result = self.processor._extract_text(df)
 
-        text = result.iloc[0]["metadata"]["content_metadata"]["text"]
-        assert text == content
+        meta = result.iloc[0]["metadata"]
+        # Must be in metadata["content"] for nv-ingest chunker
+        assert meta["content"] == content
+        # Also in content_metadata["text"] for consistency
+        assert meta["content_metadata"]["text"] == content
 
     def test_extract_text_handles_unicode(self) -> None:
         """Test _extract_text handles UTF-8 content."""
@@ -202,14 +205,18 @@ class TestDocumentProcessor:
 
         # Should not raise, should fall back to latin-1
         result = self.processor._extract_text(df)
-        assert "text" in result.iloc[0]["metadata"]["content_metadata"]
+        meta = result.iloc[0]["metadata"]
+        assert "text" in meta["content_metadata"]
+        # metadata["content"] must also be set for chunker
+        assert "content" in meta
+        assert len(meta["content"]) > 0
 
     # ==========================================
     # HTML extraction tests
     # ==========================================
 
     def test_extract_html_removes_script_tags(self) -> None:
-        """Test _extract_html removes script elements."""
+        """Test _extract_html removes script elements and sets both fields."""
         import base64
 
         html = "<html><body><script>alert('xss')</script><p>Hello</p></body></html>"
@@ -222,9 +229,12 @@ class TestDocumentProcessor:
 
         result = self.processor._extract_html(df)
 
-        text = result.iloc[0]["metadata"]["content_metadata"]["text"]
+        meta = result.iloc[0]["metadata"]
+        text = meta["content_metadata"]["text"]
         assert "alert" not in text
         assert "Hello" in text
+        # metadata["content"] must also be set for nv-ingest chunker
+        assert meta["content"] == text
 
     def test_extract_html_removes_style_tags(self) -> None:
         """Test _extract_html removes style elements."""
@@ -265,10 +275,9 @@ class TestDocumentProcessor:
             assert result == []
 
     def test_extract_structured_images_with_yolox(self) -> None:
-        """Test structured images extracted when YOLOX enabled (default)."""
+        """Test structured images extracted when YOLOX enabled."""
         import base64
 
-        # Default settings have yolox_enabled=True
         image_bytes = b"\x89PNG\r\n\x1a\n"  # Fake PNG header
         encoded = base64.b64encode(image_bytes).decode()
 
@@ -281,7 +290,8 @@ class TestDocumentProcessor:
             }]
         })
 
-        result = self.processor._extract_structured_images(df)
+        with patch.object(self.processor._settings, "yolox_enabled", True):
+            result = self.processor._extract_structured_images(df)
 
         assert len(result) == 1
         assert result[0] == image_bytes
@@ -290,7 +300,6 @@ class TestDocumentProcessor:
         """Test only table/chart/infographic types are extracted."""
         import base64
 
-        # Default: yolox_enabled=True
         image_bytes = b"imagedata"
         encoded = base64.b64encode(image_bytes).decode()
 
@@ -303,7 +312,8 @@ class TestDocumentProcessor:
             ]
         })
 
-        result = self.processor._extract_structured_images(df)
+        with patch.object(self.processor._settings, "yolox_enabled", True):
+            result = self.processor._extract_structured_images(df)
 
         assert len(result) == 3
 
@@ -354,8 +364,8 @@ class TestDocumentProcessor:
     # ==========================================
 
     @pytest.mark.asyncio
-    async def test_extract_pdf_passes_correct_kwargs(self) -> None:
-        """Test PDF extraction passes df_extraction_ledger and YOLOX endpoints (default enabled)."""
+    async def test_extract_pdf_passes_correct_kwargs_yolox_disabled(self) -> None:
+        """Test PDF extraction with yolox_enabled=False (default)."""
         mock_fn = MagicMock(return_value=pd.DataFrame())
         with patch.dict(
             "sys.modules",
@@ -372,22 +382,47 @@ class TestDocumentProcessor:
                 kwargs = mock_fn.call_args[1]
                 # Must use df_extraction_ledger (PDF uses decorator path)
                 assert "df_extraction_ledger" in kwargs
-                # All extraction flags always enabled for maximum RAG precision
+                # yolox_endpoints always passed (schema crashes on None)
                 assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
+                # extract_text always True
                 assert kwargs["extract_text"] is True
-                assert kwargs["extract_tables"] is True
-                assert kwargs["extract_charts"] is True
-                assert kwargs["extract_images"] is True
-                assert kwargs["extract_infographics"] is True
+                # YOLOX-dependent flags are False when yolox_enabled=False
+                assert kwargs["extract_tables"] is False
+                assert kwargs["extract_charts"] is False
+                assert kwargs["extract_images"] is False
+                assert kwargs["extract_infographics"] is False
+
+    @pytest.mark.asyncio
+    async def test_extract_pdf_passes_correct_kwargs_yolox_enabled(self) -> None:
+        """Test PDF extraction with yolox_enabled=True enables all flags."""
+        mock_fn = MagicMock(return_value=pd.DataFrame())
+        with patch.dict(
+            "sys.modules",
+            {"nv_ingest_api": MagicMock(), "nv_ingest_api.interface": MagicMock(), "nv_ingest_api.interface.extract": MagicMock()},
+        ):
+            with patch(
+                "nv_ingest_api.interface.extract.extract_primitives_from_pdf_pdfium",
+                mock_fn,
+            ):
+                with patch.object(self.processor._settings, "yolox_enabled", True):
+                    df = pd.DataFrame({"test": [1]})
+                    await self.processor._extract(df, "application/pdf", document_id=1)
+
+                    kwargs = mock_fn.call_args[1]
+                    assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
+                    assert kwargs["extract_text"] is True
+                    assert kwargs["extract_tables"] is True
+                    assert kwargs["extract_charts"] is True
+                    assert kwargs["extract_images"] is True
+                    assert kwargs["extract_infographics"] is True
 
     @pytest.mark.asyncio
     async def test_extract_pdf_always_passes_yolox_endpoints(self) -> None:
         """Test PDF extraction ALWAYS passes yolox_endpoints (schema requires it).
 
         PDFiumConfigSchema.validate_endpoints crashes with TypeError when
-        yolox_endpoints is None. Even with yolox_enabled=False, a valid
-        endpoint tuple must be supplied. All extraction flags are always True
-        regardless of yolox_enabled for maximum RAG precision.
+        yolox_endpoints is None. A valid endpoint tuple must always be supplied
+        regardless of yolox_enabled.
         """
         mock_fn = MagicMock(return_value=pd.DataFrame())
         with patch.dict(
@@ -403,13 +438,15 @@ class TestDocumentProcessor:
                     await self.processor._extract(df, "application/pdf", document_id=1)
 
                     kwargs = mock_fn.call_args[1]
-                    # Extraction flags are always True — not gated by yolox_enabled
-                    assert kwargs["extract_tables"] is True
-                    assert kwargs["extract_charts"] is True
-                    assert kwargs["extract_images"] is True
-                    assert kwargs["extract_infographics"] is True
                     # Must STILL pass valid endpoints — schema crashes on None
                     assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
+                    # YOLOX-dependent flags are False when disabled
+                    assert kwargs["extract_tables"] is False
+                    assert kwargs["extract_charts"] is False
+                    assert kwargs["extract_images"] is False
+                    assert kwargs["extract_infographics"] is False
+                    # Text extraction always on
+                    assert kwargs["extract_text"] is True
 
     @pytest.mark.asyncio
     async def test_extract_docx_passes_correct_kwargs(self) -> None:
@@ -462,7 +499,7 @@ class TestDocumentProcessor:
 
     @pytest.mark.asyncio
     async def test_extract_image_passes_correct_kwargs(self) -> None:
-        """Test image extraction uses df_ledger and extract_images=True."""
+        """Test image extraction uses df_ledger and respects yolox_enabled."""
         mock_fn = MagicMock(return_value=pd.DataFrame())
         with patch.dict(
             "sys.modules",
@@ -479,8 +516,10 @@ class TestDocumentProcessor:
                 kwargs = mock_fn.call_args[1]
                 assert "df_ledger" in kwargs
                 assert "df_extraction_ledger" not in kwargs
-                assert kwargs["extract_images"] is True
                 assert kwargs["extract_text"] is True
+                # Default yolox_enabled=False
+                assert kwargs["extract_images"] is False
+                assert kwargs["extract_tables"] is False
 
     @pytest.mark.asyncio
     async def test_extract_audio_passes_correct_kwargs(self) -> None:
@@ -518,8 +557,8 @@ class TestDocumentProcessor:
         assert result.empty
 
     @pytest.mark.asyncio
-    async def test_extract_docx_passes_yolox_endpoints_by_default(self) -> None:
-        """Test DOCX passes yolox_endpoints when YOLOX enabled (default)."""
+    async def test_extract_docx_with_yolox_enabled(self) -> None:
+        """Test DOCX passes yolox_endpoints and enables flags when YOLOX enabled."""
         mock_fn = MagicMock(return_value=pd.DataFrame())
         with patch.dict(
             "sys.modules",
@@ -529,17 +568,19 @@ class TestDocumentProcessor:
                 "nv_ingest_api.interface.extract.extract_primitives_from_docx",
                 mock_fn,
             ):
-                df = pd.DataFrame({"test": [1]})
-                await self.processor._extract(
-                    df,
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    document_id=1,
-                )
+                with patch.object(self.processor._settings, "yolox_enabled", True):
+                    df = pd.DataFrame({"test": [1]})
+                    await self.processor._extract(
+                        df,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        document_id=1,
+                    )
 
-                kwargs = mock_fn.call_args[1]
-                assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
-                assert kwargs["extract_tables"] is True
-                assert kwargs["extract_charts"] is True
+                    kwargs = mock_fn.call_args[1]
+                    assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
+                    assert kwargs["extract_tables"] is True
+                    assert kwargs["extract_charts"] is True
+                    assert kwargs["extract_images"] is True
 
     @pytest.mark.asyncio
     async def test_extract_docx_always_passes_yolox_endpoints(self) -> None:
@@ -547,7 +588,7 @@ class TestDocumentProcessor:
 
         DocxExtractorSchema.validate_endpoints also crashes on None.
         Endpoints must always be a valid tuple, even when YOLOX is disabled.
-        All extraction flags are always True regardless of yolox_enabled.
+        YOLOX-dependent flags are False when yolox_enabled=False.
         """
         mock_fn = MagicMock(return_value=pd.DataFrame())
         with patch.dict(
@@ -569,10 +610,12 @@ class TestDocumentProcessor:
                     kwargs = mock_fn.call_args[1]
                     # Must STILL pass valid endpoints — schema crashes on None
                     assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
-                    # Extraction flags are always True — not gated by yolox_enabled
-                    assert kwargs["extract_tables"] is True
-                    assert kwargs["extract_charts"] is True
-                    assert kwargs["extract_images"] is True
+                    # YOLOX-dependent flags are False when disabled
+                    assert kwargs["extract_tables"] is False
+                    assert kwargs["extract_charts"] is False
+                    assert kwargs["extract_images"] is False
+                    # Text extraction always on
+                    assert kwargs["extract_text"] is True
 
     @pytest.mark.asyncio
     async def test_extract_wraps_exception_in_extraction_error(self) -> None:
@@ -621,18 +664,22 @@ class TestDocumentProcessor:
 
     @pytest.mark.asyncio
     async def test_chunk_content_extracts_text_from_metadata(self) -> None:
-        """Test chunking extracts text from content_metadata."""
+        """Test chunking extracts text from metadata['content'].
+
+        nv-ingest stores chunk text in metadata['content'], NOT in
+        metadata['content_metadata']['text'].
+        """
         nv_ingest = pytest.importorskip("nv_ingest_api", reason="nv_ingest_api not installed")
 
-        # Mock the transform function at the import location
+        # Mock matches real nv-ingest chunker output: text in metadata["content"]
         with patch(
             "nv_ingest_api.interface.transform.transform_text_split_and_tokenize"
         ) as mock_transform:
             mock_transform.return_value = pd.DataFrame({
                 "metadata": [
-                    {"content_metadata": {"text": "chunk 1"}},
-                    {"content_metadata": {"text": "chunk 2"}},
-                    {"content_metadata": {"text": "  "}},  # Empty, should be filtered
+                    {"content": "chunk 1", "content_metadata": {"type": "text"}},
+                    {"content": "chunk 2", "content_metadata": {"type": "text"}},
+                    {"content": "  ", "content_metadata": {"type": "text"}},  # Empty, should be filtered
                 ]
             })
 
@@ -697,13 +744,13 @@ class TestDocumentProcessorIntegration:
 
         content = "This is a test document with some content for chunking."
 
-        # Mock the chunking function at the import location
+        # Mock the chunking function — nv-ingest puts text in metadata["content"]
         with patch(
             "nv_ingest_api.interface.transform.transform_text_split_and_tokenize"
         ) as mock_transform:
             mock_transform.return_value = pd.DataFrame({
                 "metadata": [
-                    {"content_metadata": {"text": content}},
+                    {"content": content, "content_metadata": {"type": "text"}},
                 ]
             })
 
