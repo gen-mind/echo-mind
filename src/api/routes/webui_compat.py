@@ -10,13 +10,15 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from api.config import get_settings
 from api.dependencies import DbSession, OptionalVerifiedUser
 from echomind_lib.db.models import LLM as LLMORM
+from echomind_lib.db.models import User as UserORM
+from echomind_lib.helpers.auth import extract_bearer_token, get_jwt_validator
 
 logger = logging.getLogger(__name__)
 
@@ -416,4 +418,69 @@ async def stop_task(task_id: str) -> dict[str, bool]:
         Success status.
     """
     return {"success": True}
+
+
+# =============================================================================
+# Auth Compatibility Endpoints (for Open WebUI frontend)
+# =============================================================================
+
+
+@router.get("/v1/auths/")
+async def get_session_user(
+    request: Request,
+    db: DbSession,
+) -> dict[str, Any]:
+    """
+    Get current session user from token.
+
+    Open WebUI frontend calls this to validate the token and get user info.
+
+    Args:
+        request: The HTTP request.
+        db: Database session.
+
+    Returns:
+        User info including the token.
+    """
+    # Extract token from Authorization header
+    auth_header = request.headers.get("Authorization")
+    token = extract_bearer_token(auth_header)
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authorization header",
+        )
+
+    try:
+        validator = get_jwt_validator()
+        token_user = validator.validate_token(token)
+    except Exception as e:
+        logger.error("❌ Token validation failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+        )
+
+    # Look up user in database
+    result = await db.execute(
+        select(UserORM).where(UserORM.external_id == token_user.external_id)
+    )
+    db_user = result.scalar_one_or_none()
+
+    if db_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    # Return user info in Open WebUI format
+    return {
+        "id": str(db_user.id),
+        "email": db_user.email,
+        "name": f"{db_user.first_name} {db_user.last_name}".strip() or db_user.user_name,
+        "role": "admin" if "superadmin" in (db_user.roles or []) else "user",
+        "profile_image_url": "",
+        "token": token,  # Return the token back
+    }
 

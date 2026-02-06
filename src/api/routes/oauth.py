@@ -213,10 +213,25 @@ async def oauth_oidc_callback(
             # Redirect to frontend with token
             # Use id_token if available (contains user claims), else access_token
             token_to_use = id_token or access_token
-            return RedirectResponse(
-                url=f"/auth#token={token_to_use}",
+
+            # Create response with redirect
+            response = RedirectResponse(
+                url="/",
                 status_code=status.HTTP_302_FOUND,
             )
+
+            # Set token as cookie for frontend to read
+            response.set_cookie(
+                key="token",
+                value=token_to_use,
+                httponly=False,  # Frontend needs to read it
+                secure=True,
+                samesite="lax",
+                max_age=86400 * 7,  # 7 days
+                path="/",
+            )
+
+            return response
 
     except httpx.RequestError as e:
         logger.exception("❌ OAuth request failed")
