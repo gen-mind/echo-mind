@@ -250,63 +250,62 @@ class TestDocumentProcessor:
 
     def test_extract_structured_images_empty_when_yolox_disabled(self) -> None:
         """Test no structured images when YOLOX is disabled."""
-        # Default settings have yolox_enabled=False
-        df = pd.DataFrame({
-            "metadata": [{
-                "content_metadata": {
-                    "type": "table",
-                    "image_data": "base64data",
-                }
-            }]
-        })
-
-        result = self.processor._extract_structured_images(df)
-
-        assert result == []
-
-    def test_extract_structured_images_with_yolox(self) -> None:
-        """Test structured images extracted when YOLOX enabled."""
-        import base64
-
-        # Enable YOLOX in settings
-        with patch.object(self.processor._settings, "yolox_enabled", True):
-            image_bytes = b"\x89PNG\r\n\x1a\n"  # Fake PNG header
-            encoded = base64.b64encode(image_bytes).decode()
-
+        with patch.object(self.processor._settings, "yolox_enabled", False):
             df = pd.DataFrame({
                 "metadata": [{
                     "content_metadata": {
                         "type": "table",
-                        "image_data": encoded,
+                        "image_data": "base64data",
                     }
                 }]
             })
 
             result = self.processor._extract_structured_images(df)
 
-            assert len(result) == 1
-            assert result[0] == image_bytes
+            assert result == []
+
+    def test_extract_structured_images_with_yolox(self) -> None:
+        """Test structured images extracted when YOLOX enabled (default)."""
+        import base64
+
+        # Default settings have yolox_enabled=True
+        image_bytes = b"\x89PNG\r\n\x1a\n"  # Fake PNG header
+        encoded = base64.b64encode(image_bytes).decode()
+
+        df = pd.DataFrame({
+            "metadata": [{
+                "content_metadata": {
+                    "type": "table",
+                    "image_data": encoded,
+                }
+            }]
+        })
+
+        result = self.processor._extract_structured_images(df)
+
+        assert len(result) == 1
+        assert result[0] == image_bytes
 
     def test_extract_structured_images_filters_by_type(self) -> None:
         """Test only table/chart/infographic types are extracted."""
         import base64
 
-        with patch.object(self.processor._settings, "yolox_enabled", True):
-            image_bytes = b"imagedata"
-            encoded = base64.b64encode(image_bytes).decode()
+        # Default: yolox_enabled=True
+        image_bytes = b"imagedata"
+        encoded = base64.b64encode(image_bytes).decode()
 
-            df = pd.DataFrame({
-                "metadata": [
-                    {"content_metadata": {"type": "table", "image_data": encoded}},
-                    {"content_metadata": {"type": "chart", "image_data": encoded}},
-                    {"content_metadata": {"type": "infographic", "image_data": encoded}},
-                    {"content_metadata": {"type": "text", "image_data": encoded}},  # Should be skipped
-                ]
-            })
+        df = pd.DataFrame({
+            "metadata": [
+                {"content_metadata": {"type": "table", "image_data": encoded}},
+                {"content_metadata": {"type": "chart", "image_data": encoded}},
+                {"content_metadata": {"type": "infographic", "image_data": encoded}},
+                {"content_metadata": {"type": "text", "image_data": encoded}},  # Should be skipped
+            ]
+        })
 
-            result = self.processor._extract_structured_images(df)
+        result = self.processor._extract_structured_images(df)
 
-            assert len(result) == 3
+        assert len(result) == 3
 
     # ==========================================
     # YOLOX endpoints helper tests
@@ -356,7 +355,7 @@ class TestDocumentProcessor:
 
     @pytest.mark.asyncio
     async def test_extract_pdf_passes_correct_kwargs(self) -> None:
-        """Test PDF extraction passes df_extraction_ledger and yolox_endpoints."""
+        """Test PDF extraction passes df_extraction_ledger and YOLOX endpoints (default enabled)."""
         mock_fn = MagicMock(return_value=pd.DataFrame())
         with patch.dict(
             "sys.modules",
@@ -373,17 +372,16 @@ class TestDocumentProcessor:
                 kwargs = mock_fn.call_args[1]
                 # Must use df_extraction_ledger (PDF uses decorator path)
                 assert "df_extraction_ledger" in kwargs
-                # Must always pass yolox_endpoints (PDFiumConfigSchema requires it)
-                assert "yolox_endpoints" in kwargs
+                # Default yolox_enabled=True: endpoints and flags must be set
                 assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
                 assert kwargs["extract_text"] is True
-                assert kwargs["extract_tables"] is False  # yolox_enabled=False
-                assert kwargs["extract_charts"] is False
+                assert kwargs["extract_tables"] is True
+                assert kwargs["extract_charts"] is True
                 assert kwargs["extract_images"] is False
 
     @pytest.mark.asyncio
-    async def test_extract_pdf_with_yolox_enabled(self) -> None:
-        """Test PDF extraction enables tables/charts when YOLOX is on."""
+    async def test_extract_pdf_with_yolox_disabled(self) -> None:
+        """Test PDF extraction omits YOLOX endpoints when disabled."""
         mock_fn = MagicMock(return_value=pd.DataFrame())
         with patch.dict(
             "sys.modules",
@@ -393,13 +391,14 @@ class TestDocumentProcessor:
                 "nv_ingest_api.interface.extract.extract_primitives_from_pdf_pdfium",
                 mock_fn,
             ):
-                with patch.object(self.processor._settings, "yolox_enabled", True):
+                with patch.object(self.processor._settings, "yolox_enabled", False):
                     df = pd.DataFrame({"test": [1]})
                     await self.processor._extract(df, "application/pdf", document_id=1)
 
                     kwargs = mock_fn.call_args[1]
-                    assert kwargs["extract_tables"] is True
-                    assert kwargs["extract_charts"] is True
+                    assert kwargs["extract_tables"] is False
+                    assert kwargs["extract_charts"] is False
+                    assert kwargs["yolox_endpoints"] is None
 
     @pytest.mark.asyncio
     async def test_extract_docx_passes_correct_kwargs(self) -> None:
@@ -508,8 +507,8 @@ class TestDocumentProcessor:
         assert result.empty
 
     @pytest.mark.asyncio
-    async def test_extract_docx_no_yolox_endpoints_when_disabled(self) -> None:
-        """Test DOCX doesn't pass yolox_endpoints when YOLOX disabled."""
+    async def test_extract_docx_passes_yolox_endpoints_by_default(self) -> None:
+        """Test DOCX passes yolox_endpoints when YOLOX enabled (default)."""
         mock_fn = MagicMock(return_value=pd.DataFrame())
         with patch.dict(
             "sys.modules",
@@ -527,12 +526,13 @@ class TestDocumentProcessor:
                 )
 
                 kwargs = mock_fn.call_args[1]
-                # YOLOX disabled: yolox_endpoints should be None
-                assert kwargs["yolox_endpoints"] is None
+                assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
+                assert kwargs["extract_tables"] is True
+                assert kwargs["extract_charts"] is True
 
     @pytest.mark.asyncio
-    async def test_extract_docx_with_yolox_enabled(self) -> None:
-        """Test DOCX passes yolox_endpoints when YOLOX enabled."""
+    async def test_extract_docx_no_yolox_endpoints_when_disabled(self) -> None:
+        """Test DOCX doesn't pass yolox_endpoints when YOLOX disabled."""
         mock_fn = MagicMock(return_value=pd.DataFrame())
         with patch.dict(
             "sys.modules",
@@ -542,7 +542,7 @@ class TestDocumentProcessor:
                 "nv_ingest_api.interface.extract.extract_primitives_from_docx",
                 mock_fn,
             ):
-                with patch.object(self.processor._settings, "yolox_enabled", True):
+                with patch.object(self.processor._settings, "yolox_enabled", False):
                     df = pd.DataFrame({"test": [1]})
                     await self.processor._extract(
                         df,
@@ -551,9 +551,9 @@ class TestDocumentProcessor:
                     )
 
                     kwargs = mock_fn.call_args[1]
-                    assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
-                    assert kwargs["extract_tables"] is True
-                    assert kwargs["extract_charts"] is True
+                    assert kwargs["yolox_endpoints"] is None
+                    assert kwargs["extract_tables"] is False
+                    assert kwargs["extract_charts"] is False
 
     @pytest.mark.asyncio
     async def test_extract_wraps_exception_in_extraction_error(self) -> None:

@@ -138,7 +138,7 @@ class IngestorSettings(BaseSettings):
 
     # Optional NIMs
     yolox_enabled: bool = Field(
-        False,
+        True,
         description="Enable YOLOX NIM for table/chart detection",
     )
     yolox_endpoint: str = Field(

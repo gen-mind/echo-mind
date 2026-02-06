@@ -84,11 +84,11 @@ class TestIngestorSettings:
         assert settings.chunk_overlap == 50
         assert settings.tokenizer == "meta-llama/Llama-3.2-1B"
 
-    def test_optional_nims_disabled_by_default(self) -> None:
-        """Test optional NIMs are disabled by default."""
+    def test_optional_nims_defaults(self) -> None:
+        """Test optional NIMs have correct defaults."""
         settings = IngestorSettings()
 
-        assert settings.yolox_enabled is False
+        assert settings.yolox_enabled is True
         assert settings.riva_enabled is False
 
     def test_env_prefix(self) -> None:

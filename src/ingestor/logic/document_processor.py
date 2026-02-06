@@ -49,14 +49,13 @@ class DocumentProcessor:
 
     def _build_yolox_endpoints(self) -> tuple[str | None, str]:
         """
-        Build YOLOX endpoint tuple for nv-ingest-api config schemas.
+        Build YOLOX endpoint tuple for nv-ingest-api extractors.
 
-        PDFiumConfigSchema always validates that at least one YOLOX endpoint
-        is non-empty — even when table/chart extraction is disabled by task
-        flags. This method returns a tuple that passes validation.
-
-        When ``yolox_enabled`` is ``False``, the endpoint is never contacted
-        because extract_tables and extract_charts are set to ``False``.
+        Returns a ``(gRPC, HTTP)`` tuple expected by nv-ingest-api when
+        table/chart extraction via YOLOX is enabled. Only call this when
+        ``yolox_enabled`` is ``True`` — passing a non-None endpoint tuple
+        causes nv-ingest to attempt a connection even if extract_tables and
+        extract_charts are ``False``.
 
         Returns:
             Tuple of (gRPC endpoint, HTTP endpoint) for YOLOX services.
@@ -176,20 +175,13 @@ class DocumentProcessor:
                     extract_primitives_from_pdf_pdfium,
                 )
 
-                # PDFiumConfigSchema ALWAYS validates yolox_endpoints (even
-                # for text-only extraction). When YOLOX is disabled the
-                # endpoint is never contacted — the task flags
-                # extract_tables/charts=False prevent it — but we still must
-                # pass a value that satisfies the Pydantic validator.
-                yolox_eps = self._build_yolox_endpoints()
-
                 return extract_primitives_from_pdf_pdfium(
                     df_extraction_ledger=df,
                     extract_text=True,
                     extract_tables=self._settings.yolox_enabled,
                     extract_charts=self._settings.yolox_enabled,
                     extract_images=False,
-                    yolox_endpoints=yolox_eps,
+                    yolox_endpoints=self._build_yolox_endpoints() if self._settings.yolox_enabled else None,
                 )
 
             elif extractor_type == "docx":
