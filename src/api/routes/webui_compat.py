@@ -185,22 +185,30 @@ async def get_config(
         # OIDC provider configured (Authentik)
         oauth_providers["oidc"] = settings.oauth_provider_name
 
-    # Build nested objects only for authenticated users
-    # Frontend accesses $config.audio.tts.engine without full optional chaining
-    # [Source: Open WebUI CallOverlay.svelte, +layout.svelte]
-    audio = {}
-    permissions: dict[str, Any] = {}
-    code = {}
-    file_config = {}
-    ui = {}
-    google_drive = {}
-    onedrive = {}
+    # CRITICAL: These nested objects MUST always be returned with full structure.
+    # The frontend accesses $config.audio.tts.engine WITHOUT optional chaining.
+    # If audio is {}, $config.audio.tts is undefined → TypeError crashes the UI.
+    # [Source: Open WebUI Audio.svelte lines 53, 97, 182, 350]
+    audio = {
+        "tts": {"engine": "", "voice": "", "split_on": ""},
+        "stt": {"engine": ""},
+    }
+    code = {"engine": ""}
+    file_config = {
+        "max_size": 0,
+        "max_count": 0,
+        "image_compression": {"width": None, "height": None},
+    }
+    ui = {
+        "pending_user_overlay_title": "",
+        "pending_user_overlay_content": "",
+    }
+    google_drive = {"client_id": "", "api_key": ""}
+    onedrive = {"client_id_personal": "", "client_id_business": ""}
 
+    # Permissions are user-specific
+    permissions: dict[str, Any] = {}
     if user:
-        audio = {
-            "tts": {"engine": "", "voice": "", "split_on": ""},
-            "stt": {"engine": ""},
-        }
         permissions = {
             "workspace": {
                 "models": True,
@@ -224,18 +232,6 @@ async def get_config(
                 "code_interpreter": False,
             },
         }
-        code = {"engine": ""}
-        file_config = {
-            "max_size": 0,
-            "max_count": 0,
-            "image_compression": {"width": None, "height": None},
-        }
-        ui = {
-            "pending_user_overlay_title": "",
-            "pending_user_overlay_content": "",
-        }
-        google_drive = {"client_id": "", "api_key": ""}
-        onedrive = {"client_id_personal": "", "client_id_business": ""}
 
     return WebUIConfigResponse(
         status=True,
@@ -990,3 +986,387 @@ async def get_model_profile_image_legacy() -> Response:
         <path d="M 35 55 Q 50 60 65 55" stroke="white" stroke-width="2" fill="none"/>
     </svg>"""
     return Response(content=svg, media_type="image/svg+xml")
+
+
+# =============================================================================
+# Settings Modal Endpoint Stubs
+# These endpoints are called by Open WebUI SettingsModal tabs.
+# Each tab mounts components that call specific APIs on render.
+# =============================================================================
+
+
+# --- Audio Tab ---
+# [Source: Open WebUI Audio.svelte → getVoices() → _getVoices(token)]
+
+
+@router.get("/v1/audio/voices")
+async def get_audio_voices(user: OptionalVerifiedUser) -> dict[str, list[Any]]:
+    """
+    Get available TTS voices (stub).
+
+    Called by Audio settings tab when TTS engine is not browser-default.
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Empty voices list.
+    """
+    return {"voices": []}
+
+
+@router.get("/v1/audio/config")
+async def get_audio_config(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Get audio configuration (stub).
+
+    Called by admin Audio settings tab.
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Default audio config.
+    """
+    return {
+        "tts": {
+            "OPENAI_API_BASE_URL": "",
+            "OPENAI_API_KEY": "",
+            "ENGINE": "",
+            "MODEL": "",
+            "VOICE": "",
+            "SPLIT_ON": "",
+        },
+        "stt": {
+            "OPENAI_API_BASE_URL": "",
+            "OPENAI_API_KEY": "",
+            "ENGINE": "",
+            "MODEL": "",
+        },
+    }
+
+
+@router.post("/v1/audio/config/update")
+async def update_audio_config(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Update audio configuration (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Updated audio config.
+    """
+    return {
+        "tts": {"ENGINE": "", "MODEL": "", "VOICE": ""},
+        "stt": {"ENGINE": "", "MODEL": ""},
+    }
+
+
+@router.get("/v1/audio/models")
+async def get_audio_models(user: OptionalVerifiedUser) -> dict[str, list[Any]]:
+    """
+    Get available audio models (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Empty models list.
+    """
+    return {"models": []}
+
+
+# --- Account Tab ---
+# [Source: Open WebUI Account.svelte → getAPIKey(token)]
+
+
+@router.get("/v1/auths/api_key")
+async def get_api_key(user: OptionalVerifiedUser) -> dict[str, str]:
+    """
+    Get user API key (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Empty API key.
+    """
+    return {"api_key": ""}
+
+
+@router.post("/v1/auths/api_key")
+async def create_api_key(user: OptionalVerifiedUser) -> dict[str, str]:
+    """
+    Create/regenerate API key (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Empty API key.
+    """
+    return {"api_key": ""}
+
+
+@router.delete("/v1/auths/api_key")
+async def delete_api_key(user: OptionalVerifiedUser) -> dict[str, bool]:
+    """
+    Delete API key (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Success status.
+    """
+    return {"success": True}
+
+
+@router.post("/v1/users/user/info/update")
+async def update_user_info(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Update user info like location (stub).
+
+    Called by Interface settings tab when location access is enabled.
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Empty user info.
+    """
+    return {}
+
+
+# --- Data Controls Tab ---
+# [Source: Open WebUI DataControls.svelte → archiveAllChats, deleteAllChats, etc.]
+
+
+@router.get("/v1/chats/all")
+async def get_all_chats(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Get all chats for export (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Empty list of chats.
+    """
+    return []
+
+
+@router.post("/v1/chats/archive/all")
+async def archive_all_chats(user: OptionalVerifiedUser) -> dict[str, bool]:
+    """
+    Archive all chats (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Success status.
+    """
+    return {"success": True}
+
+
+@router.delete("/v1/chats/")
+async def delete_all_chats(user: OptionalVerifiedUser) -> dict[str, bool]:
+    """
+    Delete all chats (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Success status.
+    """
+    return {"success": True}
+
+
+@router.post("/v1/chats/import")
+async def import_chats(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Import chats (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Empty list.
+    """
+    return []
+
+
+# --- About Tab ---
+# [Source: Open WebUI About.svelte → getVersionUpdates, getOllamaVersion]
+
+
+@router.get("/ollama/config")
+async def get_ollama_config(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Get Ollama configuration (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Ollama disabled config.
+    """
+    return {
+        "ENABLE_OLLAMA_API": False,
+        "OLLAMA_BASE_URLS": [],
+        "OLLAMA_API_CONFIGS": {},
+    }
+
+
+@router.get("/openai/config")
+async def get_openai_config(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Get OpenAI API configuration (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Default OpenAI config.
+    """
+    return {
+        "ENABLE_OPENAI_API": True,
+        "OPENAI_API_BASE_URLS": ["https://api.openai.com/v1"],
+        "OPENAI_API_KEYS": [""],
+        "OPENAI_API_CONFIGS": {},
+    }
+
+
+# --- Admin Config Endpoints ---
+# [Source: Open WebUI admin Settings pages]
+
+
+@router.get("/v1/configs/models")
+async def get_models_config(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Get models configuration (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Default models config.
+    """
+    return {
+        "DEFAULT_MODELS": "gpt-4o",
+        "DEFAULT_PINNED_MODELS": "",
+        "MODEL_ORDER_LIST": [],
+    }
+
+
+@router.post("/v1/configs/models")
+async def set_models_config(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Set models configuration (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Models config.
+    """
+    return {
+        "DEFAULT_MODELS": "gpt-4o",
+        "DEFAULT_PINNED_MODELS": "",
+        "MODEL_ORDER_LIST": [],
+    }
+
+
+@router.get("/v1/configs/connections")
+async def get_connections_config(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Get connections configuration (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Empty connections config.
+    """
+    return {}
+
+
+@router.post("/v1/configs/connections")
+async def set_connections_config(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Set connections configuration (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Empty connections config.
+    """
+    return {}
+
+
+@router.get("/v1/configs/tool_servers")
+async def get_tool_servers(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Get tool server connections (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Empty list.
+    """
+    return []
+
+
+@router.post("/v1/configs/tool_servers")
+async def set_tool_servers(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Set tool server connections (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Empty list.
+    """
+    return []
+
+
+@router.get("/v1/auths/admin/config")
+async def get_admin_config(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Get admin configuration (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Default admin config.
+    """
+    return {
+        "SHOW_ADMIN_DETAILS": True,
+        "ENABLE_SIGNUP": False,
+        "DEFAULT_USER_ROLE": "user",
+    }
+
+
+@router.post("/v1/auths/admin/config")
+async def set_admin_config(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Set admin configuration (stub).
+
+    Args:
+        user: Optional authenticated user.
+
+    Returns:
+        Admin config.
+    """
+    return {
+        "SHOW_ADMIN_DETAILS": True,
+        "ENABLE_SIGNUP": False,
+        "DEFAULT_USER_ROLE": "user",
+    }
