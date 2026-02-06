@@ -73,7 +73,7 @@ class TestIngestorSettings:
 
         assert settings.embedder_host == "echomind-embedder"
         assert settings.embedder_port == 50051
-        assert settings.embedder_timeout == 30.0
+        assert settings.embedder_timeout == 600.0
 
     def test_extraction_defaults(self) -> None:
         """Test nv-ingest extraction default configuration."""

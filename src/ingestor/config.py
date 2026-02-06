@@ -109,8 +109,10 @@ class IngestorSettings(BaseSettings):
         50051,
         description="Embedder gRPC port",
     )
+    # TODO: Revert to 30s once embedder runs on GPU. Currently 600s
+    # because CPU inference takes ~200s per batch with the 1B model.
     embedder_timeout: float = Field(
-        30.0,
+        600.0,
         description="gRPC call timeout in seconds",
         gt=0,
     )
