@@ -2,9 +2,23 @@
 
 # Core extraction (nv-ingest)
 nv-ingest-api>=26.1.0
-langdetect==1.0.9  # Undeclared nv-ingest-api dependency (used by adobe PDF engine)
 pypdfium2>=4.0.0
 pandas>=2.0.0
+
+# Undeclared nv-ingest-api dependencies
+# These are imported at module level by nv_ingest_api.interface.extract but NOT
+# declared in nv-ingest-api's pyproject.toml. Versions aligned with NVIDIA's own
+# conda env: sample/nv-ingest/conda/environments/nv_ingest_environment.base.yml
+langdetect>=1.0.9          # aggregators.py -> language.py (adobe PDF engine)
+requests>=2.28.2           # nim_client.py, helpers.py, tika.py
+opencv-python-headless>=4.8.0  # helpers.py, transforms.py (headless = no GUI deps)
+python-docx>=1.1.2         # docxreader.py (DOCX extraction)
+python-pptx>=1.0.2         # pptx_helper.py (PPTX extraction)
+scikit-learn>=1.6.0        # table_and_chart.py (image chart/table extraction)
+unstructured-client>=0.25.0  # unstructured_io.py (PDF engine)
+aiohttp>=3.9.0             # llama.py (PDF engine)
+pillow>=10.0.0             # aggregators.py, transforms.py
+numpy>=1.26.0              # used throughout nv-ingest-api
 
 # HTML processing
 beautifulsoup4>=4.12.0
