@@ -421,6 +421,142 @@ async def stop_task(task_id: str) -> dict[str, bool]:
 
 
 # =============================================================================
+# User Settings & Config Stubs (for Open WebUI frontend)
+# =============================================================================
+
+
+@router.get("/v1/users/user/settings")
+async def get_user_settings(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Get user settings (stub).
+
+    Returns:
+        Default user settings.
+    """
+    return {
+        "ui": {
+            "chat": {},
+            "models": {},
+        },
+        "model_config": {},
+        "model_order": [],
+    }
+
+
+@router.post("/v1/users/user/settings")
+async def update_user_settings(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Update user settings (stub).
+
+    Returns:
+        Updated settings.
+    """
+    return {
+        "ui": {},
+        "model_config": {},
+    }
+
+
+@router.get("/v1/configs/banners")
+async def get_banners() -> list[Any]:
+    """
+    Get banner notifications (stub).
+
+    Returns:
+        Empty list of banners.
+    """
+    return []
+
+
+@router.get("/v1/tools/")
+async def get_tools() -> list[Any]:
+    """
+    Get available tools (stub).
+
+    Returns:
+        Empty list of tools.
+    """
+    return []
+
+
+@router.get("/v1/functions/")
+async def get_functions() -> list[Any]:
+    """
+    Get available functions (stub).
+
+    Returns:
+        Empty list of functions.
+    """
+    return []
+
+
+@router.get("/v1/prompts/")
+async def get_prompts() -> list[Any]:
+    """
+    Get saved prompts (stub).
+
+    Returns:
+        Empty list of prompts.
+    """
+    return []
+
+
+@router.get("/v1/memories/")
+async def get_memories() -> list[Any]:
+    """
+    Get user memories (stub).
+
+    Returns:
+        Empty list of memories.
+    """
+    return []
+
+
+@router.get("/v1/knowledge/")
+async def get_knowledge() -> list[Any]:
+    """
+    Get knowledge bases (stub).
+
+    Returns:
+        Empty list of knowledge bases.
+    """
+    return []
+
+
+@router.get("/v1/chats/")
+async def get_chats(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Get user chats (stub).
+
+    Returns:
+        Empty list of chats.
+    """
+    return []
+
+
+@router.get("/v1/folders/")
+async def get_folders(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Get user folders (stub).
+
+    Returns:
+        Empty list of folders.
+    """
+    return []
+
+
+@router.get("/v1/configs/")
+async def get_configs() -> dict[str, Any]:
+    """
+    Get app configs (stub).
+
+    Returns:
+        Default configs.
+    """
+    return {}
+
+
+# =============================================================================
 # Auth Compatibility Endpoints (for Open WebUI frontend)
 # =============================================================================
 
