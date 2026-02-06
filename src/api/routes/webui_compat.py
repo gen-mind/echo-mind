@@ -40,7 +40,7 @@ class WebUIConfigResponse(BaseModel):
     features: dict[str, Any] = Field(
         default_factory=dict, description="Feature flags"
     )
-    default_models: str = Field("", description="Default model ID")
+    default_models: list[str] = Field(default_factory=list, description="Default model IDs")
     default_prompt_suggestions: list[dict[str, Any]] = Field(
         default_factory=list, description="Default prompt suggestions"
     )
@@ -156,7 +156,7 @@ async def get_config(
         default_locale="en-US",
         oauth={"providers": oauth_providers},
         features=features,
-        default_models="",
+        default_models=[],
         default_prompt_suggestions=[
             {
                 "title": ["Help me ", "with my research"],
@@ -734,5 +734,18 @@ async def get_session_user(
         "role": "admin" if "superadmin" in (db_user.roles or []) else "user",
         "profile_image_url": "",
         "token": token,  # Return the token back
+        "permissions": {
+            "chat": {
+                "controls": True,
+                "file_upload": True,
+                "delete": True,
+            },
+            "workspace": {
+                "models": True,
+                "knowledge": True,
+                "prompts": True,
+                "tools": True,
+            },
+        },
     }
 
