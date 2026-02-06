@@ -244,7 +244,7 @@ async def get_config(
         default_locale="en-US",
         oauth={"providers": oauth_providers},
         features=features,
-        default_models="",
+        default_models="gpt-4o",
         default_prompt_suggestions=[
             {
                 "title": ["Help me ", "with my research"],
@@ -280,24 +280,44 @@ async def get_models(
     Returns:
         WebUIModelsResponse: List of available models.
     """
-    # Fetch active LLMs from database
-    result = await db.execute(
-        select(LLMORM)
-        .where(LLMORM.deleted_date.is_(None))
-        .where(LLMORM.is_active == True)  # noqa: E712
-        .order_by(LLMORM.name)
-    )
-    db_llms = result.scalars().all()
-
-    models = [
-        WebUIModelInfo(
-            id=llm.model_id,
-            name=llm.name,
-            object="model",
-            owned_by="echomind",
+    # Try fetching from DB first, fall back to hardcoded defaults
+    models: list[WebUIModelInfo] = []
+    try:
+        result = await db.execute(
+            select(LLMORM)
+            .where(LLMORM.deleted_date.is_(None))
+            .where(LLMORM.is_active == True)  # noqa: E712
+            .order_by(LLMORM.name)
         )
-        for llm in db_llms
-    ]
+        db_llms = result.scalars().all()
+        models = [
+            WebUIModelInfo(
+                id=llm.model_id,
+                name=llm.name,
+                object="model",
+                owned_by="echomind",
+            )
+            for llm in db_llms
+        ]
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to fetch models from DB: {e}")
+
+    # Hardcoded fallback if no models in DB
+    if not models:
+        models = [
+            WebUIModelInfo(
+                id="gpt-4o",
+                name="GPT-4o",
+                object="model",
+                owned_by="openai",
+            ),
+            WebUIModelInfo(
+                id="claude-3-5-sonnet-20241022",
+                name="Claude 3.5 Sonnet",
+                object="model",
+                owned_by="anthropic",
+            ),
+        ]
 
     logger.debug(f"📊 Returning {len(models)} models")
     return WebUIModelsResponse(data=models)
@@ -523,18 +543,21 @@ async def stop_task(task_id: str) -> dict[str, bool]:
 @router.get("/v1/users/user/settings")
 async def get_user_settings(user: OptionalVerifiedUser) -> dict[str, Any]:
     """
-    Get user settings (stub).
+    Get user settings.
+
+    Open WebUI reads `settings.models` as an array for selectedModelIds.
+    The `models` field MUST be a top-level array, NOT nested under `ui`.
+    [Source: Open WebUI Chat.svelte - selectedModels = $settings?.models]
+
+    Args:
+        user: Optional authenticated user.
 
     Returns:
-        Default user settings.
+        User settings with models as top-level array.
     """
     return {
-        "ui": {
-            "chat": {},
-            "models": {},
-        },
-        "model_config": {},
-        "model_order": [],
+        "ui": {},
+        "models": ["gpt-4o"],
     }
 
 
@@ -543,12 +566,15 @@ async def update_user_settings(user: OptionalVerifiedUser) -> dict[str, Any]:
     """
     Update user settings (stub).
 
+    Args:
+        user: Optional authenticated user.
+
     Returns:
         Updated settings.
     """
     return {
         "ui": {},
-        "model_config": {},
+        "models": ["gpt-4o"],
     }
 
 
@@ -559,12 +585,15 @@ async def update_user_settings_alt(user: OptionalVerifiedUser) -> dict[str, Any]
 
     Open WebUI calls this endpoint for settings updates.
 
+    Args:
+        user: Optional authenticated user.
+
     Returns:
         Updated settings.
     """
     return {
         "ui": {},
-        "model_config": {},
+        "models": ["gpt-4o"],
     }
 
 
@@ -697,28 +726,54 @@ async def get_models_list(
     """
     Get available models in Open WebUI format.
 
+    Args:
+        user: Optional authenticated user.
+        db: Database session.
+
     Returns:
         List of available models.
     """
-    # Fetch active LLMs from database
-    result = await db.execute(
-        select(LLMORM)
-        .where(LLMORM.deleted_date.is_(None))
-        .where(LLMORM.is_active == True)  # noqa: E712
-        .order_by(LLMORM.name)
-    )
-    db_llms = result.scalars().all()
+    # Try fetching from DB, fall back to hardcoded defaults
+    models: list[dict[str, Any]] = []
+    try:
+        result = await db.execute(
+            select(LLMORM)
+            .where(LLMORM.deleted_date.is_(None))
+            .where(LLMORM.is_active == True)  # noqa: E712
+            .order_by(LLMORM.name)
+        )
+        db_llms = result.scalars().all()
+        models = [
+            {
+                "id": llm.model_id,
+                "name": llm.name,
+                "object": "model",
+                "owned_by": "echomind",
+                "info": {"meta": {}},
+            }
+            for llm in db_llms
+        ]
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to fetch models from DB: {e}")
 
-    models = [
-        {
-            "id": llm.model_id,
-            "name": llm.name,
-            "object": "model",
-            "owned_by": "echomind",
-            "info": {"meta": {}},
-        }
-        for llm in db_llms
-    ]
+    # Hardcoded fallback if no models in DB
+    if not models:
+        models = [
+            {
+                "id": "gpt-4o",
+                "name": "GPT-4o",
+                "object": "model",
+                "owned_by": "openai",
+                "info": {"meta": {}},
+            },
+            {
+                "id": "claude-3-5-sonnet-20241022",
+                "name": "Claude 3.5 Sonnet",
+                "object": "model",
+                "owned_by": "anthropic",
+                "info": {"meta": {}},
+            },
+        ]
 
     return {"models": models}
 
