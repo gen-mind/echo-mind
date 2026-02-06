@@ -40,7 +40,7 @@ class WebUIConfigResponse(BaseModel):
     """
 
     status: bool = Field(True, description="Backend status")
-    name: str = Field("EchoMind", description="Application name")
+    name: str = Field("Echo-Mind", description="Application name")
     version: str = Field("0.1.0", description="Application version")
     default_locale: str = Field("en-US", description="Default locale")
     oauth: dict[str, Any] = Field(default_factory=dict, description="OAuth providers")
@@ -235,7 +235,7 @@ async def get_config(
 
     return WebUIConfigResponse(
         status=True,
-        name="EchoMind",
+        name="Echo-Mind",
         version="0.1.0",
         default_locale="en-US",
         oauth={"providers": oauth_providers},
