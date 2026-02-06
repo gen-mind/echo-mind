@@ -166,6 +166,81 @@ def get_current_revision(database_url: str) -> str | None:
         return None
 
 
+def verify_schema(database_url: str) -> None:
+    """
+    Verify critical schema objects exist after migration.
+
+    Catches cases where alembic_version was stamped but DDL was not applied.
+    Fails hard so broken deployments don't silently start with missing schema.
+
+    Args:
+        database_url: PostgreSQL connection URL.
+
+    Raises:
+        SystemExit: If required schema objects are missing.
+    """
+    # Table -> list of required columns
+    required_schema: dict[str, list[str]] = {
+        "users": ["id", "email"],
+        "connectors": ["id", "team_id"],
+        "teams": ["id", "name"],
+        "team_members": ["team_id", "user_id"],
+        "llms": ["id", "provider", "model_id"],
+        "documents": ["id", "connector_id"],
+        "chat_sessions": ["id", "user_id"],
+    }
+
+    engine = create_engine(database_url)
+    errors: list[str] = []
+
+    try:
+        with engine.connect() as conn:
+            for table, columns in required_schema.items():
+                # Check table exists
+                result = conn.execute(
+                    text(
+                        "SELECT EXISTS ("
+                        "  SELECT 1 FROM information_schema.tables "
+                        "  WHERE table_schema = 'public' AND table_name = :name"
+                        ")"
+                    ),
+                    {"name": table},
+                )
+                if not result.scalar():
+                    errors.append(f"Table '{table}' does not exist")
+                    continue
+
+                # Check required columns
+                for col in columns:
+                    result = conn.execute(
+                        text(
+                            "SELECT EXISTS ("
+                            "  SELECT 1 FROM information_schema.columns "
+                            "  WHERE table_schema = 'public' "
+                            "    AND table_name = :table AND column_name = :col"
+                            ")"
+                        ),
+                        {"table": table, "col": col},
+                    )
+                    if not result.scalar():
+                        errors.append(
+                            f"Column '{table}.{col}' does not exist"
+                        )
+    finally:
+        engine.dispose()
+
+    if errors:
+        for err in errors:
+            logger.error(f"❌ Schema verification failed: {err}")
+        logger.error(
+            "💀 Database schema is out of sync with alembic_version. "
+            "Migrations were stamped but DDL was not applied."
+        )
+        sys.exit(1)
+
+    logger.info("✅ Schema verification passed")
+
+
 def main() -> None:
     """
     Main entry point for migration service.
@@ -192,6 +267,9 @@ def main() -> None:
 
     # Run migrations
     run_migrations(database_url)
+
+    # Verify critical schema objects exist after migration
+    verify_schema(database_url)
 
     logger.info("🎉 Migration service completed")
 
