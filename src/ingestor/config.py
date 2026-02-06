@@ -82,7 +82,7 @@ class IngestorSettings(BaseSettings):
         description="Use HTTPS for MinIO",
     )
     minio_bucket: str = Field(
-        "documents",
+        "echomind-documents",
         description="MinIO bucket for document storage",
     )
 

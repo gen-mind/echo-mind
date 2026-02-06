@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from nats.aio.msg import Msg
 
+from echomind_lib.constants import MinioBuckets
 from echomind_lib.db.connection import close_db, get_db_manager, init_db
 from echomind_lib.db.minio import close_minio, get_minio, init_minio
 from echomind_lib.db.nats_subscriber import (
@@ -134,9 +135,10 @@ class IngestorApp:
                 access_key=self._settings.minio_access_key,
                 secret_key=self._settings.minio_secret_key,
                 secure=self._settings.minio_secure,
+                ensure_buckets=MinioBuckets.all(),
             )
             self._minio_connected = True
-            logger.info("📦 MinIO connected")
+            logger.info(f"📦 MinIO connected (buckets: {MinioBuckets.all()})")
         except Exception as e:
             logger.warning(f"⚠️ MinIO connection failed: {e}")
             logger.info("🔄 Will retry MinIO connection in background...")
@@ -219,9 +221,10 @@ class IngestorApp:
                     access_key=self._settings.minio_access_key,
                     secret_key=self._settings.minio_secret_key,
                     secure=self._settings.minio_secure,
+                    ensure_buckets=MinioBuckets.all(),
                 )
                 self._minio_connected = True
-                logger.info("📦 MinIO reconnected")
+                logger.info(f"📦 MinIO reconnected (buckets: {MinioBuckets.all()})")
                 self._update_readiness()
             except Exception as e:
                 logger.warning(f"⚠️ MinIO reconnection attempt failed: {e}")

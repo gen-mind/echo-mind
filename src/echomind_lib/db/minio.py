@@ -298,8 +298,21 @@ async def init_minio(
     access_key: str,
     secret_key: str,
     secure: bool = False,
+    ensure_buckets: list[str] | None = None,
 ) -> MinIOClient:
-    """Initialize the global MinIO client."""
+    """
+    Initialize the global MinIO client.
+
+    Args:
+        endpoint: MinIO server endpoint (host:port).
+        access_key: Access key ID.
+        secret_key: Secret access key.
+        secure: Use HTTPS.
+        ensure_buckets: Optional list of bucket names to create if they don't exist.
+
+    Returns:
+        Initialized MinIOClient instance.
+    """
     global _minio_client
     _minio_client = MinIOClient(
         endpoint=endpoint,
@@ -308,6 +321,11 @@ async def init_minio(
         secure=secure,
     )
     await _minio_client.init()
+
+    if ensure_buckets:
+        for bucket_name in ensure_buckets:
+            await _minio_client.create_bucket(bucket_name)
+
     return _minio_client
 
 

@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from echomind_lib.constants import MinioBuckets
 from echomind_lib.db.minio import MinIOClient
 from echomind_lib.db.models import Connector, Document
 from echomind_lib.db.nats_publisher import JetStreamPublisher
@@ -62,7 +63,7 @@ class ConnectorService:
         db_session: AsyncSession,
         minio_client: MinIOClient,
         nats_publisher: JetStreamPublisher,
-        minio_bucket: str = "documents",
+        minio_bucket: str = MinioBuckets.DOCUMENTS,
     ):
         """
         Initialize connector service.

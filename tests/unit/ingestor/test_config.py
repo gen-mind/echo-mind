@@ -57,7 +57,7 @@ class TestIngestorSettings:
         assert settings.minio_access_key == "minioadmin"
         assert settings.minio_secret_key == "minioadmin"
         assert settings.minio_secure is False
-        assert settings.minio_bucket == "documents"
+        assert settings.minio_bucket == "echomind-documents"
 
     def test_qdrant_defaults(self) -> None:
         """Test Qdrant default configuration."""

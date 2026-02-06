@@ -39,6 +39,7 @@ from api.logic.llm_client import close_llm_client
 from api.socketio_server import socket_app
 from api.websocket.chat_handler import create_chat_handler
 from echomind_lib.db.connection import close_db, get_db_manager, init_db
+from echomind_lib.constants import MinioBuckets
 from echomind_lib.db.minio import close_minio, init_minio
 from echomind_lib.db.nats_publisher import close_nats_publisher, init_nats_publisher
 from echomind_lib.db.qdrant import close_qdrant, init_qdrant
@@ -210,8 +211,9 @@ async def _retry_minio_connection(settings: Settings) -> None:
                 access_key=settings.minio_access_key,
                 secret_key=settings.minio_secret_key,
                 secure=settings.minio_secure,
+                ensure_buckets=MinioBuckets.all(),
             )
-            logger.info("📦 MinIO reconnected")
+            logger.info(f"📦 MinIO reconnected (buckets: {MinioBuckets.all()})")
             break
         except Exception as e:
             logger.warning(f"⚠️ MinIO reconnection attempt failed: {e}")
@@ -231,6 +233,39 @@ async def _retry_nats_connection(settings: Settings) -> None:
             break
         except Exception as e:
             logger.warning(f"⚠️ NATS reconnection attempt failed: {e}")
+
+
+async def _retry_embedder_connection(settings: Settings) -> None:
+    """Background task to retry Embedder gRPC client connection."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await init_embedder_client(
+                host=settings.embedder_host,
+                port=settings.embedder_port,
+                timeout=settings.embedder_timeout,
+            )
+            logger.info("🔗 Embedder gRPC client reconnected")
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ Embedder client reconnection attempt failed: {e}")
+
+
+async def _retry_jwt_connection(settings: Settings) -> None:
+    """Background task to retry JWT validator initialization."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            init_jwt_validator(
+                issuer=settings.auth_issuer,
+                audience=settings.auth_audience,
+                jwks_url=settings.auth_jwks_url,
+                secret=settings.auth_secret,
+            )
+            logger.info("🔑 JWT validator reconnected")
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ JWT validator reconnection attempt failed: {e}")
 
 
 @asynccontextmanager
@@ -282,8 +317,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
             secure=settings.minio_secure,
+            ensure_buckets=MinioBuckets.all(),
         )
-        logger.info("📦 MinIO connected")
+        logger.info(f"📦 MinIO connected (buckets: {MinioBuckets.all()})")
     except Exception as e:
         logger.warning(f"⚠️ MinIO initialization failed: {e}")
         logger.info("🔄 Will retry MinIO connection in background...")
@@ -299,6 +335,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("🔑 JWT validator initialized")
     except Exception as e:
         logger.warning(f"⚠️ JWT validator initialization failed: {e}")
+        logger.info("🔄 Will retry JWT validator in background...")
+        retry_tasks.append(asyncio.create_task(_retry_jwt_connection(settings)))
 
     try:
         await init_nats_publisher(
@@ -322,6 +360,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("🔗 Embedder gRPC client connected")
     except Exception as e:
         logger.warning(f"⚠️ Embedder client initialization failed: {e}")
+        logger.info("🔄 Will retry Embedder client in background...")
+        retry_tasks.append(asyncio.create_task(_retry_embedder_connection(settings)))
 
     # Register health checks for readiness probe
     _register_health_checks(settings.health_check_timeout)
