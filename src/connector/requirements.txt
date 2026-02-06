@@ -16,5 +16,5 @@ nats-py>=2.6.0
 miniopy-async>=1.17
 
 # Protobuf
-protobuf>=4.0.0
+protobuf>=5.29.0
 grpcio>=1.60.0

@@ -17,7 +17,7 @@ torch>=2.0.0
 # gRPC (Embedder client)
 grpcio>=1.60.0
 grpcio-tools>=1.60.0
-protobuf>=5.28.0
+protobuf>=5.29.0
 protobuf-pydantic-gen>=0.1.8
 
 # NATS JetStream

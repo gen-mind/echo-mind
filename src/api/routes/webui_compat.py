@@ -606,6 +606,17 @@ async def get_banners() -> list[Any]:
     return []
 
 
+@router.get("/v1/groups/")
+async def list_groups() -> list[Any]:
+    """
+    List user groups (stub).
+
+    Returns:
+        Empty list of groups.
+    """
+    return []
+
+
 @router.get("/v1/tools/")
 async def get_tools() -> list[Any]:
     """

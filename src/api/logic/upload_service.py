@@ -218,12 +218,7 @@ class UploadService:
         await self.db.commit()
         await self.db.refresh(document)
 
-        logger.info(
-            "📤 Initiated upload for user %d: %s (%d bytes)",
-            user.id,
-            filename,
-            size,
-        )
+        logger.info(f"📤 Initiated upload for user {user.id}: {filename} ({size} bytes)")
 
         # Generate pre-signed URL
         try:
@@ -320,11 +315,7 @@ class UploadService:
         await self.db.commit()
         await self.db.refresh(document)
 
-        logger.info(
-            "✅ Completed upload for document %d: %s",
-            document.id,
-            document.title,
-        )
+        logger.info(f"✅ Completed upload for document {document.id}: {document.title}")
 
         # Publish document.process event
         await self._publish_document_process(document, document.connector)
@@ -390,11 +381,7 @@ class UploadService:
         await self.db.delete(document)
         await self.db.commit()
 
-        logger.info(
-            "🚫 Aborted upload for document %d by user %d",
-            document_id,
-            user.id,
-        )
+        logger.info(f"🚫 Aborted upload for document {document_id} by user {user.id}")
 
         return True
 
@@ -457,8 +444,4 @@ class UploadService:
             )
             logger.info(f"📤 Published document.process for document {document.id}")
         except Exception as e:
-            logger.error(
-                "❌ Failed to publish document.process for document %d: %s",
-                document.id,
-                e,
-            )
+            logger.error(f"❌ Failed to publish document.process for document {document.id}: {e}")
