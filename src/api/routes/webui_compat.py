@@ -656,14 +656,14 @@ async def get_configs() -> dict[str, Any]:
 
 
 @router.post("/v1/auths/update/timezone")
-async def update_user_timezone(user: OptionalVerifiedUser) -> dict[str, bool]:
+async def update_user_timezone(user: OptionalVerifiedUser) -> dict[str, str]:
     """
     Update user timezone (stub).
 
     Returns:
-        Success status.
+        Timezone set to CET.
     """
-    return {"success": True}
+    return {"timezone": "Europe/Zurich"}
 
 
 @router.post("/v1/auths/update/profile")
