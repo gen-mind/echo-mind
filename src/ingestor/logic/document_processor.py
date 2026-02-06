@@ -168,6 +168,25 @@ class DocumentProcessor:
             }],
         })
 
+    @staticmethod
+    def _unpack_extraction_result(result: pd.DataFrame | tuple) -> pd.DataFrame:
+        """
+        Normalize nv-ingest extraction results to a DataFrame.
+
+        nv-ingest-api extractors are inconsistent: PDF extractor (decorator
+        path) returns a plain DataFrame, while DOCX/PPTX/Image/Audio
+        extractors (direct path) return ``(DataFrame, dict)`` tuples.
+
+        Args:
+            result: Extraction result — DataFrame or (DataFrame, dict) tuple.
+
+        Returns:
+            Extracted DataFrame, discarding metadata dict if present.
+        """
+        if isinstance(result, tuple):
+            return result[0]
+        return result
+
     async def _extract(
         self,
         df: pd.DataFrame,
@@ -197,21 +216,31 @@ class DocumentProcessor:
             # are gated on yolox_enabled. When YOLOX NIM is not deployed,
             # these flags cause nv-ingest to hang ~30s/page retrying.
             # yolox_endpoints tuple is ALWAYS passed — schema crashes on None.
+            #
+            # All nv-ingest extraction calls are synchronous and CPU-bound.
+            # We run them in a thread pool executor to avoid blocking the
+            # event loop for large files.
             yolox_on = self._settings.yolox_enabled
+            loop = asyncio.get_running_loop()
 
             if extractor_type == "pdf":
                 from nv_ingest_api.interface.extract import (
                     extract_primitives_from_pdf_pdfium,
                 )
 
-                return extract_primitives_from_pdf_pdfium(
-                    df_extraction_ledger=df,
-                    extract_text=True,
-                    extract_tables=yolox_on,
-                    extract_charts=yolox_on,
-                    extract_images=yolox_on,
-                    extract_infographics=yolox_on,
-                    yolox_endpoints=self._build_yolox_endpoints(),
+                # PDF extractor (decorator path) returns DataFrame directly
+                return await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        extract_primitives_from_pdf_pdfium,
+                        df_extraction_ledger=df,
+                        extract_text=True,
+                        extract_tables=yolox_on,
+                        extract_charts=yolox_on,
+                        extract_images=yolox_on,
+                        extract_infographics=yolox_on,
+                        yolox_endpoints=self._build_yolox_endpoints(),
+                    ),
                 )
 
             elif extractor_type == "docx":
@@ -219,46 +248,64 @@ class DocumentProcessor:
                     extract_primitives_from_docx,
                 )
 
-                return extract_primitives_from_docx(
-                    df_ledger=df,
-                    extract_text=True,
-                    extract_tables=yolox_on,
-                    extract_charts=yolox_on,
-                    extract_images=yolox_on,
-                    yolox_endpoints=self._build_yolox_endpoints(),
+                # DOCX/PPTX/Image/Audio (direct path) return (DataFrame, dict)
+                raw = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        extract_primitives_from_docx,
+                        df_ledger=df,
+                        extract_text=True,
+                        extract_tables=yolox_on,
+                        extract_charts=yolox_on,
+                        extract_images=yolox_on,
+                        yolox_endpoints=self._build_yolox_endpoints(),
+                    ),
                 )
+                return self._unpack_extraction_result(raw)
 
             elif extractor_type == "pptx":
                 from nv_ingest_api.interface.extract import (
                     extract_primitives_from_pptx,
                 )
 
-                return extract_primitives_from_pptx(
-                    df_ledger=df,
-                    extract_text=True,
-                    extract_tables=yolox_on,
-                    extract_charts=yolox_on,
-                    extract_images=yolox_on,
-                    yolox_endpoints=self._build_yolox_endpoints(),
+                raw = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        extract_primitives_from_pptx,
+                        df_ledger=df,
+                        extract_text=True,
+                        extract_tables=yolox_on,
+                        extract_charts=yolox_on,
+                        extract_images=yolox_on,
+                        yolox_endpoints=self._build_yolox_endpoints(),
+                    ),
                 )
+                return self._unpack_extraction_result(raw)
 
             elif extractor_type == "html":
-                # HTML uses text extractor with markdown conversion
-                return self._extract_html(df)
+                # HTML uses our own text extractor (lightweight, no NIM needed)
+                return await loop.run_in_executor(
+                    None, self._extract_html, df,
+                )
 
             elif extractor_type == "image":
                 from nv_ingest_api.interface.extract import (
                     extract_primitives_from_image,
                 )
 
-                return extract_primitives_from_image(
-                    df_ledger=df,
-                    extract_text=True,
-                    extract_tables=yolox_on,
-                    extract_charts=yolox_on,
-                    extract_images=yolox_on,
-                    yolox_endpoints=self._build_yolox_endpoints(),
+                raw = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        extract_primitives_from_image,
+                        df_ledger=df,
+                        extract_text=True,
+                        extract_tables=yolox_on,
+                        extract_charts=yolox_on,
+                        extract_images=yolox_on,
+                        yolox_endpoints=self._build_yolox_endpoints(),
+                    ),
                 )
+                return self._unpack_extraction_result(raw)
 
             elif extractor_type == "audio":
                 if not self._settings.riva_enabled:
@@ -271,18 +318,26 @@ class DocumentProcessor:
                     extract_primitives_from_audio,
                 )
 
-                return extract_primitives_from_audio(
-                    df_ledger=df,
-                    audio_endpoints=(self._settings.riva_endpoint, ""),
-                    audio_infer_protocol="grpc",
+                raw = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        extract_primitives_from_audio,
+                        df_ledger=df,
+                        audio_endpoints=(self._settings.riva_endpoint, ""),
+                        audio_infer_protocol="grpc",
+                    ),
                 )
+                return self._unpack_extraction_result(raw)
 
             elif extractor_type == "video":
                 logger.warning("⚠️ Video extraction is early access")
                 return self._extract_video(df)
 
             elif extractor_type == "text":
-                return self._extract_text(df)
+                # Text extraction is lightweight (base64 decode only)
+                return await loop.run_in_executor(
+                    None, self._extract_text, df,
+                )
 
             else:
                 raise UnsupportedMimeTypeError(mime_type)

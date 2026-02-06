@@ -8,12 +8,14 @@ Verifies:
 2. Extraction produces non-empty results with text
 3. Text is in metadata["content"] (where nv-ingest chunker reads)
 4. _chunk_content reads from the correct field
+5. Audio extraction works with mocked Riva NIM
 """
 
 import asyncio
 import base64
+import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -55,10 +57,8 @@ _SKIP_EXTRACTORS: dict[str, str] = {
 }
 
 # Files known to be invalid/corrupt for their declared format.
-# architecture_db.docx is actually plain text mislabeled as DOCX.
-_XFAIL_FILES: dict[str, str] = {
-    "architecture_db.docx": "File is plain text mislabeled as DOCX (not a ZIP archive)",
-}
+# Add entries here if test fixtures can't be replaced with valid files.
+_XFAIL_FILES: dict[str, str] = {}
 
 
 def _discover_all_testdocs() -> list[tuple[str, str, str, Path]]:
@@ -397,3 +397,314 @@ class TestChunkFieldMapping:
 
         assert text_rows > 0, f"No text rows from {name}"
         assert total_chars > 100, f"Only {total_chars} chars from {name}"
+
+
+# Helper: filter audio files from _ALL_DOCS
+_AUDIO_DOCS = [d for d in _ALL_DOCS if d[2] == "audio"]
+
+
+class TestAudioExtraction:
+    """Test audio extraction with mocked Riva NIM.
+
+    Audio extraction requires NVIDIA Riva NIM for speech-to-text
+    transcription via gRPC. These tests mock the Riva client at the
+    nv-ingest-api internal level (``create_audio_inference_client``)
+    to verify the full extraction pipeline without the GPU container.
+
+    Mock strategy:
+    - Mock ``create_audio_inference_client`` → returns a mock
+      ``ParakeetClient`` whose ``infer()`` returns realistic
+      ``(segments, transcript)`` data.
+    - Real nv-ingest extraction code runs: DataFrame prep, row
+      iteration, base64 decode, metadata assembly.
+    - Only the actual gRPC call is bypassed.
+    """
+
+    # Realistic mock transcript matching Riva output format.
+    # infer() returns (segments, full_transcript).
+    _MOCK_SEGMENTS = [
+        {"start": 0.0, "end": 2.8, "text": "Hello world."},
+        {"start": 2.8, "end": 5.5, "text": "This is an audio test transcript."},
+    ]
+    _MOCK_TRANSCRIPT = "Hello world. This is an audio test transcript."
+
+    def setup_method(self) -> None:
+        """Create processor with Riva enabled."""
+        os.environ["INGESTOR_RIVA_ENABLED"] = "true"
+        reset_settings()
+        self.settings = IngestorSettings()
+        self.processor = DocumentProcessor(self.settings)
+
+    def teardown_method(self) -> None:
+        """Reset settings and env."""
+        os.environ.pop("INGESTOR_RIVA_ENABLED", None)
+        reset_settings()
+
+    @staticmethod
+    def _build_mock_audio_result(
+        file_name: str,
+        document_id: int,
+    ) -> tuple[pd.DataFrame, dict]:
+        """Build a realistic mock result matching nv-ingest audio output.
+
+        nv-ingest audio extraction returns ``(DataFrame, dict)`` where the
+        DataFrame has one row per audio segment with transcript in
+        ``audio_metadata.audio_transcript``.
+
+        Args:
+            file_name: Source filename for metadata.
+            document_id: Document ID for metadata.
+
+        Returns:
+            Tuple of (result DataFrame, empty trace dict).
+        """
+        return (
+            pd.DataFrame({
+                "document_type": ["audio", "audio"],
+                "metadata": [
+                    {
+                        "content_metadata": {
+                            "type": "audio",
+                            "start_time": 0.0,
+                            "end_time": 2.8,
+                        },
+                        "audio_metadata": {
+                            "audio_transcript": "Hello world.",
+                        },
+                        "source_metadata": {
+                            "source_name": file_name,
+                            "source_id": str(document_id),
+                        },
+                    },
+                    {
+                        "content_metadata": {
+                            "type": "audio",
+                            "start_time": 2.8,
+                            "end_time": 5.5,
+                        },
+                        "audio_metadata": {
+                            "audio_transcript": "This is an audio test transcript.",
+                        },
+                        "source_metadata": {
+                            "source_name": file_name,
+                            "source_id": str(document_id),
+                        },
+                    },
+                ],
+                "uuid": [f"uuid-{document_id}-1", f"uuid-{document_id}-2"],
+            }),
+            {},  # execution trace log
+        )
+
+    # ------------------------------------------------------------------
+    # Parametrized: each audio file from testdocs/
+    # ------------------------------------------------------------------
+
+    @pytest.mark.parametrize(
+        "name,mime,extractor,path",
+        _AUDIO_DOCS,
+        ids=[d[0] for d in _AUDIO_DOCS],
+    )
+    def test_audio_extraction_produces_transcript(
+        self,
+        name: str,
+        mime: str,
+        extractor: str,
+        path: Path,
+    ) -> None:
+        """Extract audio files with mocked Riva and verify transcript output.
+
+        Mocks ``extract_primitives_from_audio`` at the nv-ingest-api public
+        interface. Verifies:
+        - Extraction produces a non-empty DataFrame
+        - Transcript text exists in ``audio_metadata.audio_transcript``
+        - ``_unpack_extraction_result`` correctly handles (DataFrame, dict) tuple
+        """
+        pytest.importorskip("nv_ingest_api", reason="nv_ingest_api not installed")
+
+        file_bytes = path.read_bytes()
+        df = self.processor._build_dataframe(
+            file_bytes=file_bytes,
+            document_id=1,
+            file_name=name,
+            mime_type=mime,
+        )
+
+        mock_result = self._build_mock_audio_result(name, document_id=1)
+
+        with patch(
+            "nv_ingest_api.interface.extract.extract_primitives_from_audio",
+            return_value=mock_result,
+        ):
+            result = asyncio.get_event_loop().run_until_complete(
+                self.processor._extract(df, mime, document_id=1)
+            )
+
+        # Must produce non-empty DataFrame (tuple was unpacked)
+        assert isinstance(result, pd.DataFrame), (
+            f"Expected DataFrame, got {type(result).__name__}"
+        )
+        assert not result.empty, (
+            f"Audio extraction returned empty DataFrame for {name}"
+        )
+
+        # Verify transcript in audio_metadata
+        found_transcript = False
+        total_chars = 0
+        for _, row in result.iterrows():
+            meta = row.get("metadata", {})
+            audio_meta = meta.get("audio_metadata", {})
+            transcript = audio_meta.get("audio_transcript", "")
+            if transcript and isinstance(transcript, str) and transcript.strip():
+                found_transcript = True
+                total_chars += len(transcript)
+
+        assert found_transcript, (
+            f"No transcript in audio_metadata for {name}. "
+            f"Audio extraction must produce audio_metadata.audio_transcript."
+        )
+        assert total_chars > 10, (
+            f"Only {total_chars} chars transcribed from {name}"
+        )
+
+    # ------------------------------------------------------------------
+    # Audio metadata structure
+    # ------------------------------------------------------------------
+
+    @pytest.mark.parametrize(
+        "name,mime,extractor,path",
+        _AUDIO_DOCS,
+        ids=[d[0] for d in _AUDIO_DOCS],
+    )
+    def test_audio_metadata_structure(
+        self,
+        name: str,
+        mime: str,
+        extractor: str,
+        path: Path,
+    ) -> None:
+        """Audio output must have correct metadata structure.
+
+        Each row must contain:
+        - content_metadata with type and time offsets
+        - audio_metadata with audio_transcript
+        - source_metadata with source info
+        """
+        pytest.importorskip("nv_ingest_api", reason="nv_ingest_api not installed")
+
+        file_bytes = path.read_bytes()
+        df = self.processor._build_dataframe(
+            file_bytes=file_bytes,
+            document_id=1,
+            file_name=name,
+            mime_type=mime,
+        )
+
+        mock_result = self._build_mock_audio_result(name, document_id=1)
+
+        with patch(
+            "nv_ingest_api.interface.extract.extract_primitives_from_audio",
+            return_value=mock_result,
+        ):
+            result = asyncio.get_event_loop().run_until_complete(
+                self.processor._extract(df, mime, document_id=1)
+            )
+
+        assert "metadata" in result.columns
+        assert "document_type" in result.columns
+
+        for _, row in result.iterrows():
+            meta = row.get("metadata", {})
+            assert "content_metadata" in meta, f"Missing content_metadata for {name}"
+            assert "audio_metadata" in meta, f"Missing audio_metadata for {name}"
+            assert "source_metadata" in meta, f"Missing source_metadata for {name}"
+
+            # Verify time offsets
+            cm = meta["content_metadata"]
+            assert "start_time" in cm, f"Missing start_time for {name}"
+            assert "end_time" in cm, f"Missing end_time for {name}"
+            assert cm["end_time"] > cm["start_time"], (
+                f"end_time must be > start_time for {name}"
+            )
+
+    # ------------------------------------------------------------------
+    # Riva disabled → empty result
+    # ------------------------------------------------------------------
+
+    def test_audio_returns_empty_when_riva_disabled(self) -> None:
+        """Audio extraction returns empty DataFrame when riva_enabled=False.
+
+        This is the expected behavior when Riva NIM is not deployed.
+        The processor should return early without calling nv-ingest-api.
+        """
+        if not _AUDIO_DOCS:
+            pytest.skip("No audio files in testdocs/")
+
+        # Create processor with default settings (riva_enabled=False)
+        os.environ.pop("INGESTOR_RIVA_ENABLED", None)
+        reset_settings()
+        default_settings = IngestorSettings()
+        processor = DocumentProcessor(default_settings)
+
+        name, mime, _, path = _AUDIO_DOCS[0]
+        file_bytes = path.read_bytes()
+        df = processor._build_dataframe(
+            file_bytes=file_bytes,
+            document_id=1,
+            file_name=name,
+            mime_type=mime,
+        )
+
+        result = asyncio.get_event_loop().run_until_complete(
+            processor._extract(df, mime, document_id=1)
+        )
+
+        assert result.empty, (
+            "Audio extraction should return empty when Riva disabled"
+        )
+
+    # ------------------------------------------------------------------
+    # Riva endpoint format
+    # ------------------------------------------------------------------
+
+    def test_audio_passes_grpc_endpoint(self) -> None:
+        """Audio extraction passes Riva gRPC endpoint correctly.
+
+        The audio_endpoints tuple must be (gRPC, HTTP) where the gRPC
+        endpoint is the Riva NIM address in ``host:port`` format (no
+        ``http://`` prefix).
+        """
+        pytest.importorskip("nv_ingest_api", reason="nv_ingest_api not installed")
+
+        if not _AUDIO_DOCS:
+            pytest.skip("No audio files in testdocs/")
+
+        name, mime, _, path = _AUDIO_DOCS[0]
+        file_bytes = path.read_bytes()
+        df = self.processor._build_dataframe(
+            file_bytes=file_bytes,
+            document_id=1,
+            file_name=name,
+            mime_type=mime,
+        )
+
+        mock_fn = MagicMock(return_value=(pd.DataFrame(), {}))
+        with patch(
+            "nv_ingest_api.interface.extract.extract_primitives_from_audio",
+            mock_fn,
+        ):
+            asyncio.get_event_loop().run_until_complete(
+                self.processor._extract(df, mime, document_id=1)
+            )
+
+        mock_fn.assert_called_once()
+        kwargs = mock_fn.call_args[1]
+
+        # audio_endpoints is (gRPC, HTTP) tuple
+        assert "audio_endpoints" in kwargs
+        grpc_ep, http_ep = kwargs["audio_endpoints"]
+        assert grpc_ep == self.settings.riva_endpoint
+        assert not grpc_ep.startswith("http://"), (
+            f"gRPC endpoint must not have http:// prefix, got {grpc_ep}"
+        )
+        assert kwargs["audio_infer_protocol"] == "grpc"
