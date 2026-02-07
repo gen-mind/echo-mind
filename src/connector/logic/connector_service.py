@@ -34,7 +34,10 @@ from connector.logic.providers.base import (
     FileMetadata,
     StreamResult,
 )
+from connector.logic.providers.google_calendar import GoogleCalendarProvider
+from connector.logic.providers.google_contacts import GoogleContactsProvider
 from connector.logic.providers.google_drive import GoogleDriveProvider
+from connector.logic.providers.google_gmail import GmailProvider
 from connector.logic.providers.onedrive import OneDriveProvider
 
 logger = logging.getLogger("echomind-connector.service")
@@ -43,6 +46,9 @@ logger = logging.getLogger("echomind-connector.service")
 # Provider registry
 PROVIDERS: dict[str, type[BaseProvider]] = {
     "google_drive": GoogleDriveProvider,
+    "gmail": GmailProvider,
+    "google_calendar": GoogleCalendarProvider,
+    "google_contacts": GoogleContactsProvider,
     "onedrive": OneDriveProvider,
 }
 

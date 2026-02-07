@@ -26,6 +26,7 @@ from api.routes import (
     connectors,
     documents,
     embedding_models,
+    google_oauth,
     health,
     llms,
     oauth,
@@ -471,6 +472,9 @@ def create_app() -> FastAPI:
     )
     app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
     app.include_router(teams.router, prefix="/api/v1/teams", tags=["Teams"])
+    app.include_router(
+        google_oauth.router, prefix="/api/v1/google", tags=["Google OAuth"]
+    )
 
     # WebSocket endpoint
     @app.websocket("/api/v1/ws/chat")

@@ -128,6 +128,20 @@ class Settings(BaseSettings):
     )
     
     
+    # Google OAuth (for Google Workspace integration)
+    google_client_id: str | None = Field(
+        default=None,
+        description="Google OAuth client ID for Google Workspace integration",
+    )
+    google_client_secret: str | None = Field(
+        default=None,
+        description="Google OAuth client secret",
+    )
+    google_redirect_uri: str | None = Field(
+        default=None,
+        description="Google OAuth redirect URI (callback URL)",
+    )
+
     # Embedder gRPC
     embedder_host: str = Field(default="localhost", description="Embedder gRPC host")
     embedder_port: int = Field(default=50051, description="Embedder gRPC port")

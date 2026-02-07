@@ -399,6 +399,8 @@ services:
     build:
       context: ../../src
       dockerfile: embedder/Dockerfile
+      args:
+        - HF_TOKEN=${HF_TOKEN:-}
     container_name: echomind-embedder
     hostname: embedder
     # NO ports - internal only (gRPC accessed by other services)
@@ -493,6 +495,8 @@ services:
     build:
       context: ../../src
       dockerfile: ingestor/Dockerfile
+      args:
+        - HF_TOKEN=${HF_TOKEN:-}
     container_name: echomind-ingestor
     hostname: ingestor
     env_file:

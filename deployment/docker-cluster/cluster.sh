@@ -366,7 +366,13 @@ build_services() {
 
         for svc in "${services[@]}"; do
             log_info "Building ${svc}..."
-            docker compose -f "$COMPOSE_FILE" build "$svc"
+            # Pass HF_TOKEN as build arg if set (for model pre-download)
+            if [ -n "${HF_TOKEN:-}" ]; then
+                log_info "  Using HF_TOKEN for ${svc}"
+                docker compose -f "$COMPOSE_FILE" build --build-arg HF_TOKEN="$HF_TOKEN" "$svc"
+            else
+                docker compose -f "$COMPOSE_FILE" build "$svc"
+            fi
             log_success "${svc} built"
         done
 
@@ -377,7 +383,13 @@ build_services() {
         log_step "Building ${SERVICE}..."
         echo ""
 
-        docker compose -f "$COMPOSE_FILE" build "$SERVICE"
+        # Pass HF_TOKEN as build arg if set (for model pre-download)
+        if [ -n "${HF_TOKEN:-}" ]; then
+            log_info "Using HF_TOKEN for build"
+            docker compose -f "$COMPOSE_FILE" build --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
+        else
+            docker compose -f "$COMPOSE_FILE" build "$SERVICE"
+        fi
 
         echo ""
         log_success "${SERVICE} built!"
@@ -399,7 +411,13 @@ rebuild_service() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose -f "$COMPOSE_FILE" build --no-cache "$SERVICE"
+    # Pass HF_TOKEN as build arg if set (for model pre-download)
+    if [ -n "${HF_TOKEN:-}" ]; then
+        log_info "Using HF_TOKEN for build"
+        docker compose -f "$COMPOSE_FILE" build --no-cache --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
+    else
+        docker compose -f "$COMPOSE_FILE" build --no-cache "$SERVICE"
+    fi
     docker compose -f "$COMPOSE_FILE" up -d --force-recreate "$SERVICE"
 
     echo ""
