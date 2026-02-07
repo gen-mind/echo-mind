@@ -101,6 +101,24 @@ else
     exit 1
 fi
 
+# Read ENABLE_OBSERVABILITY from .env
+OBSERVABILITY_PROFILE=""
+OBSERVABILITY_FILES=""
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    if grep -q "^ENABLE_OBSERVABILITY=true" "$SCRIPT_DIR/.env" 2>/dev/null; then
+        OBSERVABILITY_PROFILE="--profile observability"
+        OBSERVABILITY_FILES="-f docker-compose-observability.yml"
+        if [ "$MODE" = "host" ]; then
+            OBSERVABILITY_FILES="$OBSERVABILITY_FILES -f docker-compose-observability-host.yml"
+        fi
+    fi
+elif [ "$MODE" = "host" ] && [ -f "$SCRIPT_DIR/.env.host" ]; then
+    if grep -q "^ENABLE_OBSERVABILITY=true" "$SCRIPT_DIR/.env.host" 2>/dev/null; then
+        OBSERVABILITY_PROFILE="--profile observability"
+        OBSERVABILITY_FILES="-f docker-compose-observability.yml -f docker-compose-observability-host.yml"
+    fi
+fi
+
 # Functions
 log_info() {
     echo -e "${BLUE}ℹ️  ${NC}$1"
@@ -182,6 +200,13 @@ create_directories() {
         mkdir -p "$PROJECT_ROOT/data/portainer"
     fi
 
+    # Observability data directories
+    if [ -n "$OBSERVABILITY_PROFILE" ]; then
+        mkdir -p "$PROJECT_ROOT/data/prometheus"
+        mkdir -p "$PROJECT_ROOT/data/loki"
+        mkdir -p "$PROJECT_ROOT/data/grafana"
+    fi
+
     log_success "Data directories created"
 }
 
@@ -200,8 +225,8 @@ start_cluster() {
     cd "$SCRIPT_DIR"
     # Use down + up to ensure env vars from .env are always applied
     # (--force-recreate alone doesn't always work)
-    docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
-    docker compose -f "$COMPOSE_FILE" up -d
+    docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE down 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE up -d
 
     echo ""
     log_success "Cluster started successfully!"
@@ -218,6 +243,10 @@ start_cluster() {
         echo -e "  ${GREEN}📦 MinIO:${NC}      https://minio.demo.echomind.ch"
         echo -e "  ${GREEN}🔍 Qdrant:${NC}     https://qdrant.demo.echomind.ch"
         echo -e "  ${GREEN}🐳 Portainer:${NC}  https://portainer.demo.echomind.ch"
+        if [ -n "$OBSERVABILITY_PROFILE" ]; then
+            echo -e "  ${GREEN}📊 Grafana:${NC}    https://grafana.demo.echomind.ch"
+            echo -e "  ${GREEN}📈 Prometheus:${NC} https://prometheus.demo.echomind.ch"
+        fi
         echo ""
 
         log_info "API Endpoints (base: https://api.demo.echomind.ch):"
@@ -246,6 +275,10 @@ start_cluster() {
         echo -e "  ${GREEN}🔐 Authentik:${NC}  http://auth.localhost"
         echo -e "  ${GREEN}📦 MinIO:${NC}      http://minio.localhost"
         echo -e "  ${GREEN}📊 Traefik:${NC}    http://localhost:8080"
+        if [ -n "$OBSERVABILITY_PROFILE" ]; then
+            echo -e "  ${GREEN}📊 Grafana:${NC}    http://grafana.localhost"
+            echo -e "  ${GREEN}📈 Prometheus:${NC} http://prometheus.localhost"
+        fi
         echo ""
 
         log_info "API Endpoints (base: http://api.localhost):"
@@ -283,7 +316,7 @@ stop_cluster() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose -f "$COMPOSE_FILE" down
+    docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE down
 
     echo ""
     log_success "Cluster stopped successfully!"
@@ -299,8 +332,8 @@ restart_cluster() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose -f "$COMPOSE_FILE" down
-    docker compose -f "$COMPOSE_FILE" up -d
+    docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE down
+    docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE up -d
 
     echo ""
     log_success "Cluster restarted successfully!"
@@ -312,10 +345,10 @@ show_logs() {
 
     if [ -z "$1" ]; then
         log_info "Showing logs for all services (Ctrl+C to exit)..."
-        docker compose -f "$COMPOSE_FILE" logs -f
+        docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE logs -f
     else
         log_info "Showing logs for service: $1 (Ctrl+C to exit)..."
-        docker compose -f "$COMPOSE_FILE" logs -f "$1"
+        docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE logs -f "$1"
     fi
 }
 
@@ -327,7 +360,7 @@ show_status() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose -f "$COMPOSE_FILE" ps
+    docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE ps
 
     echo ""
 }
@@ -340,7 +373,7 @@ pull_images() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose -f "$COMPOSE_FILE" pull
+    docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE pull
 
     echo ""
     log_success "Images updated successfully!"
@@ -369,9 +402,9 @@ build_services() {
             # Pass HF_TOKEN as build arg if set (for model pre-download)
             if [ -n "${HF_TOKEN:-}" ]; then
                 log_info "  Using HF_TOKEN for ${svc}"
-                docker compose -f "$COMPOSE_FILE" build --build-arg HF_TOKEN="$HF_TOKEN" "$svc"
+                docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE build --build-arg HF_TOKEN="$HF_TOKEN" "$svc"
             else
-                docker compose -f "$COMPOSE_FILE" build "$svc"
+                docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE build "$svc"
             fi
             log_success "${svc} built"
         done
@@ -386,9 +419,9 @@ build_services() {
         # Pass HF_TOKEN as build arg if set (for model pre-download)
         if [ -n "${HF_TOKEN:-}" ]; then
             log_info "Using HF_TOKEN for build"
-            docker compose -f "$COMPOSE_FILE" build --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
+            docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE build --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
         else
-            docker compose -f "$COMPOSE_FILE" build "$SERVICE"
+            docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE build "$SERVICE"
         fi
 
         echo ""
@@ -414,11 +447,11 @@ rebuild_service() {
     # Pass HF_TOKEN as build arg if set (for model pre-download)
     if [ -n "${HF_TOKEN:-}" ]; then
         log_info "Using HF_TOKEN for build"
-        docker compose -f "$COMPOSE_FILE" build --no-cache --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
+        docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE build --no-cache --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
     else
-        docker compose -f "$COMPOSE_FILE" build --no-cache "$SERVICE"
+        docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE build --no-cache "$SERVICE"
     fi
-    docker compose -f "$COMPOSE_FILE" up -d --force-recreate "$SERVICE"
+    docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE up -d --force-recreate "$SERVICE"
 
     echo ""
     log_success "${SERVICE} service rebuilt and restarted!"

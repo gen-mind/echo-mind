@@ -70,6 +70,8 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--log.level=INFO"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entrypoint=traefik"
     labels:
       - "traefik.enable=true"
 
@@ -226,6 +228,7 @@ services:
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_PROMETHEUS_AUTH_TYPE=public
     ports:
       - "9000:9000"  # API
       - "9001:9001"  # Console

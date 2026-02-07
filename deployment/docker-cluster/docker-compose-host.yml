@@ -63,6 +63,7 @@ services:
     volumes:
       - ${DATA_PATH}/traefik/certificates:/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${CONFIG_PATH}/traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 10s
@@ -76,9 +77,13 @@ services:
       - "--ping=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--log.level=INFO"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entrypoint=traefik"
       # SSL - Let's Encrypt ACME
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
@@ -88,13 +93,6 @@ services:
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
     labels:
       - "traefik.enable=true"
-      # =============================================
-      # Forward Auth Middleware (Authentik Outpost)
-      # Used to protect admin dashboards (Qdrant, MinIO)
-      # =============================================
-      - "traefik.http.middlewares.authentik-forward-auth.forwardAuth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
-      - "traefik.http.middlewares.authentik-forward-auth.forwardAuth.trustForwardHeader=true"
-      - "traefik.http.middlewares.authentik-forward-auth.forwardAuth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-uid,X-authentik-jwt"
 
   # ===============================================
   # PostgreSQL - Shared DB (Authentik + API)
@@ -149,7 +147,7 @@ services:
       - "traefik.http.routers.adminer.rule=Host(`${POSTGRES_DOMAIN}`)"
       - "traefik.http.routers.adminer.entrypoints=websecure"
       - "traefik.http.routers.adminer.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.adminer.middlewares=authentik-forward-auth"
+      - "traefik.http.routers.adminer.middlewares=authentik-forward-auth@file"
       - "traefik.http.services.adminer.loadbalancer.server.port=8080"
 
   # ===============================================
@@ -244,7 +242,7 @@ services:
       - "traefik.http.routers.qdrant.rule=Host(`${QDRANT_DOMAIN}`)"
       - "traefik.http.routers.qdrant.entrypoints=websecure"
       - "traefik.http.routers.qdrant.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.qdrant.middlewares=authentik-forward-auth"
+      - "traefik.http.routers.qdrant.middlewares=authentik-forward-auth@file"
       - "traefik.http.services.qdrant.loadbalancer.server.port=6333"
 
   # ===============================================
@@ -258,6 +256,7 @@ services:
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_PROMETHEUS_AUTH_TYPE=public
     # NO ports - internal only, console exposed via Traefik
     volumes:
       - minio_data:/data
@@ -276,7 +275,7 @@ services:
       - "traefik.http.routers.minio-console.rule=Host(`${MINIO_DOMAIN}`)"
       - "traefik.http.routers.minio-console.entrypoints=websecure"
       - "traefik.http.routers.minio-console.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.minio-console.middlewares=authentik-forward-auth"
+      - "traefik.http.routers.minio-console.middlewares=authentik-forward-auth@file"
       - "traefik.http.routers.minio-console.service=minio-console"
       - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
       # MinIO API (for S3-compatible access)
@@ -339,7 +338,7 @@ services:
       - "traefik.http.routers.nui.rule=Host(`${NATS_DOMAIN}`)"
       - "traefik.http.routers.nui.entrypoints=websecure"
       - "traefik.http.routers.nui.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.nui.middlewares=authentik-forward-auth"
+      - "traefik.http.routers.nui.middlewares=authentik-forward-auth@file"
       - "traefik.http.services.nui.loadbalancer.server.port=31311"
 
   # ===============================================
