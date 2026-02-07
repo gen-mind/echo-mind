@@ -752,6 +752,54 @@ class TestDocumentProcessor:
             assert call_kwargs["tokenizer"] == self.settings.tokenizer
 
     @pytest.mark.asyncio
+    async def test_chunk_content_passes_hf_token_when_set(self) -> None:
+        """Test chunking passes hugging_face_access_token (not 'params') when token is set.
+
+        The nv-ingest-api function signature uses hugging_face_access_token
+        as a direct kwarg, NOT a 'params' dict. This test prevents regression
+        of the wrong kwarg name being used.
+        """
+        nv_ingest = pytest.importorskip("nv_ingest_api", reason="nv_ingest_api not installed")
+
+        with patch(
+            "nv_ingest_api.interface.transform.transform_text_split_and_tokenize"
+        ) as mock_transform:
+            mock_transform.return_value = pd.DataFrame()
+
+            with patch.object(self.processor._settings, "hf_access_token", "hf_test_token"):
+                df = pd.DataFrame({"test": [1]})
+                await self.processor._chunk_content(df, document_id=1)
+
+                call_kwargs = mock_transform.call_args[1]
+                # Must use hugging_face_access_token, NOT params
+                assert "hugging_face_access_token" in call_kwargs
+                assert call_kwargs["hugging_face_access_token"] == "hf_test_token"
+                assert "params" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_chunk_content_omits_hf_token_when_none(self) -> None:
+        """Test chunking does NOT pass hugging_face_access_token when token is None.
+
+        When no HF token is configured (models are pre-cached at Docker build
+        time), the kwarg should be omitted entirely to let nv-ingest-api
+        use its default.
+        """
+        nv_ingest = pytest.importorskip("nv_ingest_api", reason="nv_ingest_api not installed")
+
+        with patch(
+            "nv_ingest_api.interface.transform.transform_text_split_and_tokenize"
+        ) as mock_transform:
+            mock_transform.return_value = pd.DataFrame()
+
+            with patch.object(self.processor._settings, "hf_access_token", None):
+                df = pd.DataFrame({"test": [1]})
+                await self.processor._chunk_content(df, document_id=1)
+
+                call_kwargs = mock_transform.call_args[1]
+                assert "hugging_face_access_token" not in call_kwargs
+                assert "params" not in call_kwargs
+
+    @pytest.mark.asyncio
     async def test_chunk_content_raises_chunking_error(self) -> None:
         """Test chunking raises ChunkingError on failure."""
         nv_ingest = pytest.importorskip("nv_ingest_api", reason="nv_ingest_api not installed")

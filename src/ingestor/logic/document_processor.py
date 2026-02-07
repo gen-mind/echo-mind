@@ -488,23 +488,20 @@ class DocumentProcessor:
 
             # Tokenization is CPU-bound; run in executor to avoid
             # blocking the event loop for large documents.
-            # Build params dict with HF token if available.
-            params = {}
+            kwargs: dict[str, object] = {
+                "inputs": extracted_df,
+                "tokenizer": self._settings.tokenizer,
+                "chunk_size": self._settings.chunk_size,
+                "chunk_overlap": self._settings.chunk_overlap,
+                "split_source_types": ["text", "PDF", "DOCX", "PPTX", "HTML"],
+            }
             if self._settings.hf_access_token:
-                params["hf_access_token"] = self._settings.hf_access_token
+                kwargs["hugging_face_access_token"] = self._settings.hf_access_token
 
             loop = asyncio.get_running_loop()
             chunked_df = await loop.run_in_executor(
                 None,
-                functools.partial(
-                    transform_text_split_and_tokenize,
-                    inputs=extracted_df,
-                    tokenizer=self._settings.tokenizer,
-                    chunk_size=self._settings.chunk_size,
-                    chunk_overlap=self._settings.chunk_overlap,
-                    split_source_types=["text", "PDF", "DOCX", "PPTX", "HTML"],
-                    params=params,
-                ),
+                functools.partial(transform_text_split_and_tokenize, **kwargs),
             )
 
             # Extract text from chunked DataFrame.
