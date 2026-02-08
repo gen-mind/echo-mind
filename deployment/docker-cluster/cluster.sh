@@ -199,11 +199,14 @@ create_directories() {
         mkdir -p "$PROJECT_ROOT/data/portainer"
     fi
 
-    # Observability data directories
+    # Observability data directories (containers run as non-root users)
     if [ -n "$OBSERVABILITY_PROFILE" ]; then
         mkdir -p "$PROJECT_ROOT/data/prometheus"
         mkdir -p "$PROJECT_ROOT/data/loki"
         mkdir -p "$PROJECT_ROOT/data/grafana"
+        chown -R 65534:65534 "$PROJECT_ROOT/data/prometheus"  # prometheus runs as nobody
+        chown -R 10001:10001 "$PROJECT_ROOT/data/loki"        # loki runs as uid 10001
+        chown -R 472:472 "$PROJECT_ROOT/data/grafana"         # grafana runs as uid 472
     fi
 
     log_success "Data directories created"
