@@ -462,8 +462,51 @@ show_status() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE ps
 
+    # Get all containers
+    ALL_CONTAINERS=$(docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE ps --format "{{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null)
+
+    # Group containers by prefix
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}🚀 Application Services${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "$ALL_CONTAINERS" | grep "^echomind-" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}' || echo "  ${YELLOW}No application services running${NC}"
+    echo ""
+
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}🗄️  Data Services${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "$ALL_CONTAINERS" | grep "^data-" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}' || echo "  ${YELLOW}No data services running${NC}"
+    echo ""
+
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}🏗️  Infrastructure Services${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "$ALL_CONTAINERS" | grep "^infra-" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}' || echo "  ${YELLOW}No infrastructure services running${NC}"
+    echo ""
+
+    if echo "$ALL_CONTAINERS" | grep -q "^observability-"; then
+        echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${MAGENTA}📊 Observability Services${NC}"
+        echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo "$ALL_CONTAINERS" | grep "^observability-" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}'
+        echo ""
+    fi
+
+    if echo "$ALL_CONTAINERS" | grep -q "^init-"; then
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${YELLOW}⚙️  Initialization Jobs${NC}"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo "$ALL_CONTAINERS" | grep "^init-" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}'
+        echo ""
+    fi
+
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+    # Summary
+    TOTAL=$(echo "$ALL_CONTAINERS" | wc -l | tr -d ' ')
+    RUNNING=$(echo "$ALL_CONTAINERS" | grep -c "Up" || echo "0")
+    echo -e "${CYAN}📈 Summary:${NC} ${GREEN}${RUNNING}${NC}/${TOTAL} containers running"
     echo ""
 }
 
