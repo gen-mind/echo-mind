@@ -157,7 +157,7 @@ services:
   # VISUALIZATION + ALERTING
   # ============================================
   grafana:
-    image: grafana/grafana:12.4.0
+    image: grafana/grafana:12.3.2
     container_name: echomind-grafana
     profiles: ["observability"]
     volumes:
