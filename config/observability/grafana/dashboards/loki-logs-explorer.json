@@ -6,7 +6,7 @@
   "tags": ["echomind", "logs", "loki"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "10s",
   "time": {
     "from": "now-1h",
@@ -88,7 +88,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "sum by (service) (count_over_time({service=~\"$service\", platform=\"docker\"} |~ \"(?i)(ERROR|CRITICAL)\" [$__auto]))",
+          "expr": "sum by (service) (count_over_time({service=~\"$service\", level=~\"ERROR|CRITICAL\", platform=\"docker\"} [$__auto]))",
           "legendFormat": "{{service}}",
           "refId": "A"
         }
@@ -121,13 +121,13 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{service=~\"$service\", platform=\"docker\"} |~ \"(?i)$level\" |~ \"$search\"",
+          "expr": "{service=~\"$service\", level=~\"$level\", platform=\"docker\"} |~ \"$search\" | line_format `{{ regexReplaceAll \"^\\\\d{4}-\\\\d{2}-\\\\d{2} \\\\S+ - \\\\S+ - \\\\w+ - \" . \"\" }}`",
           "refId": "A"
         }
       ],
       "options": {
         "showTime": true,
-        "showLabels": true,
+        "showLabels": false,
         "showCommonLabels": false,
         "wrapLogMessage": true,
         "prettifyLogMessage": false,
