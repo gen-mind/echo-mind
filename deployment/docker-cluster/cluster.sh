@@ -101,21 +101,20 @@ else
     exit 1
 fi
 
-# Read ENABLE_OBSERVABILITY from .env
+# Read ENABLE_OBSERVABILITY from .env (or .env.host for host mode)
 OBSERVABILITY_PROFILE=""
 OBSERVABILITY_FILES=""
-if [ -f "$SCRIPT_DIR/.env" ]; then
-    if grep -q "^ENABLE_OBSERVABILITY=true" "$SCRIPT_DIR/.env" 2>/dev/null; then
-        OBSERVABILITY_PROFILE="--profile observability"
-        OBSERVABILITY_FILES="-f docker-compose-observability.yml"
-        if [ "$MODE" = "host" ]; then
-            OBSERVABILITY_FILES="$OBSERVABILITY_FILES -f docker-compose-observability-host.yml"
-        fi
-    fi
-elif [ "$MODE" = "host" ] && [ -f "$SCRIPT_DIR/.env.host" ]; then
-    if grep -q "^ENABLE_OBSERVABILITY=true" "$SCRIPT_DIR/.env.host" 2>/dev/null; then
-        OBSERVABILITY_PROFILE="--profile observability"
-        OBSERVABILITY_FILES="-f docker-compose-observability.yml -f docker-compose-observability-host.yml"
+_obs_enabled=false
+if [ -f "$SCRIPT_DIR/.env" ] && grep -q "^[[:space:]]*ENABLE_OBSERVABILITY[[:space:]]*=[[:space:]]*true" "$SCRIPT_DIR/.env" 2>/dev/null; then
+    _obs_enabled=true
+elif [ "$MODE" = "host" ] && [ -f "$SCRIPT_DIR/.env.host" ] && grep -q "^[[:space:]]*ENABLE_OBSERVABILITY[[:space:]]*=[[:space:]]*true" "$SCRIPT_DIR/.env.host" 2>/dev/null; then
+    _obs_enabled=true
+fi
+if [ "$_obs_enabled" = true ]; then
+    OBSERVABILITY_PROFILE="--profile observability"
+    OBSERVABILITY_FILES="-f docker-compose-observability.yml"
+    if [ "$MODE" = "host" ]; then
+        OBSERVABILITY_FILES="$OBSERVABILITY_FILES -f docker-compose-observability-host.yml"
     fi
 fi
 
