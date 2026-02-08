@@ -66,12 +66,6 @@ services:
       - /etc/alloy/config.alloy
       - --storage.path=/var/lib/alloy/data
       - --server.http.listen-addr=0.0.0.0:12345
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:12345/-/ready"]
-      interval: 15s
-      timeout: 5s
-      start_period: 10s
-      retries: 3
     depends_on:
       loki:
         condition: service_started
@@ -163,11 +157,15 @@ services:
       - GF_SERVER_ROOT_URL=${PROTOCOL}://grafana.${DOMAIN}
       - GF_SERVER_DOMAIN=grafana.${DOMAIN}
 
-      # --- Authentik OIDC ---
-      - GF_AUTH_GENERIC_OAUTH_ENABLED=true
+      # --- Admin ---
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+
+      # --- Authentik OIDC (disabled until GRAFANA_OAUTH_ENABLED=true in .env) ---
+      - GF_AUTH_GENERIC_OAUTH_ENABLED=${GRAFANA_OAUTH_ENABLED:-false}
       - GF_AUTH_GENERIC_OAUTH_NAME=Authentik
-      - GF_AUTH_GENERIC_OAUTH_CLIENT_ID=${GRAFANA_OAUTH_CLIENT_ID}
-      - GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET=${GRAFANA_OAUTH_CLIENT_SECRET}
+      - GF_AUTH_GENERIC_OAUTH_CLIENT_ID=${GRAFANA_OAUTH_CLIENT_ID:-}
+      - GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET=${GRAFANA_OAUTH_CLIENT_SECRET:-}
       - GF_AUTH_GENERIC_OAUTH_AUTH_URL=${AUTHENTIK_URL}/application/o/authorize/
       - GF_AUTH_GENERIC_OAUTH_TOKEN_URL=${AUTHENTIK_URL}/application/o/token/
       - GF_AUTH_GENERIC_OAUTH_API_URL=${AUTHENTIK_URL}/application/o/userinfo/
@@ -183,8 +181,6 @@ services:
       - GF_AUTH_SIGNOUT_REDIRECT_URL=${AUTHENTIK_URL}/application/o/grafana/end-session/
 
       # --- Login behavior ---
-      # Auto-login requires GRAFANA_OAUTH_CLIENT_ID/SECRET to be set
-      # Until then, login form is available with default admin/admin
       - GF_AUTH_OAUTH_AUTO_LOGIN=false
       - GF_AUTH_DISABLE_LOGIN_FORM=false
       - GF_AUTH_BASIC_ENABLED=true
@@ -203,7 +199,7 @@ services:
       # --- Analytics ---
       - GF_ANALYTICS_REPORTING_ENABLED=false
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
       interval: 15s
       timeout: 5s
       start_period: 15s
