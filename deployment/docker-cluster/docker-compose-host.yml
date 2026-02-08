@@ -45,6 +45,13 @@ volumes:
       o: bind
       device: ${DATA_PATH}/portainer
 
+  tensorboard_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH}/tensorboard
+
 services:
   # ===============================================
   # Traefik - Reverse Proxy (ONLY PUBLIC PORTS)
@@ -650,6 +657,73 @@ services:
       - "traefik.http.routers.portainer.entrypoints=websecure"
       - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
+  # ===============================================
+  # TensorBoard - Official TensorFlow Container
+  # ===============================================
+  tensorboard:
+    image: tensorflow/tensorflow:2.18.0
+    container_name: echomind-tensorboard
+    hostname: tensorboard
+    command: tensorboard --logdir /logs --host 0.0.0.0 --port 6006
+    volumes:
+      - tensorboard_logs:/logs:ro  # Read-only access
+    restart: unless-stopped
+    networks:
+      - frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tensorboard.rule=Host(`${TENSORBOARD_DOMAIN}`)"
+      - "traefik.http.routers.tensorboard.entrypoints=websecure"
+      - "traefik.http.routers.tensorboard.tls.certresolver=letsencrypt"
+      - "traefik.http.services.tensorboard.loadbalancer.server.port=6006"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6006/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ===============================================
+  # Projector Worker - TensorBoard Viz Generator
+  # ===============================================
+  projector:
+    image: gsantopaolo/echomind-projector:${PROJECTOR_VERSION:-latest}
+    build:
+      context: ../../src
+      dockerfile: projector/Dockerfile
+    container_name: echomind-projector
+    hostname: projector
+    env_file:
+      - ${CONFIG_PATH}/projector/projector.env
+    environment:
+      - PROJECTOR_LOG_LEVEL=${PROJECTOR_LOG_LEVEL:-INFO}
+      - PROJECTOR_NATS_URL=nats://nats:4222
+      - PROJECTOR_STREAM_NAME=projector-stream
+      - PROJECTOR_CONSUMER_NAME=projector-worker
+      - PROJECTOR_SUBJECT=projector.generate
+      - PROJECTOR_QDRANT_URL=http://qdrant:6333
+      - PROJECTOR_QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - PROJECTOR_LOG_DIR=/logs
+      - TENSORBOARD_DOMAIN=${TENSORBOARD_DOMAIN}
+    volumes:
+      - tensorboard_logs:/logs  # Write access
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - backend
 
   # ===============================================
   # EchoMind WebUI - Static SvelteKit Frontend (Nginx)

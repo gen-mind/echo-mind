@@ -30,6 +30,7 @@ from api.routes import (
     health,
     llms,
     oauth,
+    projector,
     teams,
     upload,
     users,
@@ -474,6 +475,9 @@ def create_app() -> FastAPI:
     app.include_router(teams.router, prefix="/api/v1/teams", tags=["Teams"])
     app.include_router(
         google_oauth.router, prefix="/api/v1/google", tags=["Google OAuth"]
+    )
+    app.include_router(
+        projector.router, prefix="/api/v1/projector", tags=["Projector"]
     )
 
     # WebSocket endpoint
