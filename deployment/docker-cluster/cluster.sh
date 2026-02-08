@@ -317,7 +317,15 @@ start_cluster() {
             echo ""
         fi
 
+        # Check if Langfuse is enabled (either via profile or if containers are running)
+        _show_langfuse=false
         if [ -n "$LANGFUSE_PROFILE" ]; then
+            _show_langfuse=true
+        elif docker ps --filter "name=observability-langfuse" --format "{{.Names}}" 2>/dev/null | grep -q "observability-langfuse"; then
+            _show_langfuse=true
+        fi
+
+        if [ "$_show_langfuse" = true ]; then
             log_info "LLM Observability:"
             echo -e "  ${GREEN}🔬 Langfuse:${NC}        ${PROTOCOL}://${LANGFUSE_DOMAIN} ${CYAN}(LLM Tracing & Eval)${NC}"
             echo ""
@@ -375,7 +383,15 @@ start_cluster() {
             echo ""
         fi
 
+        # Check if Langfuse is enabled (either via profile or if containers are running)
+        _show_langfuse=false
         if [ -n "$LANGFUSE_PROFILE" ]; then
+            _show_langfuse=true
+        elif docker ps --filter "name=observability-langfuse" --format "{{.Names}}" 2>/dev/null | grep -q "observability-langfuse"; then
+            _show_langfuse=true
+        fi
+
+        if [ "$_show_langfuse" = true ]; then
             log_info "LLM Observability:"
             echo -e "  ${GREEN}🔬 Langfuse:${NC}        ${PROTOCOL}://${LANGFUSE_DOMAIN} ${CYAN}(LLM Tracing & Eval)${NC}"
             echo ""
