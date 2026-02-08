@@ -6,7 +6,7 @@
   "tags": ["echomind", "logs", "loki"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "10s",
   "time": {
     "from": "now-1h",
@@ -33,7 +33,7 @@
         "label": "Level",
         "query": "DEBUG,INFO,WARNING,ERROR,CRITICAL",
         "includeAll": true,
-        "allValue": ".+",
+        "allValue": "",
         "current": { "text": "All", "value": "$__all" },
         "multi": true
       },
@@ -88,7 +88,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "sum by (service) (count_over_time({service=~\"$service\", level=~\"ERROR|CRITICAL\", platform=\"docker\"} [$__auto]))",
+          "expr": "sum by (service) (count_over_time({service=~\"$service\", platform=\"docker\"} |~ \"(?i)(ERROR|CRITICAL)\" [$__auto]))",
           "legendFormat": "{{service}}",
           "refId": "A"
         }
@@ -121,7 +121,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{service=~\"$service\", level=~\"$level\", platform=\"docker\"} |~ \"$search\" | line_format `{{ regexReplaceAll \"^\\\\d{4}-\\\\d{2}-\\\\d{2} \\\\S+ - \\\\S+ - \\\\w+ - \" . \"\" }}`",
+          "expr": "{service=~\"$service\", platform=\"docker\"} |~ \"(?i)$level\" |~ \"$search\" | pattern `<_> <_> - <_> - <_> - <content>` | line_format \"{{ if .content }}{{ .content }}{{ else }}{{ .__line__ }}{{ end }}\"",
           "refId": "A"
         }
       ],
