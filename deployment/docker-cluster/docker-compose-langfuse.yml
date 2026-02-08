@@ -115,7 +115,7 @@ services:
       - HOSTNAME=0.0.0.0
       - PORT=3000
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/public/health | grep -q 'OK'"]
+      test: ["CMD-SHELL", "wget -qO- http://0.0.0.0:3000/api/public/health | grep -q 'OK'"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -135,6 +135,7 @@ services:
       - backend
     labels:
       - "traefik.enable=true"
+      # Local mode: HTTP only
       - "traefik.http.routers.langfuse.rule=Host(`${LANGFUSE_DOMAIN}`)"
       - "traefik.http.routers.langfuse.entrypoints=web"
       - "traefik.http.services.langfuse.loadbalancer.server.port=3000"
@@ -176,7 +177,7 @@ services:
       - LANGFUSE_LOG_LEVEL=info
       - PORT=3030
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3030/api/health | grep -q 'OK'"]
+      test: ["CMD-SHELL", "wget -qO- http://0.0.0.0:3030/api/health | grep -q 'OK'"]
       interval: 15s
       timeout: 5s
       retries: 5
