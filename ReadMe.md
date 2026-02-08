@@ -219,25 +219,25 @@ At the **lowest price on the world wide web**:
 
 #### 1–50 Users
 
-| Spec | Details |
-|------|---------|
-| **CPU** | Intel Core i5-13500 (6P + 8E cores, Hyper-Threading) |
-| **GPU** | NVIDIA RTX 4000 SFF Ada Generation — **20 GB GDDR6 ECC** |
-| **RAM** | 64 GB DDR4 |
-| **Storage** | 2 x 1.92 TB NVMe SSD (RAID 1) |
-| **Network** | 1 Gbit/s, unlimited traffic |
-| **Price** | **Starting at ~$200/month** |
+| Spec | Details                                                                   |
+|------|---------------------------------------------------------------------------|
+| **CPU** | Intel Core i5-13500 (6P + 8E cores, Hyper-Threading)                      |
+| **GPU** | NVIDIA RTX 4000 SFF Ada Generation — **20 GB GDDR6 ECC**                  |
+| **RAM** | 64 GB DDR4                                                                |
+| **Storage** | 2 x 1.92 TB NVMe SSD (RAID 1)                                             |
+| **Network** | 1 Gbit/s, unlimited traffic                                               |
+| **Price** | **Starting at ~$450/month** - one time setup fee - Notthing else to pay - |
 
 #### 50–200 Users
 
-| Spec | Details |
-|------|---------|
-| **CPU** | Intel Xeon Gold 5412U (24 cores, Hyper-Threading) |
+| Spec | Details                                                                         |
+|------|---------------------------------------------------------------------------------|
+| **CPU** | Intel Xeon Gold 5412U (24 cores, Hyper-Threading)                               |
 | **GPU** | NVIDIA RTX PRO 6000 Blackwell Max-Q — **96 GB GDDR7 ECC**, 5th-gen Tensor Cores |
-| **RAM** | 256 GB DDR5 ECC (expandable to 768 GB) |
-| **Storage** | 2 x 960 GB NVMe SSD Datacenter Edition (RAID 1) |
-| **Network** | 1 Gbit/s guaranteed, unlimited traffic |
-| **Price** | **Starting at ~$990/month** |
+| **RAM** | 256 GB DDR5 ECC (expandable to 768 GB)                                          |
+| **Storage** | 2 x 960 GB NVMe SSD Datacenter Edition (RAID 1)                                 |
+| **Network** | 1 Gbit/s guaranteed, unlimited traffic                                          |
+| **Price** | **Starting at ~$1390/month** - one time setup fee -Notthing else to pay         |
 
 > Both plans include: dedicated server setup, EchoMind deployment, SSL certificates, Authentik SSO configuration, and ongoing maintenance. No minimum contract — cancel anytime.
 
