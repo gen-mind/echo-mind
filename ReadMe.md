@@ -232,7 +232,7 @@ At the **lowest price on the world wide web**:
 
 | Capability | Details |
 |------------|---------|
-| **LLM Models** | Llama 3.1 8B, Mistral 7B, Qwen 2.5 14B (4-bit quantized) |
+| **LLM Models** | Qwen 3 8B, Mistral 3 8B, Llama 3.1 8B (4-bit quantized) |
 | **Generation Speed** | 45–60 tokens/sec per user |
 | **Concurrent Chats** | 5–10 simultaneous conversations (< 10s response time) |
 | **Active Users** | Up to ~25 with staggered request patterns |
@@ -254,7 +254,7 @@ At the **lowest price on the world wide web**:
 
 | Capability | Details |
 |------------|---------|
-| **LLM Models** | Llama 3.1 70B (FP16), Qwen 2.5 72B, Mixtral 8x22B, DeepSeek-V2 |
+| **LLM Models** | Llama 4 Scout (109B MoE, 4-bit), Qwen 3 32B (FP16), Mistral Large 3, DeepSeek-R1-Distill-32B |
 | **Generation Speed** | 30–50 tokens/sec per user (70B model) |
 | **Concurrent Chats** | 20–40 simultaneous conversations (< 10s response time) |
 | **Active Users** | Up to ~100+ with staggered request patterns |
