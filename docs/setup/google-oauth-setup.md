@@ -185,23 +185,25 @@ Now that you have your OAuth credentials, configure each EchoMind backend instan
 
 ### 5.1 Local Development
 
-Edit `/Users/gp/Developer/echo-mind/.env`:
+Edit `deployment/docker-cluster/.env`:
 
 ```bash
 # Google OAuth Configuration (V1 - User Delegation Pattern)
-GOOGLE_CLIENT_ID=123456789-abcdefg.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=GOCSPX-your-secret-here
-GOOGLE_REDIRECT_URI=https://demo.echomind.ch/api/v1/google/auth/callback
+API_GOOGLE_CLIENT_ID=123456789-abcdefg.apps.googleusercontent.com
+API_GOOGLE_CLIENT_SECRET=GOCSPX-your-secret-here
+API_GOOGLE_REDIRECT_URI=https://demo.echomind.ch/api/v1/google/auth/callback
 
 # Frontend URL for OAuth redirects
-OAUTH_FRONTEND_URL=https://demo.echomind.ch
+API_OAUTH_FRONTEND_URL=https://demo.echomind.ch
 ```
 
 **Replace:**
-- `GOOGLE_CLIENT_ID`: Your Client ID from Step 4
-- `GOOGLE_CLIENT_SECRET`: Your Client Secret from Step 4
-- `GOOGLE_REDIRECT_URI`: The redirect URI for this deployment (must match Google Cloud Console exactly)
-- `OAUTH_FRONTEND_URL`: Your frontend domain (no trailing slash)
+- `API_GOOGLE_CLIENT_ID`: Your Client ID from Step 4
+- `API_GOOGLE_CLIENT_SECRET`: Your Client Secret from Step 4
+- `API_GOOGLE_REDIRECT_URI`: The redirect URI for this deployment (must match Google Cloud Console exactly)
+- `API_OAUTH_FRONTEND_URL`: Your frontend domain (no trailing slash)
+
+**Note:** The `API_` prefix is required because the API service uses `env_prefix="API_"` in its settings configuration.
 
 ### 5.2 Production Deployment
 
@@ -220,10 +222,10 @@ For each customer deployment (e.g., `customer-a.echomind.ch`):
 
 3. **Add OAuth variables:**
    ```bash
-   GOOGLE_CLIENT_ID=123456789-abcdefg.apps.googleusercontent.com
-   GOOGLE_CLIENT_SECRET=GOCSPX-your-secret-here
-   GOOGLE_REDIRECT_URI=https://customer-a.echomind.ch/api/v1/google/auth/callback
-   OAUTH_FRONTEND_URL=https://customer-a.echomind.ch
+   API_GOOGLE_CLIENT_ID=123456789-abcdefg.apps.googleusercontent.com
+   API_GOOGLE_CLIENT_SECRET=GOCSPX-your-secret-here
+   API_GOOGLE_REDIRECT_URI=https://customer-a.echomind.ch/api/v1/google/auth/callback
+   API_OAUTH_FRONTEND_URL=https://customer-a.echomind.ch
    ```
 
 4. **Restart services:**
@@ -300,14 +302,16 @@ When deploying EchoMind for a new customer, you must **manually add their subdom
 **Solutions:**
 1. **Check `.env` file:**
    ```bash
-   cat .env | grep GOOGLE
+   cat .env | grep API_GOOGLE
+   cat .env | grep API_OAUTH_FRONTEND_URL
    ```
-   All four variables (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `OAUTH_FRONTEND_URL`) must be set.
+   All four variables (`API_GOOGLE_CLIENT_ID`, `API_GOOGLE_CLIENT_SECRET`, `API_GOOGLE_REDIRECT_URI`, `API_OAUTH_FRONTEND_URL`) must be set.
 
 2. **Verify no empty values:**
    ```bash
    # Should NOT see any lines with empty values
-   grep -E '^GOOGLE.*=\s*$' .env
+   grep -E '^API_GOOGLE.*=\s*$' .env
+   grep -E '^API_OAUTH_FRONTEND_URL=\s*$' .env
    ```
 
 3. **Restart services:**

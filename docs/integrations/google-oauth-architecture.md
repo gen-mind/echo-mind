@@ -427,7 +427,7 @@ CREATE INDEX idx_google_credentials_user_id ON google_credentials(user_id);
 - HTML page with `postMessage` script to notify opener window
 
 **Response (redirect mode):**
-- 302 redirect to `${OAUTH_FRONTEND_URL}/connectors/google/setup`
+- 302 redirect to `${API_OAUTH_FRONTEND_URL}/connectors/google/setup`
 
 ---
 
