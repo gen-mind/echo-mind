@@ -409,6 +409,10 @@ services:
       - API_OAUTH_SCOPE=${WEB_OIDC_SCOPE:-openid profile email}
       - API_OAUTH_FRONTEND_URL=https://${DOMAIN}
       - API_OAUTH_COOKIE_DOMAIN=.${DOMAIN}
+      # Google OAuth (for Google Workspace connectors: Drive, Gmail, Calendar, Contacts)
+      - API_GOOGLE_CLIENT_ID=${API_GOOGLE_CLIENT_ID:-}
+      - API_GOOGLE_CLIENT_SECRET=${API_GOOGLE_CLIENT_SECRET:-}
+      - API_GOOGLE_REDIRECT_URI=${API_GOOGLE_REDIRECT_URI:-}
       # Langfuse (optional - empty = disabled)
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}

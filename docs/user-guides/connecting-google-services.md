@@ -268,7 +268,7 @@ You can also revoke EchoMind's access directly from Google:
 **Solution:**
 This means your EchoMind administrator hasn't set up Google OAuth yet. Contact your admin or support team with this message:
 
-> "Please configure Google OAuth by setting `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` in the backend `.env` file. See the [Admin Setup Guide](https://github.com/gen-mind/echo-mind/docs/setup/google-oauth-setup.md) for instructions."
+> "Please configure Google OAuth by setting `API_GOOGLE_CLIENT_ID`, `API_GOOGLE_CLIENT_SECRET`, `API_GOOGLE_REDIRECT_URI`, and `API_OAUTH_FRONTEND_URL` in the backend `.env` file. See the [Admin Setup Guide](https://github.com/gen-mind/echo-mind/docs/setup/google-oauth-setup.md) for instructions."
 
 ---
 

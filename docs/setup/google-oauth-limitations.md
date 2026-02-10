@@ -242,8 +242,8 @@ Added specific error messages in `Connectors.svelte`:
 ```javascript
 console.error(
   '[ADMIN ACTION REQUIRED] Google OAuth not configured. Required environment variables:\n' +
-  '  GOOGLE_CLIENT_ID=...\n' +
-  '  GOOGLE_CLIENT_SECRET=...\n' +
+  '  API_GOOGLE_CLIENT_ID=...\n' +
+  '  API_GOOGLE_CLIENT_SECRET=...\n' +
   'Setup guide: https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred'
 );
 ```
