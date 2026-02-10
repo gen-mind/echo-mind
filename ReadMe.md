@@ -3,7 +3,7 @@
 
 # EchoMind
 
-### OpenClaw for Business — With Zero Security Risk
+### The AI Agent for Business — With Zero Security Risk
 
 [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](license)
@@ -25,8 +25,8 @@ EchoMind brings the power of personal AI assistants to the enterprise — **with
 Like [OpenClaw](https://openclaw.ai/), EchoMind is an AI agent that can access your data, execute workflows, and automate tasks. But instead of running with unrestricted access on personal devices, EchoMind runs in **isolated, ephemeral sandboxes** with enterprise-grade authentication and permission controls.
 
 **EchoMind connects to:**
-- **Organizational knowledge** — Teams, SharePoint, Google Drive, internal wikis, policies, and documents
-- **Personal business tools** — Email, calendar, CRM, and the apps your teams use daily
+- **Organizational knowledge** — Teams, SharePoint, Google Drive, Confluence, Notion, Slack, internal wikis, policies, and documents
+- **Business tools** — Gmail, Salesforce, HubSpot, Jira, Zendesk, SAP, Workday, ServiceNow, QuickBooks, and the apps your teams use daily
 
 > See [63 Supported Connectors](docs/personal-assistant/echomind-connectors.md) — including Salesforce, SAP, ServiceNow, Workday, and more.
 
@@ -153,18 +153,119 @@ EchoMind is an **agentic RAG platform** that actually *thinks* before it retriev
 
 ---
 
+## Multi-Agent Architecture
+
+EchoMind uses **Semantic Kernel's multi-agent orchestration** with the [**Magentic Manager pattern**](https://devblogs.microsoft.com/semantic-kernel/semantic-kernel-multi-agent-orchestration/) — a manager agent coordinates specialist agents, each following the **REAC loop** (Think → Act → Observe → Reflect → Evaluate → Answer) for autonomous reasoning.
+
+```mermaid
+flowchart TB
+    subgraph User["👤 User Interface"]
+        CLIENT[Web/API/Bot]
+    end
+
+    subgraph AgentCore["🧠 Agent Core - Semantic Kernel"]
+        MANAGER[🎯 Manager Agent<br/>Magentic Coordinator]
+
+        subgraph Agents["Specialist Agents"]
+            RETRIEVAL[🔍 Retrieval Agent<br/>Search & Context]
+            ANALYSIS[📊 Analysis Agent<br/>Data Processing]
+            SYNTHESIS[✍️ Synthesis Agent<br/>Answer Generation]
+            TOOL[🛠️ Tool Agent<br/>Actions & Execution]
+        end
+
+        subgraph Skills["Skills & Tools"]
+            VSEARCH[Vector Search]
+            WEBSEARCH[Web Search]
+            CALC[Calculator]
+            DATETIME[Date/Time]
+            EXECUTOR[Code Executor]
+        end
+
+        subgraph REAC["REAC Loop - Each Agent"]
+            THINK[💭 Think<br/>Plan Strategy]
+            ACT[⚡ Act<br/>Execute/Retrieve]
+            OBSERVE[👁️ Observe<br/>Collect Results]
+            REFLECT[🤔 Reflect<br/>Evaluate Quality]
+            EVALUATE[⚖️ Evaluate<br/>Sufficient?]
+            ANSWER[💬 Answer<br/>Generate Response]
+        end
+    end
+
+    subgraph DataSources["📁 Data Sources"]
+        subgraph Connectors["63 Enterprise Connectors"]
+            SALES["💼 Sales & CRM<br/>Salesforce • HubSpot • Gong"]
+            COLLAB["💬 Communication<br/>Teams • Slack • Gmail"]
+            DOCS["📚 Knowledge<br/>SharePoint • Confluence • Notion"]
+            TICKETS["🎫 Ticketing<br/>Jira • Zendesk • ServiceNow"]
+            FILES["☁️ Cloud Storage<br/>Google Drive • OneDrive • Dropbox"]
+            ERP["🏢 ERP & Finance<br/>SAP • Workday • QuickBooks"]
+        end
+
+        VECTORDB[(Qdrant<br/>Vector Store)]
+        RDBMS[(PostgreSQL<br/>Metadata)]
+    end
+
+    CLIENT --> MANAGER
+
+    MANAGER -.->|Coordinates| RETRIEVAL
+    MANAGER -.->|Coordinates| ANALYSIS
+    MANAGER -.->|Coordinates| SYNTHESIS
+    MANAGER -.->|Coordinates| TOOL
+
+    RETRIEVAL & ANALYSIS & SYNTHESIS & TOOL -.->|Uses| Skills
+
+    Agents -->|Query Data| DataSources
+
+    THINK --> ACT
+    ACT --> OBSERVE
+    OBSERVE --> REFLECT
+    REFLECT --> EVALUATE
+    EVALUATE -->|No| THINK
+    EVALUATE -->|Yes| ANSWER
+
+    style MANAGER fill:#ff9800,stroke:#e65100,stroke-width:3px
+    style REAC fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style DataSources fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style AgentCore fill:#fff3e0,stroke:#e65100,stroke-width:2px
+```
+
+**Key Concepts:**
+
+| Component | Description |
+|-----------|-------------|
+| **Manager Agent** | Coordinates specialist agents using [Magentic pattern](https://devblogs.microsoft.com/semantic-kernel/semantic-kernel-multi-agent-orchestration/), selecting which agent acts next based on task context |
+| **Specialist Agents** | Domain-focused agents (Retrieval, Analysis, Synthesis, Tool) that work together under manager coordination |
+| **REAC Loop** | Each agent follows the 6-stage reasoning cycle: Think → Act → Observe → Reflect → Evaluate → Answer |
+| **Skills** | Reusable capabilities (vector search, web search, calculator, etc.) that agents invoke during the Act phase |
+| **Data Sources** | 63 enterprise connectors + vector/relational stores that agents query asynchronously |
+
+**Research Citations:**
+- **Confidence: High** — [Semantic Kernel Multi-Agent Orchestration](https://devblogs.microsoft.com/semantic-kernel/semantic-kernel-multi-agent-orchestration/) (Microsoft DevBlogs, 2025)
+- **Confidence: High** — [Agent Orchestration Patterns](https://learn.microsoft.com/en-us/semantic-kernel/frameworks/agent/agent-orchestration/) (Microsoft Learn, 2026)
+- **Confidence: Medium** — ReAct pattern extended with Reflect/Evaluate stages based on [Agentic Reasoning Patterns](https://servicesground.com/blog/agentic-reasoning-patterns/) (2025)
+
+---
+
 ## Architecture Overview
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph Clients
         C[Web / API / Bot]
     end
 
-    subgraph EchoMind["EchoMind RAG Cluster"]
+    subgraph EchoMind["EchoMind"]
         API[API Gateway]
         AGENT[Agent Core<br/>Semantic Kernel]
-        PROC[Doc Processing]
+        LLM[TGI/vLLM<br/>or Cloud APIs]
+        NATS[NATS JetStream]
+
+        subgraph Ingestion["Ingestion Pipeline"]
+            ORCH[Orchestrator]
+            CONN[Connector]
+            ING[Ingestor]
+            EMB[Embedder]
+        end
 
         subgraph Storage
             QDRANT[(Qdrant)]
@@ -172,15 +273,13 @@ flowchart LR
         end
     end
 
-    subgraph Inference["Inference Cluster"]
-        LLM[TGI/vLLM<br/>or Cloud APIs]
-    end
-
     C --> AUTH --> API --> AGENT
     AGENT --> QDRANT
     AGENT --> LLM
-    PROC --> QDRANT
     AGENT --> PG
+
+    Ingestion <-.-> NATS
+    EMB --> QDRANT
 ```
 
 For detailed architecture, see [docs/architecture.md](docs/architecture.md).
