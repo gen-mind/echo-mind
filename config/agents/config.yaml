@@ -1,0 +1,91 @@
+# =============================================================================
+# Agent System Configuration
+# =============================================================================
+
+# Global tool policies (applies to all agents unless overridden)
+tools:
+  profile: full  # Options: minimal, coding, messaging, full
+  deny:
+    - "system_*"      # Deny all system-level tools
+    - "admin_*"       # Deny all admin tools
+  allow:
+    - "*"             # Allow everything else
+  byProvider:
+    anthropic:
+      deny:
+        - "sessions_spawn"  # Claude struggles with complex subagent tools
+
+# Agent definitions
+agents:
+  list:
+    - id: assistant
+      name: "EchoMind Assistant"
+      model: "${OPENAI_MODEL:-gpt-4o-mini}"
+      instructions: |
+        You are a helpful AI assistant with access to tools for reading files,
+        executing commands, and searching information. Always explain what you're
+        doing and why. Be concise but thorough.
+      tools:
+        profile: full
+        allow: ["*"]
+        deny: []
+
+    - id: coder
+      name: "Coding Assistant"
+      model: "${OPENAI_MODEL:-gpt-4o-mini}"
+      instructions: |
+        You are an expert coding assistant. You can read, write, and edit code files.
+        You use git for version control. Always follow best practices and write
+        clean, well-documented code.
+      tools:
+        profile: coding
+        allow:
+          - "read*"
+          - "write*"
+          - "grep*"
+          - "glob*"
+          - "bash"
+          - "git_*"
+        deny: []
+
+    - id: researcher
+      name: "Research Assistant"
+      model: "${OPENAI_MODEL:-gpt-4o-mini}"
+      instructions: |
+        You are a research assistant with read-only access. You can read files,
+        search code, and browse git history, but you cannot modify anything.
+        Summarize findings clearly and concisely.
+      tools:
+        profile: minimal
+
+# Routing configuration
+routing:
+  defaults:
+    agentId: assistant  # Default agent for all unmatched routes
+
+  bindings:
+    # Route specific channels or users to specific agents
+    - match:
+        channel: test_client
+      agentId: assistant
+    - match:
+        channel: research
+      agentId: researcher
+
+# Sandbox configuration (disabled for Phase 1)
+sandbox:
+  enabled: false
+  safeBins:
+    - git
+    - ls
+    - cat
+    - grep
+  pathPrepend: "/usr/local/bin:/usr/bin:/bin"
+  deniedTools:
+    - "exec"
+    - "subprocess_*"
+  subagentDeniedTools:
+    - "write"
+    - "bash"
+    - "git_add"
+    - "git_commit"

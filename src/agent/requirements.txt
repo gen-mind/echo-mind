@@ -1,0 +1,30 @@
+# Phase 1: Foundation Dependencies
+# Core agent framework (Microsoft Agent Framework - AutoGen + Semantic Kernel merger)
+# Latest beta version as of Feb 12, 2026
+agent-framework==1.0.0b260212  # Pre-release, MIT licensed
+
+# Configuration parsing
+pyyaml==6.0.3  # YAML config parser
+
+# Type validation (for tool parameters)
+pydantic==2.12.5  # Used by agent-framework
+
+# CLI/UI (for test client)
+rich==14.3.2  # Terminal UI with markdown support
+
+# Testing
+pytest==9.0.2  # Test framework
+pytest-asyncio==1.3.0  # Async test support
+pytest-cov==7.0.0  # Coverage reporting
+
+# Type checking
+mypy==1.19.1  # Static type checker
+
+# Code quality
+pylint==4.0.4  # Linter
+black==26.1.0  # Code formatter
+
+# OpenAI client (for agent-framework)
+openai==2.20.0  # OpenAI API client (compatible with vLLM, etc.)
+
+# Python version requirement: >=3.12
