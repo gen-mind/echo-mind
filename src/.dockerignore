@@ -3,16 +3,3 @@
 **/.env*
 **/sample/
 **/test*
-api/
-connector/
-semantic/
-embedder/
-voice/
-vision/
-guardian/
-migration/
-orchestrator/
-search/
-ingestor/
-proto/
-web/
