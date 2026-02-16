@@ -75,6 +75,7 @@ services:
       # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_AUTH=${REDIS_AUTH:-}
       # S3/MinIO
       - LANGFUSE_S3_EVENT_UPLOAD_ENABLED=true
       - LANGFUSE_S3_EVENT_UPLOAD_BUCKET=langfuse
@@ -161,6 +162,7 @@ services:
       # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_AUTH=${REDIS_AUTH:-}
       # S3/MinIO
       - LANGFUSE_S3_EVENT_UPLOAD_ENABLED=true
       - LANGFUSE_S3_EVENT_UPLOAD_BUCKET=langfuse
