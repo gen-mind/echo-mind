@@ -1,0 +1,24 @@
+# MCP Server
+fastmcp==2.14.5
+
+# Vector Database
+qdrant-client==1.16.2
+
+# gRPC (embedder client)
+grpcio==1.69.0
+
+# Data Validation
+pydantic==2.12.5
+pydantic-settings==2.12.0
+
+# YAML parsing (SKILL.md frontmatter)
+PyYAML==6.0.2
+
+# Protobuf
+protobuf==5.29.5
+protobuf-pydantic-gen==0.1.8
+
+# HTTP server (for FastMCP transport)
+uvicorn==0.40.0
+starlette==0.46.2
+httpx==0.28.1

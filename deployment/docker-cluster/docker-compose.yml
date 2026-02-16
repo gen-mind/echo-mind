@@ -578,6 +578,42 @@ services:
       - "traefik.enable=false"
 
   # ===============================================
+  # EchoMind MCP Gateway - MCP Tool Server
+  # ===============================================
+  mcp-gateway:
+    image: gsantopaolo/echomind-mcp-gateway:${MCP_GATEWAY_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: mcp_gateway/Dockerfile
+    container_name: echomind-mcp-gateway
+    hostname: mcp-gateway
+    env_file:
+      - ${CONFIG_PATH}/mcp-gateway/mcp-gateway.env
+    environment:
+      - MCP_GATEWAY_QDRANT_HOST=qdrant
+      - MCP_GATEWAY_QDRANT_PORT=6333
+      - MCP_GATEWAY_EMBEDDER_HOST=embedder
+      - MCP_GATEWAY_EMBEDDER_PORT=50051
+    volumes:
+      - ${CONFIG_PATH}/mcp-gateway/skills:/app/config/skills:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      embedder:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
   # EchoMind Guardian - DLQ Monitoring & Alerting
   # ===============================================
   guardian:
@@ -615,6 +651,8 @@ services:
   # It connects to the EchoMind FastAPI backend via WEBUI_BASE_URL.
   webui:
     image: gsantopaolo/echomind-webui:${WEBUI_VERSION:-0.1.0-beta.1}
+    profiles:
+      - webui
     build:
       context: ../../../echomind-webui
       dockerfile: Dockerfile
