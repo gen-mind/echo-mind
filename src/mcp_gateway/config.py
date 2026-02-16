@@ -59,6 +59,36 @@ class MCPGatewaySettings(BaseSettings):
         description="Embedder gRPC timeout in seconds",
     )
 
+    # Database
+    database_url: str = Field(
+        "postgresql+asyncpg://echomind:echomind@localhost:5432/echomind",
+        description="PostgreSQL async connection URL",
+    )
+
+    # NATS
+    nats_url: str = Field(
+        "nats://localhost:4222",
+        description="NATS server URL",
+    )
+    nats_user: str | None = Field(
+        None,
+        description="NATS username for authentication",
+    )
+    nats_password: str | None = Field(
+        None,
+        description="NATS password for authentication",
+    )
+
+    # API Keys (for API proxy tools)
+    google_search_api_key: str | None = Field(
+        None,
+        description="Google Custom Search JSON API key",
+    )
+    google_search_cx: str | None = Field(
+        None,
+        description="Google Custom Search engine ID (CX)",
+    )
+
     # Skills
     skills_dir: str = Field(
         "/app/config/skills",

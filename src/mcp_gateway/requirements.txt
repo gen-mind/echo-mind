@@ -22,3 +22,10 @@ protobuf-pydantic-gen==0.1.8
 uvicorn==0.40.0
 starlette==0.46.2
 httpx==0.28.1
+
+# Database (async PostgreSQL) — versions from echomind_lib/pyproject.toml
+sqlalchemy[asyncio]==2.0.45
+asyncpg==0.31.0
+
+# NATS messaging — version from echomind_lib/pyproject.toml
+nats-py==2.12.0

@@ -1,8 +1,8 @@
 """
 EchoMind MCP Gateway Service Entry Point.
 
-Exposes EchoMind capabilities (search, skills) as MCP tools over
-streamable HTTP transport using FastMCP.
+Exposes EchoMind capabilities (search, connectors, API proxy, skills) as
+MCP tools over streamable HTTP transport using FastMCP.
 
 Usage:
     python main.py
@@ -15,8 +15,14 @@ Environment Variables:
     MCP_GATEWAY_QDRANT_PORT: Qdrant REST port (default: 6333)
     MCP_GATEWAY_EMBEDDER_HOST: Embedder gRPC host (default: localhost)
     MCP_GATEWAY_EMBEDDER_PORT: Embedder gRPC port (default: 50051)
+    MCP_GATEWAY_DATABASE_URL: PostgreSQL async URL
+    MCP_GATEWAY_NATS_URL: NATS server URL
+    MCP_GATEWAY_NATS_USER: NATS username (optional)
+    MCP_GATEWAY_NATS_PASSWORD: NATS password (optional)
     MCP_GATEWAY_SKILLS_DIR: Skills directory path (default: /app/config/skills)
     MCP_GATEWAY_LOG_LEVEL: Logging level (default: INFO)
+    GOOGLE_SEARCH_API_KEY: Google Custom Search API key (optional)
+    GOOGLE_SEARCH_CX: Google Custom Search engine ID (optional)
 """
 
 import asyncio
@@ -27,6 +33,8 @@ import sys
 import threading
 
 from fastmcp import FastMCP
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -34,11 +42,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from echomind_lib.db.qdrant import QdrantDB
 from echomind_lib.helpers.readiness_probe import HealthServer
 
+from mcp_gateway.backends.api_key_manager import ApiKeyManager
+from mcp_gateway.backends.connector_backend import ConnectorBackend
 from mcp_gateway.backends.embedder_client import EmbedderClient
+from mcp_gateway.backends.nats_backend import NatsBackend
 from mcp_gateway.backends.search_backend import SearchBackend
 from mcp_gateway.config import get_settings
+from mcp_gateway.middleware.audit_logger import AuditLoggingMiddleware
 from mcp_gateway.skills.executor import SkillExecutor
 from mcp_gateway.skills.registry import SkillRegistry
+from mcp_gateway.tools.api_proxy import register_api_proxy_tools
+from mcp_gateway.tools.connectors import register_connector_tools
 from mcp_gateway.tools.search import register_search_tools
 from mcp_gateway.tools.skills import register_skills_tools
 
@@ -54,9 +68,9 @@ class MCPGateway:
     """
     Main MCP Gateway application.
 
-    Manages lifecycle of FastMCP server, Qdrant, and Embedder connections.
-    Implements graceful degradation: retries failed connections in background.
-    Tools check readiness before executing operations.
+    Manages lifecycle of FastMCP server, Qdrant, Embedder, PostgreSQL,
+    and NATS connections. Implements graceful degradation: retries failed
+    connections in background. Tools check readiness before executing.
     """
 
     def __init__(self) -> None:
@@ -66,14 +80,24 @@ class MCPGateway:
         self._running = False
         self._qdrant_connected = False
         self._embedder_connected = False
+        self._db_connected = False
+        self._nats_connected = False
         self._retry_tasks: list[asyncio.Task] = []
         self._mcp_task: asyncio.Task | None = None
         self._qdrant: QdrantDB | None = None
         self._embedder: EmbedderClient | None = None
+        self._session_factory: async_sessionmaker[AsyncSession] | None = None
+        self._db_engine = None
+        self._nats: NatsBackend | None = None
 
     def _is_ready(self) -> bool:
         """Check if all required connections are established."""
-        return self._qdrant_connected and self._embedder_connected
+        return (
+            self._qdrant_connected
+            and self._embedder_connected
+            and self._db_connected
+            and self._nats_connected
+        )
 
     def _update_readiness(self) -> None:
         """Update health server readiness based on connection state."""
@@ -86,10 +110,13 @@ class MCPGateway:
 
         Initializes:
         - Health check server (always starts first)
+        - PostgreSQL connection (retries on failure)
+        - NATS connection (retries on failure)
         - Qdrant connection (retries on failure)
         - Embedder gRPC connection (retries on failure)
         - Skill registry and executor
-        - FastMCP server with registered tools
+        - API key manager
+        - FastMCP server with registered tools and audit middleware
         """
         logger.info("🚀 EchoMind MCP Gateway Service starting...")
         logger.info("📋 Configuration:")
@@ -102,6 +129,8 @@ class MCPGateway:
         logger.info(
             f"   🧠 Embedder: {self._settings.embedder_host}:{self._settings.embedder_port}"
         )
+        logger.info(f"   🐘 Database: {self._settings.database_url.split('@')[-1]}")
+        logger.info(f"   📡 NATS: {self._settings.nats_url}")
         logger.info(f"   📂 Skills dir: {self._settings.skills_dir}")
 
         if not self._settings.enabled:
@@ -115,6 +144,52 @@ class MCPGateway:
         )
         health_thread.start()
         logger.info(f"💓 Health server started on port {self._settings.health_port}")
+
+        # Initialize PostgreSQL
+        logger.info("🛠️ Connecting to PostgreSQL...")
+        try:
+            self._db_engine = create_async_engine(
+                self._settings.database_url,
+                pool_size=5,
+                max_overflow=10,
+                pool_pre_ping=True,
+            )
+            # Verify connectivity
+            async with self._db_engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            self._session_factory = async_sessionmaker(
+                bind=self._db_engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+                autocommit=False,
+                autoflush=False,
+            )
+            self._db_connected = True
+            logger.info("🐘 PostgreSQL connected")
+        except Exception as e:
+            logger.warning(f"⚠️ PostgreSQL connection failed: {e}")
+            logger.info("🔄 Will retry PostgreSQL connection in background...")
+            self._retry_tasks.append(
+                asyncio.create_task(self._retry_db_connection())
+            )
+
+        # Initialize NATS
+        logger.info("🛠️ Connecting to NATS...")
+        try:
+            self._nats = NatsBackend(
+                url=self._settings.nats_url,
+                user=self._settings.nats_user,
+                password=self._settings.nats_password,
+            )
+            await self._nats.connect()
+            self._nats_connected = True
+            logger.info("📡 NATS connected")
+        except Exception as e:
+            logger.warning(f"⚠️ NATS connection failed: {e}")
+            logger.info("🔄 Will retry NATS connection in background...")
+            self._retry_tasks.append(
+                asyncio.create_task(self._retry_nats_connection())
+            )
 
         # Initialize Qdrant
         logger.info("🛠️ Connecting to Qdrant...")
@@ -168,17 +243,32 @@ class MCPGateway:
             max_output_bytes=self._settings.skill_max_output_bytes,
         )
 
+        # Create API key manager
+        api_key_manager = ApiKeyManager()
+
         # Create search backend
         search_backend = SearchBackend(
             qdrant=self._qdrant,
             embedder=self._embedder,
         )
 
-        # Create FastMCP server and register tools
-        mcp = FastMCP("echomind-mcp-gateway")
+        # Create connector backend
+        connector_backend = ConnectorBackend(
+            session_factory=self._session_factory,
+            nats_publisher=self._nats,
+            qdrant=self._qdrant,
+            embedder=self._embedder,
+        )
 
+        # Create FastMCP server with audit middleware
+        mcp = FastMCP("echomind-mcp-gateway")
+        mcp.add_middleware(AuditLoggingMiddleware())
+
+        # Register all tools
         register_search_tools(mcp, search_backend)
         register_skills_tools(mcp, skill_registry, skill_executor)
+        register_connector_tools(mcp, connector_backend, search_backend)
+        register_api_proxy_tools(mcp, api_key_manager)
 
         logger.info("🔧 MCP tools registered")
 
@@ -202,6 +292,49 @@ class MCPGateway:
             logger.warning(
                 "⚠️ MCP Gateway started with degraded connectivity, retrying..."
             )
+
+    async def _retry_db_connection(self) -> None:
+        """Background task to retry PostgreSQL connection every 30 seconds."""
+        while not self._db_connected:
+            await asyncio.sleep(30)
+            try:
+                self._db_engine = create_async_engine(
+                    self._settings.database_url,
+                    pool_size=5,
+                    max_overflow=10,
+                    pool_pre_ping=True,
+                )
+                async with self._db_engine.connect() as conn:
+                    await conn.execute(text("SELECT 1"))
+                self._session_factory = async_sessionmaker(
+                    bind=self._db_engine,
+                    class_=AsyncSession,
+                    expire_on_commit=False,
+                    autocommit=False,
+                    autoflush=False,
+                )
+                self._db_connected = True
+                logger.info("🐘 PostgreSQL reconnected")
+                self._update_readiness()
+            except Exception as e:
+                logger.warning(f"⚠️ PostgreSQL reconnection attempt failed: {e}")
+
+    async def _retry_nats_connection(self) -> None:
+        """Background task to retry NATS connection every 30 seconds."""
+        while not self._nats_connected:
+            await asyncio.sleep(30)
+            try:
+                self._nats = NatsBackend(
+                    url=self._settings.nats_url,
+                    user=self._settings.nats_user,
+                    password=self._settings.nats_password,
+                )
+                await self._nats.connect()
+                self._nats_connected = True
+                logger.info("📡 NATS reconnected")
+                self._update_readiness()
+            except Exception as e:
+                logger.warning(f"⚠️ NATS reconnection attempt failed: {e}")
 
     async def _retry_qdrant_connection(self) -> None:
         """Background task to retry Qdrant connection every 30 seconds."""
@@ -266,6 +399,16 @@ class MCPGateway:
             except asyncio.CancelledError:
                 pass
             logger.info("🌐 MCP server stopped")
+
+        # Close NATS
+        if self._nats:
+            await self._nats.close()
+            logger.info("📡 NATS disconnected")
+
+        # Close database
+        if self._db_engine:
+            await self._db_engine.dispose()
+            logger.info("🐘 PostgreSQL disconnected")
 
         # Close Qdrant
         if self._qdrant:

@@ -594,6 +594,10 @@ services:
       - MCP_GATEWAY_QDRANT_PORT=6333
       - MCP_GATEWAY_EMBEDDER_HOST=embedder
       - MCP_GATEWAY_EMBEDDER_PORT=50051
+      - MCP_GATEWAY_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - MCP_GATEWAY_NATS_URL=nats://nats:4222
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
+      - GOOGLE_SEARCH_CX=${GOOGLE_SEARCH_CX:-}
     volumes:
       - ${CONFIG_PATH}/mcp-gateway/skills:/app/config/skills:ro
     healthcheck:
@@ -606,6 +610,10 @@ services:
       qdrant:
         condition: service_healthy
       embedder:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      nats:
         condition: service_healthy
     restart: unless-stopped
     networks:

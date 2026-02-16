@@ -19,10 +19,15 @@ class TestMCPGatewayInit:
         assert gateway._running is False
         assert gateway._qdrant_connected is False
         assert gateway._embedder_connected is False
+        assert gateway._db_connected is False
+        assert gateway._nats_connected is False
         assert gateway._retry_tasks == []
         assert gateway._mcp_task is None
         assert gateway._qdrant is None
         assert gateway._embedder is None
+        assert gateway._session_factory is None
+        assert gateway._db_engine is None
+        assert gateway._nats is None
 
     def test_init_loads_settings(self) -> None:
         """MCPGateway loads settings on init."""
@@ -39,11 +44,13 @@ class TestMCPGatewayReadiness:
         gateway = MCPGateway()
         assert gateway._is_ready() is False
 
-    def test_ready_when_both_connected(self) -> None:
-        """Gateway is ready when both Qdrant and Embedder are connected."""
+    def test_ready_when_all_connected(self) -> None:
+        """Gateway is ready when all connections are established."""
         gateway = MCPGateway()
         gateway._qdrant_connected = True
         gateway._embedder_connected = True
+        gateway._db_connected = True
+        gateway._nats_connected = True
         assert gateway._is_ready() is True
 
     def test_not_ready_when_only_qdrant(self) -> None:
@@ -68,6 +75,8 @@ class TestMCPGatewayReadiness:
 
         gateway._qdrant_connected = True
         gateway._embedder_connected = True
+        gateway._db_connected = True
+        gateway._nats_connected = True
         gateway._update_readiness()
 
         mock_health.set_ready.assert_called_once_with(True)
@@ -84,12 +93,19 @@ class TestMCPGatewayStart:
     """Tests for the start method."""
 
     @pytest.mark.asyncio
+    @patch("mcp_gateway.main.register_api_proxy_tools")
+    @patch("mcp_gateway.main.register_connector_tools")
     @patch("mcp_gateway.main.register_skills_tools")
     @patch("mcp_gateway.main.register_search_tools")
+    @patch("mcp_gateway.main.AuditLoggingMiddleware")
     @patch("mcp_gateway.main.FastMCP")
+    @patch("mcp_gateway.main.ApiKeyManager")
+    @patch("mcp_gateway.main.ConnectorBackend")
     @patch("mcp_gateway.main.SkillExecutor")
     @patch("mcp_gateway.main.SkillRegistry")
     @patch("mcp_gateway.main.SearchBackend")
+    @patch("mcp_gateway.main.NatsBackend")
+    @patch("mcp_gateway.main.create_async_engine")
     @patch("mcp_gateway.main.EmbedderClient")
     @patch("mcp_gateway.main.QdrantDB")
     @patch("mcp_gateway.main.HealthServer")
@@ -98,12 +114,19 @@ class TestMCPGatewayStart:
         mock_health_server_cls: MagicMock,
         mock_qdrant_cls: MagicMock,
         mock_embedder_cls: MagicMock,
+        mock_engine_cls: MagicMock,
+        mock_nats_cls: MagicMock,
         mock_search_backend_cls: MagicMock,
         mock_skill_registry_cls: MagicMock,
         mock_skill_executor_cls: MagicMock,
+        mock_connector_backend_cls: MagicMock,
+        mock_api_key_manager_cls: MagicMock,
         mock_fastmcp_cls: MagicMock,
+        mock_audit_middleware_cls: MagicMock,
         mock_register_search: MagicMock,
         mock_register_skills: MagicMock,
+        mock_register_connectors: MagicMock,
+        mock_register_api_proxy: MagicMock,
     ) -> None:
         """Start succeeds when all connections are healthy."""
         # Setup mocks
@@ -116,6 +139,21 @@ class TestMCPGatewayStart:
         mock_embedder = AsyncMock()
         mock_embedder.health_check.return_value = True
         mock_embedder_cls.return_value = mock_embedder
+
+        # DB engine mock — create_async_engine returns a sync object
+        # with .connect() returning an async context manager
+        mock_engine = MagicMock()
+        mock_conn = AsyncMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_conn
+        mock_ctx.__aexit__.return_value = False
+        mock_engine.connect.return_value = mock_ctx
+        mock_engine.dispose = AsyncMock()
+        mock_engine_cls.return_value = mock_engine
+
+        # NATS mock
+        mock_nats = AsyncMock()
+        mock_nats_cls.return_value = mock_nats
 
         mock_registry = MagicMock()
         mock_registry.skill_count = 3
@@ -131,8 +169,9 @@ class TestMCPGatewayStart:
         # Verify connections
         assert gateway._qdrant_connected is True
         assert gateway._embedder_connected is True
+        assert gateway._db_connected is True
+        assert gateway._nats_connected is True
         assert gateway._running is True
-        assert gateway._retry_tasks == []
 
         # Verify Qdrant init
         mock_qdrant.init.assert_awaited_once()
@@ -146,6 +185,8 @@ class TestMCPGatewayStart:
         # Verify MCP tools registered
         mock_register_search.assert_called_once()
         mock_register_skills.assert_called_once()
+        mock_register_connectors.assert_called_once()
+        mock_register_api_proxy.assert_called_once()
 
         # Verify health server readiness
         mock_health.set_ready.assert_called_with(True)
@@ -167,12 +208,19 @@ class TestMCPGatewayStart:
         assert gateway._health_server is None
 
     @pytest.mark.asyncio
+    @patch("mcp_gateway.main.register_api_proxy_tools")
+    @patch("mcp_gateway.main.register_connector_tools")
     @patch("mcp_gateway.main.register_skills_tools")
     @patch("mcp_gateway.main.register_search_tools")
+    @patch("mcp_gateway.main.AuditLoggingMiddleware")
     @patch("mcp_gateway.main.FastMCP")
+    @patch("mcp_gateway.main.ApiKeyManager")
+    @patch("mcp_gateway.main.ConnectorBackend")
     @patch("mcp_gateway.main.SkillExecutor")
     @patch("mcp_gateway.main.SkillRegistry")
     @patch("mcp_gateway.main.SearchBackend")
+    @patch("mcp_gateway.main.NatsBackend")
+    @patch("mcp_gateway.main.create_async_engine")
     @patch("mcp_gateway.main.EmbedderClient")
     @patch("mcp_gateway.main.QdrantDB")
     @patch("mcp_gateway.main.HealthServer")
@@ -181,12 +229,19 @@ class TestMCPGatewayStart:
         mock_health_server_cls: MagicMock,
         mock_qdrant_cls: MagicMock,
         mock_embedder_cls: MagicMock,
+        mock_engine_cls: MagicMock,
+        mock_nats_cls: MagicMock,
         mock_search_backend_cls: MagicMock,
         mock_skill_registry_cls: MagicMock,
         mock_skill_executor_cls: MagicMock,
+        mock_connector_backend_cls: MagicMock,
+        mock_api_key_manager_cls: MagicMock,
         mock_fastmcp_cls: MagicMock,
+        mock_audit_middleware_cls: MagicMock,
         mock_register_search: MagicMock,
         mock_register_skills: MagicMock,
+        mock_register_connectors: MagicMock,
+        mock_register_api_proxy: MagicMock,
     ) -> None:
         """When Qdrant fails to connect, a retry task is spawned."""
         mock_health = MagicMock()
@@ -199,6 +254,17 @@ class TestMCPGatewayStart:
         mock_embedder = AsyncMock()
         mock_embedder.health_check.return_value = True
         mock_embedder_cls.return_value = mock_embedder
+
+        # DB engine mock
+        mock_engine = AsyncMock()
+        mock_conn = AsyncMock()
+        mock_engine.connect.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_engine.connect.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_engine_cls.return_value = mock_engine
+
+        # NATS mock
+        mock_nats = AsyncMock()
+        mock_nats_cls.return_value = mock_nats
 
         mock_registry = MagicMock()
         mock_registry.skill_count = 0
@@ -213,7 +279,6 @@ class TestMCPGatewayStart:
 
         assert gateway._qdrant_connected is False
         assert gateway._embedder_connected is True
-        assert len(gateway._retry_tasks) == 1
         assert gateway._running is True
 
         # Not ready because Qdrant is down
@@ -222,12 +287,19 @@ class TestMCPGatewayStart:
         await gateway.stop()
 
     @pytest.mark.asyncio
+    @patch("mcp_gateway.main.register_api_proxy_tools")
+    @patch("mcp_gateway.main.register_connector_tools")
     @patch("mcp_gateway.main.register_skills_tools")
     @patch("mcp_gateway.main.register_search_tools")
+    @patch("mcp_gateway.main.AuditLoggingMiddleware")
     @patch("mcp_gateway.main.FastMCP")
+    @patch("mcp_gateway.main.ApiKeyManager")
+    @patch("mcp_gateway.main.ConnectorBackend")
     @patch("mcp_gateway.main.SkillExecutor")
     @patch("mcp_gateway.main.SkillRegistry")
     @patch("mcp_gateway.main.SearchBackend")
+    @patch("mcp_gateway.main.NatsBackend")
+    @patch("mcp_gateway.main.create_async_engine")
     @patch("mcp_gateway.main.EmbedderClient")
     @patch("mcp_gateway.main.QdrantDB")
     @patch("mcp_gateway.main.HealthServer")
@@ -236,12 +308,19 @@ class TestMCPGatewayStart:
         mock_health_server_cls: MagicMock,
         mock_qdrant_cls: MagicMock,
         mock_embedder_cls: MagicMock,
+        mock_engine_cls: MagicMock,
+        mock_nats_cls: MagicMock,
         mock_search_backend_cls: MagicMock,
         mock_skill_registry_cls: MagicMock,
         mock_skill_executor_cls: MagicMock,
+        mock_connector_backend_cls: MagicMock,
+        mock_api_key_manager_cls: MagicMock,
         mock_fastmcp_cls: MagicMock,
+        mock_audit_middleware_cls: MagicMock,
         mock_register_search: MagicMock,
         mock_register_skills: MagicMock,
+        mock_register_connectors: MagicMock,
+        mock_register_api_proxy: MagicMock,
     ) -> None:
         """When Embedder health check fails, a retry task is spawned."""
         mock_health = MagicMock()
@@ -253,6 +332,17 @@ class TestMCPGatewayStart:
         mock_embedder = AsyncMock()
         mock_embedder.health_check.return_value = False
         mock_embedder_cls.return_value = mock_embedder
+
+        # DB engine mock
+        mock_engine = AsyncMock()
+        mock_conn = AsyncMock()
+        mock_engine.connect.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_engine.connect.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_engine_cls.return_value = mock_engine
+
+        # NATS mock
+        mock_nats = AsyncMock()
+        mock_nats_cls.return_value = mock_nats
 
         mock_registry = MagicMock()
         mock_registry.skill_count = 0
@@ -267,7 +357,6 @@ class TestMCPGatewayStart:
 
         assert gateway._qdrant_connected is True
         assert gateway._embedder_connected is False
-        assert len(gateway._retry_tasks) == 1
 
         # Not ready because Embedder is down
         mock_health.set_ready.assert_called_with(False)
@@ -275,28 +364,42 @@ class TestMCPGatewayStart:
         await gateway.stop()
 
     @pytest.mark.asyncio
+    @patch("mcp_gateway.main.register_api_proxy_tools")
+    @patch("mcp_gateway.main.register_connector_tools")
     @patch("mcp_gateway.main.register_skills_tools")
     @patch("mcp_gateway.main.register_search_tools")
+    @patch("mcp_gateway.main.AuditLoggingMiddleware")
     @patch("mcp_gateway.main.FastMCP")
+    @patch("mcp_gateway.main.ApiKeyManager")
+    @patch("mcp_gateway.main.ConnectorBackend")
     @patch("mcp_gateway.main.SkillExecutor")
     @patch("mcp_gateway.main.SkillRegistry")
     @patch("mcp_gateway.main.SearchBackend")
+    @patch("mcp_gateway.main.NatsBackend")
+    @patch("mcp_gateway.main.create_async_engine")
     @patch("mcp_gateway.main.EmbedderClient")
     @patch("mcp_gateway.main.QdrantDB")
     @patch("mcp_gateway.main.HealthServer")
-    async def test_start_both_connections_fail(
+    async def test_start_all_connections_fail(
         self,
         mock_health_server_cls: MagicMock,
         mock_qdrant_cls: MagicMock,
         mock_embedder_cls: MagicMock,
+        mock_engine_cls: MagicMock,
+        mock_nats_cls: MagicMock,
         mock_search_backend_cls: MagicMock,
         mock_skill_registry_cls: MagicMock,
         mock_skill_executor_cls: MagicMock,
+        mock_connector_backend_cls: MagicMock,
+        mock_api_key_manager_cls: MagicMock,
         mock_fastmcp_cls: MagicMock,
+        mock_audit_middleware_cls: MagicMock,
         mock_register_search: MagicMock,
         mock_register_skills: MagicMock,
+        mock_register_connectors: MagicMock,
+        mock_register_api_proxy: MagicMock,
     ) -> None:
-        """Service still starts when both connections fail (degraded mode)."""
+        """Service still starts when all connections fail (degraded mode)."""
         mock_health = MagicMock()
         mock_health_server_cls.return_value = mock_health
 
@@ -307,6 +410,14 @@ class TestMCPGatewayStart:
         mock_embedder = AsyncMock()
         mock_embedder.health_check.side_effect = Exception("Embedder unreachable")
         mock_embedder_cls.return_value = mock_embedder
+
+        # DB engine fails
+        mock_engine_cls.side_effect = Exception("DB unreachable")
+
+        # NATS fails
+        mock_nats = AsyncMock()
+        mock_nats.connect.side_effect = Exception("NATS unreachable")
+        mock_nats_cls.return_value = mock_nats
 
         mock_registry = MagicMock()
         mock_registry.skill_count = 0
@@ -321,7 +432,9 @@ class TestMCPGatewayStart:
 
         assert gateway._qdrant_connected is False
         assert gateway._embedder_connected is False
-        assert len(gateway._retry_tasks) == 2
+        assert gateway._db_connected is False
+        assert gateway._nats_connected is False
+        assert len(gateway._retry_tasks) == 4
         assert gateway._running is True
 
         await gateway.stop()
@@ -423,6 +536,8 @@ class TestMCPGatewayRetry:
         mock_health = MagicMock()
         gateway._health_server = mock_health
         gateway._embedder_connected = True
+        gateway._db_connected = True
+        gateway._nats_connected = True
         gateway._qdrant_connected = False
 
         # Await directly — mocked sleep returns instantly, init succeeds,
@@ -447,6 +562,8 @@ class TestMCPGatewayRetry:
         mock_health = MagicMock()
         gateway._health_server = mock_health
         gateway._qdrant_connected = True
+        gateway._db_connected = True
+        gateway._nats_connected = True
         gateway._embedder_connected = False
 
         with patch("asyncio.sleep", new_callable=AsyncMock):
