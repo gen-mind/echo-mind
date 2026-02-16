@@ -1924,7 +1924,7 @@ find_replace -> rg PATTERN -l | xargs sed -i 's/OLD/NEW/g'
 - Native code to delete: None (keep `edit.py` as optional native alongside skill)
 - Test: Multi-line replacement via sed heredoc pattern
 
-#### Wave 2 -- Extended Skills (execute during Phase 7 / Week 10)
+#### Wave 2 -- Extended Skills
 
 **`weather` skill**
 
@@ -2079,9 +2079,9 @@ API keys for skills that declare `requires.env` are injected by the `APIKeyManag
 
 ### 16.5 Dangerous Command Patterns
 
-The MCP gateway's audit logger flags (but does not block in Phase 1) these patterns. Blocking is added in Phase 8 (Auth & Security Hardening):
+The MCP gateway's audit logger flags (but does not block initially) these patterns. Blocking will be added in a future security hardening phase:
 
-| Pattern | Risk | Phase 1 | Phase 8 |
+| Pattern | Risk | Initial | Hardened |
 |---------|------|---------|---------|
 | `rm -rf /` | Filesystem destruction | Log + warn | Block |
 | `git push --force` to main/master | History rewrite | Log + warn | Require approval |
@@ -2202,7 +2202,7 @@ These are added to `src/mcp_gateway/requirements.txt`. The `python-frontmatter` 
 | # | Criterion | Score (1-10) | Justification |
 |---|-----------|-------------|---------------|
 | 1 | **Format Compatibility** | 9/10 | EchoMind SKILL.md is a superset of Anthropic/OpenAI/Moltbot formats. Existing community skills work with zero or minimal changes. |
-| 2 | **Security Model** | 7/10 | Environment isolation, timeout enforcement, output limits provide good baseline. Full command analysis and blocking deferred to Phase 8. |
+| 2 | **Security Model** | 7/10 | Environment isolation, timeout enforcement, output limits provide good baseline. Full command analysis and blocking to be added in a future hardening phase. |
 | 3 | **Developer Experience** | 9/10 | Adding a new skill = create a directory + write markdown. No Python code, no compilation, no redeployment (hot reload). |
 | 4 | **Test Coverage** | 8/10 | 40+ test cases across parser, registry, executor, and integration. Edge cases (malformed files, timeouts, large output) covered. |
 | 5 | **Performance** | 8/10 | Subprocess overhead ~5-10ms. Skill registry loads once at startup. No per-request disk I/O. Hot reload only when triggered. |

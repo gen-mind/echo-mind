@@ -106,9 +106,8 @@ class DockerSandboxBackend(SandboxBackend):
                 user="1000",
                 # Security: no privilege escalation
                 security_opt=["no-new-privileges"],
-                # Security: drop all capabilities, add only what's needed
+                # Security: drop all capabilities
                 cap_drop=["ALL"],
-                cap_add=["NET_RAW"],
                 # Security: read-only root filesystem
                 read_only=True,
                 # Writable tmpfs for temp files

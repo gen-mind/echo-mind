@@ -523,16 +523,14 @@ class TestUploadServiceComplete:
     async def test_complete_upload_without_nats(
         self, mock_db, mock_minio, mock_user, mock_document
     ):
-        """Test completion works without NATS (graceful degradation)."""
+        """Test completion raises ServiceUnavailableError without NATS."""
         service = UploadService(mock_db, minio=mock_minio, nats=None)
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_document
         mock_db.execute.return_value = mock_result
 
-        result = await service.complete_upload(100, mock_user)
-
-        assert result == mock_document
-        assert mock_document.status == "pending"
+        with pytest.raises(ServiceUnavailableError, match="NATS message queue"):
+            await service.complete_upload(100, mock_user)
 
 
 class TestUploadServiceAbort:

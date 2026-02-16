@@ -669,7 +669,7 @@ message SandboxHealthEvent {
 }
 ```
 
-**Note**: For Phase 5 (initial implementation), JSON encoding is acceptable. Protobuf can be adopted later for performance if NATS message volume warrants it. The proto definitions above serve as the schema contract regardless of wire format.
+**Note**: For the initial implementation, JSON encoding is acceptable. Protobuf can be adopted later for performance if NATS message volume warrants it. The proto definitions above serve as the schema contract regardless of wire format.
 
 ---
 
@@ -1380,7 +1380,7 @@ Step 7: Integration testing
 | 1 | **Backward Compatibility** | 9 | Mode-based routing keeps existing chat/search paths untouched. Only risk is proto regeneration for new ChatMode enum value. |
 | 2 | **Streaming Latency** | 8 | NATS adds ~1-2ms per message hop. Ordered consumers avoid ack overhead. WebSocket relay is negligible. Total added latency <5ms per token vs current in-process path. |
 | 3 | **Fault Tolerance** | 7 | Heartbeat monitoring + reconciliation loop handle most failures. Edge case: API crash during relay loses in-flight tokens (NATS JetStream memory storage). Mitigation: replay from stream on reconnect. |
-| 4 | **Security** | 7 | Network isolation + NATS subject scoping provide baseline. JWT auth for MCP deferred to Phase 8. During Phases 4-7, MCP server trusts all callers on internal network. |
+| 4 | **Security** | 7 | Network isolation + NATS subject scoping provide baseline. MCP server trusts all callers on internal network. JWT auth to be added in a future hardening phase. |
 | 5 | **Implementation Complexity** | 6 | Moderate complexity. SandboxManager introduces Docker SDK dependency and async container management. NATS relay pattern is straightforward but adds a new message bus to debug. |
 | 6 | **Testability** | 8 | All components are mockable. Docker SDK mocked in unit tests. NATS interactions mocked via fake publisher/subscriber. WebSocket handler tested via existing patterns. |
-| 7 | **Operational Readiness** | 7 | Health checks, metrics, audit log provide visibility. Missing: Grafana dashboard for sandbox pool (added in Phase 6). Missing: automatic capacity scaling (single-host limitation). |
+| 7 | **Operational Readiness** | 7 | Health checks, metrics, audit log provide visibility. Missing: Grafana dashboard for sandbox pool. Missing: automatic capacity scaling (single-host limitation). |

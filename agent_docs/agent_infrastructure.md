@@ -932,7 +932,7 @@ Sandbox containers need to reach NATS (on backend) for message passing. Rather t
 
 **Security boundary**: Sandbox containers CAN reach any service on the backend network via DNS. The security enforcement happens at the application layer -- sandbox containers only know about NATS and MCP gateway URLs (injected via environment variables). They have no credentials for postgres, qdrant, or minio.
 
-**Future hardening** (Phase 8): iptables rules or Docker network policies can be added to restrict sandbox containers to only NATS and MCP gateway at the network level.
+**Future hardening**: iptables rules or Docker network policies can be added to restrict sandbox containers to only NATS and MCP gateway at the network level.
 
 #### Docker SDK Network Attachment
 
@@ -960,7 +960,6 @@ container = client.containers.create(
     # Security
     read_only=True,                   # Read-only root filesystem
     cap_drop=["ALL"],                 # Drop all capabilities
-    cap_add=["NET_RAW"],              # Required for DNS resolution
     tmpfs={"/tmp": "size=100m,noexec,nosuid"},  # Writable /tmp
     user="1000:1000",                 # Non-root
     # Volumes
@@ -1813,7 +1812,7 @@ def test_sandbox_container_has_resource_limits():
 | Criterion | Score (1-10) | Rationale |
 |-----------|:---:|-----------|
 | **Follows existing patterns** | 9 | Compose overlay, profile gating, `.env` variables, multi-stage Dockerfile, Alembic migration -- all match established EchoMind conventions exactly. |
-| **Security isolation** | 7 | Non-root user, capability drop, read-only FS, resource limits. Network-level isolation is partial (sandbox joins backend for NATS access). Full iptables enforcement deferred to Phase 8. |
+| **Security isolation** | 7 | Non-root user, capability drop, read-only FS, resource limits. Network-level isolation is partial (sandbox joins backend for NATS access). Full iptables enforcement to be added in a future hardening phase. |
 | **Operational simplicity** | 8 | Single `ENABLE_SANDBOX=true` toggle. MCP managed by compose. Dynamic sandboxes managed by API. No new top-level commands needed. |
 | **Scalability** | 8 | Warm pool with configurable size. Per-container resource limits. NATS memory stream with bounded retention. Tested up to 10 concurrent sandboxes on demo server specs. |
 | **Observability** | 8 | Direct Langfuse SDK for traces, Prometheus for metrics. Audit trail in both NATS (SANDBOX_AUDIT stream) and PostgreSQL (sandbox_events table). |

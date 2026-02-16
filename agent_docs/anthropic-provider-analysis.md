@@ -209,11 +209,11 @@ Test cases needed:
 
 | Decision | Answer | Notes |
 |----------|--------|-------|
-| **Mixed-provider agents** | **No** (for now) | Single provider per deployment. Add as future feature when needed. |
-| **Provider failover** | **No** (phase 1) | Defer to phase 9 with circuit breakers. |
-| **Extended thinking** | **Defer** | Phase 8+. |
+| **Mixed-provider agents** | **No** (for now) | Single provider per deployment. Add when needed. |
+| **Provider failover** | **No** (phase 1) | Add with circuit breakers when needed. |
+| **Extended thinking** | **Defer** | Add when needed. |
 | **Azure Foundry** | **Defer** | Not relevant for current deployment. |
-| **Response object diff** | **Defer** | Future investigation. Framework normalizes; verify during integration testing. |
+| **Response object diff** | **Defer** | Framework normalizes; verify during integration testing. |
 | **Cost/token tracking** | **Langfuse direct SDK** | No custom cost tracking — Langfuse handles pricing per model. |
 
 ### Observability Requirement (Mandatory)

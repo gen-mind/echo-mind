@@ -372,17 +372,17 @@ PENDING → EXECUTING → COMPLETED | FAILED
 **Pros:** RAG becomes a native tool (`search_knowledge_base`), cleanest long-term architecture
 **Cons:** Biggest change, requires careful migration
 
-### Recommendation: **Option B for Phase 7, migrate to Option C in Phase 8**
+### Recommendation: **Option B initially, migrate to Option C later**
 
-Phase 7: Add `mode: "agent"` to `CHAT_START`. ChatHandler routes to either existing RAG flow or new AgentService. Minimal disruption.
+Initially: Add `mode: "agent"` to `CHAT_START`. ChatHandler routes to either existing RAG flow or new AgentService. Minimal disruption.
 
-Phase 8: When RAG tools are added (Phase 8 roadmap), the agent can natively call `search_knowledge_base` as a tool, making the RAG flow an agent capability rather than a separate code path.
+Later: When RAG tools are added, the agent can natively call `search_knowledge_base` as a tool, making the RAG flow an agent capability rather than a separate code path.
 
 ---
 
 ## 7. Implementation Components
 
-### 7.1 Backend (Phase 7 — API Gateway Integration)
+### 7.1 Backend (API Gateway Integration)
 
 | File | Purpose |
 |------|---------|
@@ -463,7 +463,7 @@ CONTENT_TYPE_TO_EVENT = {
 |----------|--------|-----------|
 | **Transport** | Extend existing WebSocket | Single connection, shared auth/session, no protocol fragmentation |
 | **Agent mode activation** | Per-session toggle | User explicitly picks "Agent mode" in the UI when starting a session |
-| **Session storage** | Keep JSONL for Phase 7 | Simpler initial integration. Migrate to PostgreSQL in Phase 9 |
+| **Session storage** | Keep JSONL initially | Simpler initial integration. Migrate to PostgreSQL later |
 | **Backward compatibility** | Keep both flows | Existing RAG flow unchanged. Agent mode is additive. Zero risk |
 
 ### Remaining Open Questions

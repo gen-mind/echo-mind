@@ -207,8 +207,6 @@ tmpfs:
   - /tmp:size=100M        # Writable temp only
 cap_drop:
   - ALL                   # Drop all Linux capabilities
-cap_add:
-  - NET_RAW              # Required for DNS resolution
 ```
 
 ### 3.4 Injected Context (Environment Variables)
@@ -496,7 +494,6 @@ class SandboxManager:
             nano_cpus=int(self._settings.cpu_limit * 1e9),
             security_opt=["no-new-privileges:true"],
             cap_drop=["ALL"],
-            cap_add=["NET_RAW"],
             read_only=True,
             tmpfs={"/tmp": "size=100M"},
             labels={
@@ -1386,20 +1383,7 @@ When scaling beyond a single host, the architecture supports:
 ### Phase 3: MCP Server (Week 4-5)
 - [ ] Create `src/mcp/` service
 - [ ] Implement skills: vector_search, document_fetch, web_search, web_crawl
-- [ ] JWT-based zero-trust auth per request
 - [ ] Permission-scoped data access
-
-### Phase 4: Security Hardening (Week 6)
-- [ ] NATS per-sandbox authorization
-- [ ] Network firewall rules (iptables)
-- [ ] Resource limits tuning
-- [ ] Penetration testing of sandbox escape vectors
-
-### Phase 5: Observability (Week 7)
-- [ ] Prometheus metrics for sandbox pool
-- [ ] Grafana dashboard for sandbox monitoring
-- [ ] Langfuse trace integration
-- [ ] Audit log queries and alerting
 
 ---
 
@@ -1917,7 +1901,6 @@ class SandboxPool:
                 pids_limit=self._settings.pids_limit,
                 security_opt=["no-new-privileges:true"],
                 cap_drop=["ALL"],
-                cap_add=["NET_RAW"],
                 read_only=True,
                 tmpfs={"/tmp": f"size={self._settings.tmpfs_size}"},
                 labels={
@@ -3300,7 +3283,7 @@ Which Docker networks the sandbox joins and the resulting access matrix.
 | Embedder | 50051 | NO | Not on sandbox network |
 | API | 8000 | NO | API on sandbox net but sandbox communicates via NATS only |
 
-**Future hardening** (Phase 8): iptables rules to explicitly block `172.20.0.0/16` from sandbox network even if misconfiguration bridges them.
+**Future hardening**: iptables rules to explicitly block `172.20.0.0/16` from sandbox network even if misconfiguration bridges them.
 
 ---
 
@@ -3436,7 +3419,7 @@ anthropic==0.45.2           # LLM client (Anthropic)
 | 6 | **Observability** | 8 | NATS audit stream, DB event log, heartbeat monitoring, Langfuse trace integration, Prometheus-ready metrics. |
 | 7 | **Test Coverage** | 8 | 39 planned tests covering manager, pool, models, config, exceptions. Full mock coverage for Docker SDK and NATS. Integration tests marked slow. |
 
-**Overall**: 7.7 / 10 — Production-viable for single-tenant deployment. Primary gaps are multi-host scaling and gVisor-level isolation (both planned for future phases).
+**Overall**: 7.7 / 10 — Production-viable for single-tenant deployment. Primary gaps are multi-host scaling and gVisor-level isolation.
 
 ---
 

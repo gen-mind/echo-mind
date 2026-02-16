@@ -209,23 +209,23 @@ class TestScopes:
     def test_scopes_for_service_drive(self) -> None:
         """Test drive scopes."""
         scopes = scopes_for_service("drive")
-        assert len(scopes) == 2
-        assert "https://www.googleapis.com/auth/drive.readonly" in scopes
+        assert len(scopes) == 1
+        assert "https://www.googleapis.com/auth/drive" in scopes
 
     def test_scopes_for_service_gmail(self) -> None:
         """Test gmail scopes."""
         scopes = scopes_for_service("gmail")
-        assert "https://www.googleapis.com/auth/gmail.readonly" in scopes
+        assert "https://www.googleapis.com/auth/gmail.modify" in scopes
 
     def test_scopes_for_service_calendar(self) -> None:
         """Test calendar scopes."""
         scopes = scopes_for_service("calendar")
-        assert "https://www.googleapis.com/auth/calendar.readonly" in scopes
+        assert "https://www.googleapis.com/auth/calendar" in scopes
 
     def test_scopes_for_service_contacts(self) -> None:
         """Test contacts scopes."""
         scopes = scopes_for_service("contacts")
-        assert "https://www.googleapis.com/auth/contacts.readonly" in scopes
+        assert "https://www.googleapis.com/auth/contacts" in scopes
 
     def test_scopes_for_unknown_service(self) -> None:
         """Test unknown service raises."""
@@ -235,9 +235,9 @@ class TestScopes:
     def test_all_scopes(self) -> None:
         """Test all_scopes combines all services."""
         scopes = all_scopes()
-        assert len(scopes) >= 5
-        assert "https://www.googleapis.com/auth/gmail.readonly" in scopes
-        assert "https://www.googleapis.com/auth/drive.readonly" in scopes
+        assert len(scopes) == 4
+        assert "https://www.googleapis.com/auth/gmail.modify" in scopes
+        assert "https://www.googleapis.com/auth/drive" in scopes
 
 
 class TestServiceHasScopes:
@@ -246,19 +246,18 @@ class TestServiceHasScopes:
     def test_drive_has_all_scopes(self) -> None:
         """Test drive is authorized when all drive scopes granted."""
         granted = [
-            "https://www.googleapis.com/auth/drive.readonly",
-            "https://www.googleapis.com/auth/drive.metadata.readonly",
+            "https://www.googleapis.com/auth/drive",
         ]
         assert service_has_scopes("drive", granted) is True
 
-    def test_drive_missing_one_scope(self) -> None:
-        """Test drive is not authorized when one scope is missing."""
-        granted = ["https://www.googleapis.com/auth/drive.readonly"]
+    def test_drive_missing_scope(self) -> None:
+        """Test drive is not authorized when scope is missing."""
+        granted = ["https://www.googleapis.com/auth/gmail.modify"]
         assert service_has_scopes("drive", granted) is False
 
     def test_gmail_authorized(self) -> None:
         """Test gmail is authorized with correct scope."""
-        granted = ["https://www.googleapis.com/auth/gmail.readonly"]
+        granted = ["https://www.googleapis.com/auth/gmail.modify"]
         assert service_has_scopes("gmail", granted) is True
 
     def test_empty_granted_scopes(self) -> None:
@@ -268,8 +267,8 @@ class TestServiceHasScopes:
     def test_extra_scopes_dont_interfere(self) -> None:
         """Test that extra scopes don't affect authorization check."""
         granted = [
-            "https://www.googleapis.com/auth/gmail.readonly",
-            "https://www.googleapis.com/auth/drive.readonly",
+            "https://www.googleapis.com/auth/gmail.modify",
+            "https://www.googleapis.com/auth/drive",
             "https://www.googleapis.com/auth/some.other.scope",
         ]
         assert service_has_scopes("gmail", granted) is True
@@ -302,8 +301,8 @@ class TestServicesAuthorized:
     def test_partial_authorization(self) -> None:
         """Test with only some services authorized."""
         granted = [
-            "https://www.googleapis.com/auth/gmail.readonly",
-            "https://www.googleapis.com/auth/calendar.readonly",
+            "https://www.googleapis.com/auth/gmail.modify",
+            "https://www.googleapis.com/auth/calendar",
         ]
         result = services_authorized(granted)
         assert result["gmail"] is True

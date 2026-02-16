@@ -110,7 +110,7 @@
 - Only one hardcoded MCP URL found: `https://docs.molt.bot/mcp.SearchMoltbot`
 - No MCP config files in the repository
 
-### EchoMind MCP Details (Phase 6)
+### EchoMind MCP Details
 
 - `MCPManager` class manages lifecycle (connect/disconnect) as async context manager
 - 3 transport types: `MCPStdioTool`, `MCPStreamableHTTPTool`, `MCPWebsocketTool`
@@ -184,7 +184,7 @@ This could expose EchoMind's internal services (Qdrant search, document retrieva
 | **Language** | TypeScript/Node.js | Python |
 | **Agent framework** | Custom (ACP protocol + Claude CLI backend) | Microsoft Agent Framework (Semantic Kernel) |
 | **Deployment** | Docker, Fly.io, Render, native macOS/iOS/Android apps | Docker Compose on dedicated server |
-| **Session storage** | In-memory + file-based | JSONL files (Phase 9 planned: PostgreSQL) |
+| **Session storage** | In-memory + file-based | JSONL files |
 | **Auth** | Per-channel credentials, device pairing | Authentik OIDC (enterprise SSO) |
 | **Scaling** | Single instance, peer-to-peer mesh | Docker microservices, NATS message queue |
 | **RAG pipeline** | None (no document ingestion) | Full: connectors -> semantic -> chunking -> embedding -> vector search |
@@ -221,12 +221,6 @@ This could expose EchoMind's internal services (Qdrant search, document retrieva
 3. **The "skills gap" is a design choice, not a deficit.** Moltbot's 53 skills are prompt-based instructions for bash/browser. EchoMind's 30 tools are type-safe function-calling tools. Adding "skill-like" capabilities to EchoMind would mean adding more native tools or connecting MCP servers — both supported by the architecture.
 
 4. **Priority MCP servers to configure:** Qdrant (P0), PostgreSQL (P1), and Filesystem (P1) would immediately give EchoMind agents access to the knowledge base, relational data, and file operations through MCP — complementing existing native tools.
-
-5. **Gaps to consider for future phases:**
-   - Multi-LLM provider support with failover (Moltbot's auth-profile rotation pattern)
-   - TTS integration (ElevenLabs or OpenAI TTS via MCP or native tool)
-   - Browser automation (could be an MCP server — Playwright MCP exists)
-   - Productivity integrations (Notion, Trello, etc. — many have MCP servers available)
 
 ---
 

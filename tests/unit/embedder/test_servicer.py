@@ -38,14 +38,20 @@ class TestEmbedServicer:
 
         # Create request
         request = mock.MagicMock()
-        request.texts = ["hello", "world"]
+        request.texts = [
+            "This is a sufficiently long test sentence for the embedding model to process correctly.",
+            "Another realistic sentence that exceeds the minimum text length for embeddings validation.",
+        ]
 
         # Call servicer
         response = servicer.Embed(request, mock_context)
 
         # Verify
         mock_encoder.encode.assert_called_once_with(
-            texts=["hello", "world"],
+            texts=[
+                "This is a sufficiently long test sentence for the embedding model to process correctly.",
+                "Another realistic sentence that exceeds the minimum text length for embeddings validation.",
+            ],
             model_name="test-model",
             batch_size=32,
         )
@@ -82,7 +88,7 @@ class TestEmbedServicer:
         mock_encoder.encode.side_effect = ModelNotFoundError("test-model")
 
         request = mock.MagicMock()
-        request.texts = ["hello"]
+        request.texts = ["This is a sufficiently long test sentence for the embedding model to process correctly."]
 
         servicer.Embed(request, mock_context)
 
@@ -103,7 +109,7 @@ class TestEmbedServicer:
         mock_encoder.encode.side_effect = EncoderError("encoding failed", 1)
 
         request = mock.MagicMock()
-        request.texts = ["hello"]
+        request.texts = ["This is a sufficiently long test sentence for the embedding model to process correctly."]
 
         servicer.Embed(request, mock_context)
 

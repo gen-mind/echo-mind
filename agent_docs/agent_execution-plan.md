@@ -19,7 +19,7 @@ This plan transforms EchoMind's agent system from an in-process library into a *
 | Code to delete | ~1,100 LOC (29 of 30 native tools) |
 | Code to write | ~3,000-4,000 LOC (across all phases) |
 | Moltbot skills portable | 27 of 54 directly, 8 adapt, 3 replace (38 total + 4 new EchoMind-native) |
-| Total implementation time | 8-10 weeks |
+| Total implementation time | 6 weeks |
 
 ---
 
@@ -158,7 +158,7 @@ This plan transforms EchoMind's agent system from an in-process library into a *
 4. **No auth in this phase**:
    - MCP server is on internal Docker network only (not exposed externally)
    - Network isolation provides sufficient security for now
-   - Auth (JWT + RBAC + rate limiting) added in Phase 8
+   - Auth (JWT + RBAC + rate limiting) to be added in a future hardening phase
 
 5. **Middleware**:
    - Audit logging: structured JSON for every tool invocation
@@ -570,7 +570,7 @@ Note: The skill engine (registry, executor, MCP tools) is built in Phase 1. This
 6. **Container security**:
    - Non-root user (uid 1000)
    - Read-only root filesystem
-   - All capabilities dropped (+ NET_RAW for DNS)
+   - All capabilities dropped
    - tmpfs /tmp (100MB)
    - Resource limits: 2 CPU, 2GB RAM per sandbox
    - PID limit: 100
@@ -603,180 +603,6 @@ Sandbox CANNOT reach:
 | Time to first message | ~1.5s | ~50ms |
 | User-perceived latency | noticeable | imperceptible |
 | Resource waste | none | ~20MB per idle container |
-
----
-
-## Phase 5: Chat Integration (Week 8)
-
-> 📄 Deep dive: [agent_chat-integration.md](agent_chat-integration.md) — WebSocket relay, streaming tokens, session pinning
-> 📄 See also: [agent-chat-integration-analysis.md](agent-chat-integration-analysis.md) — Current chat handler analysis, modification points
-
-**Goal**: Wire sandbox into existing WebSocket chat flow with per-session toggle.
-
-### Deliverables
-
-1. **Modified ChatHandler** (`src/api/websocket/chat_handler.py`):
-   - New code path when sandbox/agent mode enabled
-   - Sandbox assignment via `SandboxManager.assign()`
-   - Message relay: WebSocket → NATS → Sandbox → NATS → WebSocket
-
-2. **Streaming token relay**:
-   - Sandbox publishes tokens to `sandbox.{sid}.stream`
-   - API subscribes and forwards to WebSocket client
-   - Event types: `token`, `tool_call.start`, `tool_call.result`, `complete`
-
-3. **Session pinning**: Once assigned, all messages route to same sandbox
-
-4. **Graceful shutdown**: 30s drain period, flush pending responses
-
-5. **REST endpoints**:
-   - `GET /sandbox/pool` — Pool status (admin only)
-   - `POST /sandbox/sessions/{id}/release` — Release sandbox
-   - `GET /sandbox/sessions` — User's active sandbox sessions
-
----
-
-## Phase 6: Observability (Week 9)
-
-> 📄 Deep dive: [agent_observability.md](agent_observability.md) — Langfuse tracing, Prometheus metrics, Grafana dashboards
-> 📄 See also: [anthropic-provider-analysis.md](anthropic-provider-analysis.md) — Provider-specific observability (Langfuse supports both OpenAI + Anthropic natively)
-
-**Goal**: End-to-end tracing, metrics, cost tracking, dashboards.
-
-> **Decision (2026-02-16):** Use direct Langfuse SDK + Prometheus, matching the existing EchoMind pattern (`langfuse_helper.py`, `prometheus_client`).
-
-### Deliverables
-
-1. **Langfuse integration** (direct SDK, no collector):
-   - Use existing `echomind_lib.helpers.langfuse_helper` (`create_trace()`, `score_trace()`)
-   - Agent service: trace per agent run with `session_id`, `agent_id`, `provider`, `model`
-   - MCP gateway: trace per tool call with server name, transport, duration
-   - Both services: `init_langfuse()` on startup, `shutdown_langfuse()` on shutdown
-
-2. **Agent tracing middleware**:
-   - `ObservabilityMiddleware` (ChatMiddleware) — Langfuse generation per LLM call
-   - `ToolObservabilityMiddleware` (FunctionMiddleware) — Langfuse span per tool call
-   - All traces linked via `session_id` for conversation-level grouping
-
-3. **Prometheus metrics** (direct, pull-based):
-   - Agent service: expose `/metrics` endpoint with `prometheus_client`
-   - Counters: agent_runs_total (by agent_id, provider, status), tool_calls_total (by tool, status)
-   - Histograms: agent_run_duration_seconds, tool_call_duration_seconds
-   - Add scrape target to `config/observability/prometheus/prometheus.yml`
-
-4. **Cost tracking**:
-   - Token usage per run with model-specific pricing
-   - Langfuse cost_details attributes (Langfuse handles OpenAI + Anthropic pricing natively)
-   - Prometheus counters for per-user aggregation
-
-5. **Grafana dashboards** (3 new):
-   - Agent Runs Overview (rate, duration, errors, top tools)
-   - MCP Server Health (connections, call rate, latency, denied calls)
-   - Agent Cost Analysis (daily cost, by model, by user, projection)
-
-6. **Alerting rules**:
-   - Agent error rate > 10%
-   - Agent P95 latency > 60s
-   - MCP server disconnected
-   - Daily cost > $50
-
----
-
-## Phase 7: Skills Migration (Week 10)
-
-> 📄 Deep dive: [agent_skills-migration.md](agent_skills-migration.md) — Native tool deletion plan, SKILL.md authoring guide, sandbox image setup
-
-**Goal**: Delete native tools, port ALL remaining Moltbot skills, build EchoMind-native skills. See [Phase 3](#phase-3-initial-skills--portability-testing-week-5) for the complete 55-skill portability assessment.
-
-### Deliverables
-
-1. **Delete 29 native tools**:
-   ```
-   DELETE: filesystem.py, directory.py, git.py, git_extended.py,
-           system.py, text.py, web.py
-   KEEP:   edit.py (optional native), execution.py (bash core),
-           registry.py (simplified)
-   ```
-
-2. **Port all remaining "Direct" Moltbot skills** (22 skills beyond Phase 3's initial 5):
-   - `1password`, `bird`, `blogwatcher`, `discord`, `gemini`, `gifgrep`, `goplaces`
-   - `mcporter`, `nano-banana-pro`, `nano-pdf`, `notion`, `openai-image-gen`
-   - `openai-whisper-api`, `oracle`, `sag`, `skill-creator`, `slack`, `songsee`
-   - `summarize`, `tmux`, `trello`, `video-frames`
-
-3. **Adapt 8 skills** requiring minor changes:
-   - `camsnap` — Adjust for Docker network camera access
-   - `gog` — Replace with EchoMind Google Workspace connector proxy
-   - `himalaya` — Replace with MCP `send_email` / use connector
-   - `local-places` — Merge into `goplaces`
-   - `openai-whisper` — Use API version (`openai-whisper-api`) to avoid model download
-   - `sherpa-onnx-tts` — Configure model path for sandbox volume mount
-   - `wacli` — WhatsApp auth session management in sandbox
-   - `lobster` — Adapt approval workflow for EchoMind's session model
-
-4. **Build 3 replacement skills**:
-   - `clawdhub` → EchoMind skill registry (skills managed by MCP gateway)
-   - `session-logs` → EchoMind session history API
-   - `model-usage` → Langfuse cost dashboard link
-
-5. **Build 4 EchoMind-native skills**:
-   - `echomind-search` — RAG search via MCP
-   - `echomind-documents` — Document management
-   - `echomind-connectors` — Connector management
-   - `echomind-memory` — Agent long-term memory
-
-6. **Sandbox Docker image** — Pre-install high-priority binaries:
-   ```dockerfile
-   # Phase 7 sandbox image additions
-   RUN apt-get install -y jq curl ffmpeg tmux && \
-       go install github.com/cli/cli/v2/cmd/gh@latest && \
-       pip install nano-pdf
-   # API-key-dependent skills are available but require env vars
-   ```
-
----
-
-## Phase 8: Auth & Security Hardening (Week 11+)
-
-> 📄 Deep dive: [agent_mcp-gateway.md](agent_mcp-gateway.md) — JWT auth, RBAC enforcement, rate limiting design
-> 📄 See also: [agent_sandbox-containers.md](agent_sandbox-containers.md) — Network isolation, capability dropping, security hardening
-
-**Goal**: Add zero-trust authentication between agent and MCP server. This is deferred from Phase 1 to keep initial development fast.
-
-### Deliverables
-
-1. **MCP Gateway auth layer** (`src/mcp_gateway/auth/`):
-   - `token.py` — JWT validation, `SessionContext` extraction
-   - JWT bearer token on every MCP request (RS256, 15-min TTL)
-   - `SessionContext`: session_id, user_id, org_id, groups, permissions
-   - Reuses existing `PermissionChecker` from `src/api/logic/permissions.py`
-
-2. **API token generation**:
-   - `src/api/logic/mcp_token_service.py` — Generate short-lived JWTs for sandbox sessions
-   - Token injected as `MCP_SESSION_TOKEN` env var when sandbox container starts
-
-3. **Rate limiting**:
-   - Per-user per-tool sliding window limiter
-   - Configurable limits per service/tool
-   - Returns 429 with retry-after on breach
-
-4. **RBAC enforcement**:
-   - Permission-scoped Qdrant collection access (user/team/org)
-   - Connector access checked via existing `PermissionChecker`
-   - Skill execution gated by trust level
-
-5. **Security hardening**:
-   - NATS per-sandbox authorization (session-scoped subjects)
-   - Network firewall rules (iptables)
-   - Command analysis in MCP (block dangerous patterns)
-   - Penetration testing of sandbox escape vectors
-
-### Why Deferred
-
-- Internal Docker network provides sufficient isolation for development
-- Auth adds complexity that slows down iteration on the core skill/sandbox flow
-- All the auth infrastructure (JWT, RBAC, PermissionChecker) already exists — wiring it in is mechanical work
-- Better to validate the architecture first, then lock it down
 
 ---
 
@@ -833,10 +659,7 @@ Current server (8 CPU, 32GB RAM) can support ~4 concurrent agent sessions. A 32-
 | 2. Connectors & API Proxy | 1 | ~400 | ~20 |
 | 3. Skills Engine | 1 | ~350 | ~15 |
 | 4. Sandbox Foundation | 2 | ~1,000 | ~25 |
-| 5. Chat Integration | 1 | ~400 | ~15 |
-| 6. Observability | 1 | ~500 | ~15 |
-| 7. Skills Migration | 1 | ~200 (+delete 1,100) | ~10 |
-| **Total** | **9** | **~3,650** | **~130** |
+| **Total** | **6** | **~2,550** | **~90** |
 
 ---
 
@@ -860,13 +683,9 @@ Current server (8 CPU, 32GB RAM) can support ~4 concurrent agent sessions. A 32-
 
 2. **Skills engine before sandbox** — Skills can be tested via MCP without sandboxes (run locally first). Validates the SKILL.md → MCP tool → execution pipeline.
 
-3. **Sandbox after MCP** — The sandbox depends on MCP being operational. By this point, the MCP gateway has been tested with real tools.
+3. **Connectors after skills** — The connector tools reuse the same MCP gateway infrastructure and add data source access.
 
-4. **Chat integration after sandbox** — Requires both sandbox and MCP to be working. This is integration work, not new architecture.
-
-5. **Observability late** — Can be added incrementally without blocking other work. Uses direct Langfuse SDK + Prometheus.
-
-6. **Skills migration last** — Deleting native tools is a cleanup step. The new skill-based approach must be proven before removing the old one.
+4. **Sandbox after MCP** — The sandbox depends on MCP being operational. By this point, the MCP gateway has been tested with real tools.
 
 ---
 
@@ -892,15 +711,14 @@ Current server (8 CPU, 32GB RAM) can support ~4 concurrent agent sessions. A 32-
 | Document | Description | Relevant Phases |
 |----------|-------------|-----------------|
 | [agent_sandbox-containers.md](agent_sandbox-containers.md) | Container architecture, lifecycle, security, warm pool | Phase 4 |
-| [agent_mcp-gateway.md](agent_mcp-gateway.md) | MCP server design, FastMCP, zero-trust model | Phase 1, 2, 8 |
-| [agent_skills-migration.md](agent_skills-migration.md) | Tool migration analysis, Moltbot skill format | Phase 3, 7 |
-| [agent_observability.md](agent_observability.md) | Langfuse, Prometheus, Grafana dashboards | Phase 6 |
-| [agent_infrastructure.md](agent_infrastructure.md) | NATS streams, Docker Compose, cluster.sh changes | Phase 4, 5 |
-| [agent_chat-integration.md](agent_chat-integration.md) | WebSocket chat flow, sandbox message relay | Phase 5 |
-| [agent-chat-integration-analysis.md](agent-chat-integration-analysis.md) | Analysis of current chat handler for agent integration | Phase 5 |
+| [agent_mcp-gateway.md](agent_mcp-gateway.md) | MCP server design, FastMCP, zero-trust model | Phase 1, 2 |
+| [agent_skills-migration.md](agent_skills-migration.md) | Tool migration analysis, Moltbot skill format | Phase 3 |
+| [agent_observability.md](agent_observability.md) | Langfuse, Prometheus, Grafana dashboards | Reference |
+| [agent_infrastructure.md](agent_infrastructure.md) | NATS streams, Docker Compose, cluster.sh changes | Phase 4 |
+| [agent_chat-integration.md](agent_chat-integration.md) | WebSocket chat flow, sandbox message relay | Reference |
+| [agent-chat-integration-analysis.md](agent-chat-integration-analysis.md) | Analysis of current chat handler for agent integration | Reference |
 | [anthropic-provider-analysis.md](anthropic-provider-analysis.md) | Anthropic LLM provider support, AnthropicClient, provider detection | All (provider-agnostic) |
 | [echomind-vs-moltbot-comparison.md](echomind-vs-moltbot-comparison.md) | Feature comparison, architecture differences | Context |
-| [old-agent-phases-roadmap.md](old-agent-phases-roadmap.md) | Previous roadmap (superseded by this document) | Historical |
 
 ### External References
 

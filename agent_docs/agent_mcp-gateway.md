@@ -56,7 +56,7 @@
 1. **Agent sees only MCP tools** -- no raw API keys, no direct DB connections, no network access
 2. **Audit logging on every call** -- tool name, parameters, result status, duration logged as structured JSON
 3. **Single service, multiple tool namespaces** -- skills, connectors, search, and API proxying all in one FastMCP server
-4. **No auth in initial phase** -- All callers trusted. Network isolation (internal Docker network) provides security. Auth (JWT, RBAC, rate limiting) deferred to Phase 8 (security hardening).
+4. **No auth in initial phase** -- All callers trusted. Network isolation (internal Docker network) provides security.
 
 ---
 
@@ -103,7 +103,7 @@ FastMCP 3.0 is currently in release candidate (3.0.0rc2 as of 2026-02-14). The s
 
 **No JWT, no RBAC, no PermissionChecker, no rate limiting in the initial implementation.** All callers are trusted.
 
-Auth is deferred to Phase 8 (security hardening) per the execution plan. The rationale:
+Auth is deferred to a future hardening phase. The rationale:
 
 1. **Internal Docker network provides sufficient isolation** -- the MCP gateway is only reachable from the `backend` and `sandbox` Docker networks, not from the internet
 2. **Auth adds complexity that slows iteration** on the core skill/sandbox flow
@@ -152,15 +152,6 @@ Layer 3: Skill Sandboxing
   - No inherited secrets from gateway process
 ```
 
-### Future: Auth Added in Phase 8
-
-Phase 8 will add:
-- JWT bearer token validation on every MCP request (RS256, 15-min TTL)
-- `SessionContext` extraction: session_id, user_id, org_id, groups, permissions
-- RBAC enforcement via existing `PermissionChecker` from `src/api/logic/permissions.py`
-- Per-user per-tool rate limiting (sliding window)
-- Collection scoping for Qdrant searches (user/team/org)
-
 ---
 
 ## MCP Tool Catalog
@@ -174,7 +165,7 @@ The gateway exposes tools in two namespaces for Phase 1:
 | `skills` | `skills_list`, `skills_execute`, `skills_get_info` | SKILL.md-based bash skills |
 | `search` | `search_documents`, `search_collections`, `get_document`, `get_document_chunks` | RAG retrieval from Qdrant |
 
-### Future Namespaces (Phase 2+)
+### Additional Namespaces (Phase 2)
 
 | Namespace | Tools | Description |
 |-----------|-------|-------------|
@@ -619,7 +610,7 @@ Agent                              MCP Gateway
 
 ### User-Scoped Access Pattern
 
-The MCP gateway will reuse the existing `PermissionChecker` from `src/api/logic/permissions.py` once auth is added in Phase 8. In the initial phase, connector tools return all connectors without RBAC filtering.
+The MCP gateway will reuse the existing `PermissionChecker` from `src/api/logic/permissions.py` once auth is added. In the initial phase, connector tools return all connectors without RBAC filtering.
 
 ### Collection Scoping Rules
 
@@ -631,7 +622,7 @@ The gateway enforces the same collection scoping as the existing API:
 | Team  | `team_{team_id}`     | Team members |
 | Org   | `org_default`        | All allowed users |
 
-This logic is already implemented in `PermissionChecker.get_search_collections()` at `src/api/logic/permissions.py`. The MCP gateway will reuse it directly once auth is wired in (Phase 8).
+This logic is already implemented in `PermissionChecker.get_search_collections()` at `src/api/logic/permissions.py`. The MCP gateway will reuse it directly once auth is wired in.
 
 In Phase 1, the search backend searches all available collections without user scoping. This is acceptable because:
 - The MCP gateway is only reachable from internal Docker networks
@@ -658,7 +649,7 @@ Returns to agent:  [{"title": "...", "url": "...", "snippet": "..."}]
 
 > **Note**: API proxy tools are Phase 2 scope. In Phase 1, only skills and search are available.
 
-### Registered API Keys (Phase 2+)
+### Registered API Keys (Phase 2)
 
 | Service | Env Var | Rate Limit |
 |---------|---------|------------|
@@ -2258,13 +2249,12 @@ echomind-mcp (MCP Gateway)
 | `protobuf` | `>=5.28.0,<6.0` | Protobuf runtime for generated models. |
 | `pyyaml` | `>=6.0,<7.0` | YAML frontmatter parsing for SKILL.md files. |
 
-### Phase 2+ Additions
+### Phase 2 Additions
 
 | Package | Version | When |
 |---------|---------|------|
 | `sqlalchemy[asyncio]` | `>=2.0,<3.0` | Phase 2 (connector tools) |
 | `asyncpg` | `>=0.30,<1.0` | Phase 2 (PostgreSQL backend) |
-| `pyjwt[crypto]` | `>=2.8,<3.0` | Phase 8 (JWT auth) |
 
 ---
 
