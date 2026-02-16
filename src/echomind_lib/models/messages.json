@@ -3235,6 +3235,199 @@
             "description": ""
         }
     },
+    "SandboxSession": {
+        "id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "session_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "user_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "chat_session_id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "container_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "container_name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "status": {
+            "type": "SandboxStatus",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "SandboxStatus(0)"
+            },
+            "description": ""
+        },
+        "assigned_at": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "activated_at": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "destroyed_at": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "agent_config": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "message_count": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "tool_calls_count": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "total_tokens": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "created_at": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        },
+        "updated_at": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        }
+    },
+    "SandboxEvent": {
+        "id": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "0"
+            },
+            "description": ""
+        },
+        "sandbox_session_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "\"\""
+            },
+            "description": ""
+        },
+        "event_type": {
+            "type": "SandboxEventType",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "SandboxEventType(0)"
+            },
+            "description": ""
+        },
+        "event_data": {
+            "type": "Struct",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": null
+            },
+            "description": ""
+        },
+        "created_at": {
+            "type": "datetime.datetime",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "default": "None"
+            },
+            "description": ""
+        }
+    },
     "AgentMemory": {
         "id": {
             "type": "int",

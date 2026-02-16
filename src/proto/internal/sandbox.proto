@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package echomind.internal;
+
+option go_package = "echomind/proto/internal";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// Sandbox container lifecycle status
+enum SandboxStatus {
+  SANDBOX_STATUS_UNSPECIFIED = 0;
+  SANDBOX_STATUS_WARM = 1;         // Pre-created, waiting for assignment
+  SANDBOX_STATUS_ASSIGNED = 2;     // Assigned to session, env injected
+  SANDBOX_STATUS_ACTIVE = 3;       // Health check passed, processing messages
+  SANDBOX_STATUS_DRAINING = 4;     // Graceful shutdown in progress
+  SANDBOX_STATUS_DESTROYED = 5;    // Container removed
+}
+
+// Sandbox lifecycle event types
+enum SandboxEventType {
+  SANDBOX_EVENT_TYPE_UNSPECIFIED = 0;
+  SANDBOX_EVENT_TYPE_CREATED = 1;       // Container created (warm pool)
+  SANDBOX_EVENT_TYPE_ASSIGNED = 2;      // Assigned to a chat session
+  SANDBOX_EVENT_TYPE_ACTIVATED = 3;     // Health check passed
+  SANDBOX_EVENT_TYPE_MESSAGE = 4;       // Message processed
+  SANDBOX_EVENT_TYPE_TOOL_CALL = 5;     // Tool invocation
+  SANDBOX_EVENT_TYPE_DRAINING = 6;      // Graceful shutdown started
+  SANDBOX_EVENT_TYPE_DESTROYED = 7;     // Container removed
+}
+
+// Sandbox session record
+message SandboxSession {
+  string id = 1;                                     // UUID primary key
+  string session_id = 2;                             // Unique session identifier
+  int32 user_id = 3;                                 // FK to users table
+  int32 chat_session_id = 4;                         // FK to chat_sessions table
+  string container_id = 5;                           // Docker container ID
+  string container_name = 6;                         // Docker container name
+  SandboxStatus status = 7;                          // Current lifecycle status
+  google.protobuf.Timestamp assigned_at = 8;         // When assigned to session
+  google.protobuf.Timestamp activated_at = 9;        // When health check passed
+  google.protobuf.Timestamp destroyed_at = 10;       // When container removed
+  google.protobuf.Struct agent_config = 11;          // Agent configuration JSONB
+  int32 message_count = 12;                          // Messages processed
+  int32 tool_calls_count = 13;                       // Tool calls made
+  int32 total_tokens = 14;                           // Total tokens consumed
+  google.protobuf.Timestamp created_at = 15;         // Record creation time
+  google.protobuf.Timestamp updated_at = 16;         // Record update time
+}
+
+// Sandbox lifecycle event
+message SandboxEvent {
+  int64 id = 1;                                      // BIGSERIAL primary key
+  string sandbox_session_id = 2;                     // FK to sandbox_sessions
+  SandboxEventType event_type = 3;                   // Event type
+  google.protobuf.Struct event_data = 4;             // Event payload JSONB
+  google.protobuf.Timestamp created_at = 5;          // Event timestamp
+}

@@ -7,6 +7,10 @@ networks:
     driver: bridge
   backend:
     driver: bridge
+  sandbox:
+    driver: bridge
+    # Allow internet access for web search tools
+    internal: false
 
 volumes:
   postgres_data:
@@ -274,6 +278,7 @@ services:
     restart: unless-stopped
     networks:
       - backend
+      - sandbox
     labels:
       - "traefik.enable=false"
 
@@ -366,6 +371,14 @@ services:
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_BASE_URL=http://langfuse-web:3000
       - API_RAGAS_SAMPLE_RATE=${RAGAS_SAMPLE_RATE:-0.1}
+      # Sandbox management (opt-in, disabled by default)
+      - SANDBOX_ENABLED=${SANDBOX_ENABLED:-false}
+      - SANDBOX_POOL_SIZE=${SANDBOX_POOL_SIZE:-3}
+      - SANDBOX_IMAGE=${SANDBOX_IMAGE:-gsantopaolo/echomind-agent-sandbox:0.1.0-beta.1}
+      - SANDBOX_NATS_URL=nats://nats:4222
+      - SANDBOX_MCP_URL=http://mcp-gateway:8100
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
@@ -383,6 +396,7 @@ services:
     networks:
       - frontend
       - backend
+      - sandbox
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.api.rule=Host(`${API_DOMAIN}`)"
@@ -626,6 +640,7 @@ services:
     restart: unless-stopped
     networks:
       - backend
+      - sandbox
     labels:
       - "traefik.enable=false"
 

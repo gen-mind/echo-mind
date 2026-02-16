@@ -27,4 +27,9 @@ black==26.1.0  # Code formatter
 # OpenAI client (for agent-framework)
 openai==2.20.0  # OpenAI API client (compatible with vLLM, etc.)
 
+# Sandbox runner dependencies
+nats-py==2.10.0  # NATS client for sandbox communication
+aiohttp==3.11.14  # HTTP server for health checks
+pydantic-settings==2.8.1  # Settings from env vars
+
 # Python version requirement: >=3.12
