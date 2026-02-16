@@ -28,6 +28,17 @@ timeout: 60
 This is the documentation body.
 """
 
+SKILL_WITH_MAX_OUTPUT_MD = """\
+---
+name: big-output
+description: Skill with custom output limit
+command: echo big
+timeout: 120
+max_output_bytes: 262144
+---
+# Big Output Skill
+"""
+
 MINIMAL_SKILL_MD = """\
 ---
 name: minimal
@@ -69,6 +80,7 @@ class TestSkillDefinition:
         assert skill.args == []
         assert skill.tags == []
         assert skill.timeout == 30
+        assert skill.max_output_bytes is None
         assert skill.documentation == ""
         assert skill.source_path == ""
 
@@ -120,6 +132,33 @@ class TestSkillRegistryLoad:
         assert skill.args[1].name == "format"
         assert skill.args[1].required is False
         assert skill.args[1].default == "json"
+
+    def test_load_parses_max_output_bytes(self, tmp_path: object) -> None:
+        """Test that max_output_bytes is parsed from frontmatter."""
+        skill_dir = tmp_path / "big"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(SKILL_WITH_MAX_OUTPUT_MD)
+
+        registry = SkillRegistry(str(tmp_path))
+        registry.load()
+
+        skill = registry.get_skill("big-output")
+        assert skill is not None
+        assert skill.max_output_bytes == 262144
+        assert skill.timeout == 120
+
+    def test_load_max_output_bytes_none_when_omitted(self, tmp_path: object) -> None:
+        """Test that max_output_bytes is None when not in frontmatter."""
+        skill_dir = tmp_path / "min"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(MINIMAL_SKILL_MD)
+
+        registry = SkillRegistry(str(tmp_path))
+        registry.load()
+
+        skill = registry.get_skill("minimal")
+        assert skill is not None
+        assert skill.max_output_bytes is None
 
     def test_load_parses_minimal_frontmatter(self, tmp_path: object) -> None:
         """Test parsing SKILL.md with minimal frontmatter (no args, no tags)."""
@@ -267,6 +306,117 @@ name: incomplete
         registry = SkillRegistry(str(tmp_path))
         count = registry.load()
         assert count == 0
+
+
+SKILL_WITH_UNDEFINED_PLACEHOLDER_MD = """\
+---
+name: bad-placeholder
+description: Has placeholder without matching arg
+command: echo ${input} ${undefined_var}
+args:
+  - name: input
+    description: Input text
+    required: true
+---
+"""
+
+SKILL_WITH_UNUSED_ARG_MD = """\
+---
+name: unused-arg
+description: Has arg not referenced in command
+command: echo hello
+args:
+  - name: unused
+    description: Not used anywhere
+---
+"""
+
+SKILL_WITH_MATCHING_ARGS_MD = """\
+---
+name: matched
+description: All placeholders match args
+command: echo ${input} ${format}
+args:
+  - name: input
+    description: Input text
+    required: true
+  - name: format
+    description: Output format
+    default: json
+---
+"""
+
+
+class TestSkillRegistryPlaceholderValidation:
+    """Tests for command placeholder vs arg validation."""
+
+    def test_warns_on_undefined_placeholder(
+        self, tmp_path: object, caplog: object
+    ) -> None:
+        """Undefined placeholders in command generate a warning."""
+        import logging
+
+        skill_dir = tmp_path / "bad"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(SKILL_WITH_UNDEFINED_PLACEHOLDER_MD)
+
+        registry = SkillRegistry(str(tmp_path))
+        with caplog.at_level(logging.WARNING):
+            registry.load()
+
+        assert any("undefined_var" in r.message for r in caplog.records)
+        assert any("has no matching arg" in r.message for r in caplog.records)
+
+    def test_warns_on_unused_arg(
+        self, tmp_path: object, caplog: object
+    ) -> None:
+        """Args not referenced in command generate a warning."""
+        import logging
+
+        skill_dir = tmp_path / "unused"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(SKILL_WITH_UNUSED_ARG_MD)
+
+        registry = SkillRegistry(str(tmp_path))
+        with caplog.at_level(logging.WARNING):
+            registry.load()
+
+        assert any("unused" in r.message for r in caplog.records)
+        assert any("not referenced in command" in r.message for r in caplog.records)
+
+    def test_no_warnings_when_all_match(
+        self, tmp_path: object, caplog: object
+    ) -> None:
+        """No warnings when all placeholders match args."""
+        import logging
+
+        skill_dir = tmp_path / "good"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(SKILL_WITH_MATCHING_ARGS_MD)
+
+        registry = SkillRegistry(str(tmp_path))
+        with caplog.at_level(logging.WARNING):
+            registry.load()
+
+        placeholder_warnings = [
+            r for r in caplog.records
+            if "has no matching arg" in r.message or "not referenced in command" in r.message
+        ]
+        assert len(placeholder_warnings) == 0
+
+    def test_skill_still_loads_despite_warnings(
+        self, tmp_path: object
+    ) -> None:
+        """Skills with mismatched placeholders still load successfully."""
+        skill_dir = tmp_path / "bad"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(SKILL_WITH_UNDEFINED_PLACEHOLDER_MD)
+
+        registry = SkillRegistry(str(tmp_path))
+        count = registry.load()
+
+        assert count == 1
+        assert registry.get_skill("bad-placeholder") is not None
 
 
 class TestSkillRegistryLookup:

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from mcp_gateway.backends.client_holder import ClientHolder
 from mcp_gateway.backends.connector_backend import (
     ConnectorBackend,
     _sanitize_config,
@@ -72,19 +73,39 @@ def _make_connector(**kwargs: Any) -> MagicMock:
     return connector
 
 
+def _make_session_factory() -> MagicMock:
+    """Create a mock async session factory."""
+    mock_session = AsyncMock(spec=AsyncSession)
+    session_factory = MagicMock(spec=async_sessionmaker)
+    ctx_mgr = AsyncMock()
+    ctx_mgr.__aenter__ = AsyncMock(return_value=mock_session)
+    ctx_mgr.__aexit__ = AsyncMock(return_value=False)
+    session_factory.return_value = ctx_mgr
+    return session_factory
+
+
+def _make_holder(
+    session_factory: MagicMock | None = None,
+    qdrant: MagicMock | None = None,
+    embedder: AsyncMock | None = None,
+    nats: AsyncMock | None = None,
+) -> ClientHolder:
+    """Create a ClientHolder with optional dependencies set."""
+    holder = ClientHolder()
+    holder.session_factory = session_factory
+    holder.qdrant = qdrant
+    holder.embedder = embedder
+    holder.nats = nats
+    return holder
+
+
 class TestListConnectors:
     """Tests for ConnectorBackend.list_connectors."""
 
     @pytest.mark.asyncio
     async def test_returns_connector_summaries(self) -> None:
         """Lists connectors with summary fields."""
-        mock_session = AsyncMock(spec=AsyncSession)
-        session_factory = MagicMock(spec=async_sessionmaker)
-        ctx_mgr = AsyncMock()
-        ctx_mgr.__aenter__ = AsyncMock(return_value=mock_session)
-        ctx_mgr.__aexit__ = AsyncMock(return_value=False)
-        session_factory.return_value = ctx_mgr
-
+        session_factory = _make_session_factory()
         connectors = [_make_connector(id=1, name="C1"), _make_connector(id=2, name="C2")]
 
         with patch(
@@ -92,7 +113,8 @@ class TestListConnectors:
         ) as mock_crud:
             mock_crud.get_by_user = AsyncMock(return_value=connectors)
 
-            backend = ConnectorBackend(session_factory=session_factory)
+            holder = _make_holder(session_factory=session_factory)
+            backend = ConnectorBackend(clients=holder)
             result = await backend.list_connectors(user_id=1)
 
         assert len(result) == 2
@@ -103,19 +125,15 @@ class TestListConnectors:
     @pytest.mark.asyncio
     async def test_returns_empty_for_no_connectors(self) -> None:
         """Returns empty list when user has no connectors."""
-        mock_session = AsyncMock(spec=AsyncSession)
-        session_factory = MagicMock(spec=async_sessionmaker)
-        ctx_mgr = AsyncMock()
-        ctx_mgr.__aenter__ = AsyncMock(return_value=mock_session)
-        ctx_mgr.__aexit__ = AsyncMock(return_value=False)
-        session_factory.return_value = ctx_mgr
+        session_factory = _make_session_factory()
 
         with patch(
             "mcp_gateway.backends.connector_backend.connector_crud"
         ) as mock_crud:
             mock_crud.get_by_user = AsyncMock(return_value=[])
 
-            backend = ConnectorBackend(session_factory=session_factory)
+            holder = _make_holder(session_factory=session_factory)
+            backend = ConnectorBackend(clients=holder)
             result = await backend.list_connectors(user_id=99)
 
         assert result == []
@@ -127,13 +145,7 @@ class TestGetConnectorStatus:
     @pytest.mark.asyncio
     async def test_returns_detailed_status(self) -> None:
         """Returns full connector details with sanitized config."""
-        mock_session = AsyncMock(spec=AsyncSession)
-        session_factory = MagicMock(spec=async_sessionmaker)
-        ctx_mgr = AsyncMock()
-        ctx_mgr.__aenter__ = AsyncMock(return_value=mock_session)
-        ctx_mgr.__aexit__ = AsyncMock(return_value=False)
-        session_factory.return_value = ctx_mgr
-
+        session_factory = _make_session_factory()
         connector = _make_connector(
             config={"access_token": "secret", "url": "https://example.com"}
         )
@@ -143,7 +155,8 @@ class TestGetConnectorStatus:
         ) as mock_crud:
             mock_crud.get_by_id_active = AsyncMock(return_value=connector)
 
-            backend = ConnectorBackend(session_factory=session_factory)
+            holder = _make_holder(session_factory=session_factory)
+            backend = ConnectorBackend(clients=holder)
             result = await backend.get_connector_status(connector_id=1)
 
         assert result is not None
@@ -154,19 +167,15 @@ class TestGetConnectorStatus:
     @pytest.mark.asyncio
     async def test_returns_none_for_missing(self) -> None:
         """Returns None when connector not found."""
-        mock_session = AsyncMock(spec=AsyncSession)
-        session_factory = MagicMock(spec=async_sessionmaker)
-        ctx_mgr = AsyncMock()
-        ctx_mgr.__aenter__ = AsyncMock(return_value=mock_session)
-        ctx_mgr.__aexit__ = AsyncMock(return_value=False)
-        session_factory.return_value = ctx_mgr
+        session_factory = _make_session_factory()
 
         with patch(
             "mcp_gateway.backends.connector_backend.connector_crud"
         ) as mock_crud:
             mock_crud.get_by_id_active = AsyncMock(return_value=None)
 
-            backend = ConnectorBackend(session_factory=session_factory)
+            holder = _make_holder(session_factory=session_factory)
+            backend = ConnectorBackend(clients=holder)
             result = await backend.get_connector_status(connector_id=999)
 
         assert result is None
@@ -178,8 +187,9 @@ class TestSearchConnectorDocuments:
     @pytest.mark.asyncio
     async def test_raises_without_qdrant(self) -> None:
         """Raises RuntimeError when Qdrant is not configured."""
-        session_factory = MagicMock(spec=async_sessionmaker)
-        backend = ConnectorBackend(session_factory=session_factory)
+        session_factory = _make_session_factory()
+        holder = _make_holder(session_factory=session_factory)
+        backend = ConnectorBackend(clients=holder)
 
         with pytest.raises(RuntimeError, match="Qdrant and Embedder"):
             await backend.search_connector_documents(
@@ -196,12 +206,13 @@ class TestSearchConnectorDocuments:
         mock_embedder = AsyncMock()
         mock_embedder.embed_query = AsyncMock(return_value=[0.1, 0.2])
 
-        session_factory = MagicMock(spec=async_sessionmaker)
-        backend = ConnectorBackend(
+        session_factory = _make_session_factory()
+        holder = _make_holder(
             session_factory=session_factory,
             qdrant=mock_qdrant,
             embedder=mock_embedder,
         )
+        backend = ConnectorBackend(clients=holder)
 
         results = await backend.search_connector_documents(
             connector_id=5, query="test", collection_name="col"
@@ -218,8 +229,9 @@ class TestTriggerSync:
     @pytest.mark.asyncio
     async def test_raises_without_nats(self) -> None:
         """Raises RuntimeError when NATS is not configured."""
-        session_factory = MagicMock(spec=async_sessionmaker)
-        backend = ConnectorBackend(session_factory=session_factory)
+        session_factory = _make_session_factory()
+        holder = _make_holder(session_factory=session_factory)
+        backend = ConnectorBackend(clients=holder)
 
         with pytest.raises(RuntimeError, match="NATS publisher"):
             await backend.trigger_sync(connector_id=1, user_id=1)
@@ -227,13 +239,7 @@ class TestTriggerSync:
     @pytest.mark.asyncio
     async def test_raises_for_wrong_owner(self) -> None:
         """Raises ValueError when user doesn't own connector."""
-        mock_session = AsyncMock(spec=AsyncSession)
-        session_factory = MagicMock(spec=async_sessionmaker)
-        ctx_mgr = AsyncMock()
-        ctx_mgr.__aenter__ = AsyncMock(return_value=mock_session)
-        ctx_mgr.__aexit__ = AsyncMock(return_value=False)
-        session_factory.return_value = ctx_mgr
-
+        session_factory = _make_session_factory()
         connector = _make_connector(user_id=1)
         mock_nats = AsyncMock()
 
@@ -242,22 +248,15 @@ class TestTriggerSync:
         ) as mock_crud:
             mock_crud.get_by_id_active = AsyncMock(return_value=connector)
 
-            backend = ConnectorBackend(
-                session_factory=session_factory, nats_publisher=mock_nats
-            )
+            holder = _make_holder(session_factory=session_factory, nats=mock_nats)
+            backend = ConnectorBackend(clients=holder)
             with pytest.raises(ValueError, match="does not own"):
                 await backend.trigger_sync(connector_id=1, user_id=999)
 
     @pytest.mark.asyncio
     async def test_raises_for_missing_connector(self) -> None:
         """Raises ValueError when connector not found."""
-        mock_session = AsyncMock(spec=AsyncSession)
-        session_factory = MagicMock(spec=async_sessionmaker)
-        ctx_mgr = AsyncMock()
-        ctx_mgr.__aenter__ = AsyncMock(return_value=mock_session)
-        ctx_mgr.__aexit__ = AsyncMock(return_value=False)
-        session_factory.return_value = ctx_mgr
-
+        session_factory = _make_session_factory()
         mock_nats = AsyncMock()
 
         with patch(
@@ -265,22 +264,15 @@ class TestTriggerSync:
         ) as mock_crud:
             mock_crud.get_by_id_active = AsyncMock(return_value=None)
 
-            backend = ConnectorBackend(
-                session_factory=session_factory, nats_publisher=mock_nats
-            )
+            holder = _make_holder(session_factory=session_factory, nats=mock_nats)
+            backend = ConnectorBackend(clients=holder)
             with pytest.raises(ValueError, match="not found"):
                 await backend.trigger_sync(connector_id=999, user_id=1)
 
     @pytest.mark.asyncio
     async def test_publishes_to_nats(self) -> None:
         """trigger_sync publishes a serialized protobuf to NATS."""
-        mock_session = AsyncMock(spec=AsyncSession)
-        session_factory = MagicMock(spec=async_sessionmaker)
-        ctx_mgr = AsyncMock()
-        ctx_mgr.__aenter__ = AsyncMock(return_value=mock_session)
-        ctx_mgr.__aexit__ = AsyncMock(return_value=False)
-        session_factory.return_value = ctx_mgr
-
+        session_factory = _make_session_factory()
         connector = _make_connector(id=5, user_id=10, type="teams")
         mock_nats = AsyncMock()
 
@@ -289,9 +281,8 @@ class TestTriggerSync:
         ) as mock_crud:
             mock_crud.get_by_id_active = AsyncMock(return_value=connector)
 
-            backend = ConnectorBackend(
-                session_factory=session_factory, nats_publisher=mock_nats
-            )
+            holder = _make_holder(session_factory=session_factory, nats=mock_nats)
+            backend = ConnectorBackend(clients=holder)
             result = await backend.trigger_sync(connector_id=5, user_id=10)
 
         assert result["connector_id"] == 5

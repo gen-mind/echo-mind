@@ -25,6 +25,7 @@ class EmbedderClient:
         _host: Embedder service hostname.
         _port: Embedder gRPC port.
         _timeout: gRPC call timeout in seconds.
+        _model_name: Embedder model name (for logging/documentation).
     """
 
     def __init__(
@@ -32,6 +33,7 @@ class EmbedderClient:
         host: str,
         port: int,
         timeout: float = 30.0,
+        model_name: str = "",
     ) -> None:
         """
         Initialize Embedder client.
@@ -40,10 +42,13 @@ class EmbedderClient:
             host: Embedder service hostname.
             port: Embedder gRPC port.
             timeout: gRPC call timeout in seconds.
+            model_name: Embedder model name (for logging; model selection
+                is server-side via EMBEDDER_MODEL_NAME env var).
         """
         self._host = host
         self._port = port
         self._timeout = timeout
+        self._model_name = model_name
         self._channel: grpc.aio.Channel | None = None
         self._stub: EmbedServiceStub | None = None
 
@@ -65,7 +70,12 @@ class EmbedderClient:
                 ],
             )
             self._stub = EmbedServiceStub(self._channel)
-            logger.info(f"🔗 Connected to Embedder at {self._host}:{self._port}")
+            logger.info(
+                "🔗 Connected to Embedder at %s:%d (model: %s)",
+                self._host,
+                self._port,
+                self._model_name or "server-default",
+            )
 
     async def embed_query(self, query: str) -> list[float]:
         """
@@ -100,6 +110,9 @@ class EmbedderClient:
 
         except grpc.aio.AioRpcError as e:
             logger.error(f"❌ Embedder gRPC error: {e.details()}")
+            # Force channel recreation on next call
+            self._channel = None
+            self._stub = None
             raise ConnectionError(f"Embedder unavailable: {e.details()}") from e
 
     async def close(self) -> None:
@@ -112,13 +125,17 @@ class EmbedderClient:
 
     async def health_check(self) -> bool:
         """
-        Check if the Embedder service is available.
+        Check if the Embedder service is healthy by performing a real embed call.
 
         Returns:
-            True if the gRPC channel can be established, False otherwise.
+            True if an embed call succeeds, False otherwise.
         """
         try:
             await self._ensure_connected()
-            return self._channel is not None
+            request = EmbedRequest(texts=["health"])
+            response = await self._stub.Embed(request, timeout=5.0)
+            return bool(response.embeddings)
         except Exception:
+            self._channel = None
+            self._stub = None
             return False

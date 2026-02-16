@@ -15,34 +15,30 @@ Environment Variables:
     MCP_GATEWAY_QDRANT_PORT: Qdrant REST port (default: 6333)
     MCP_GATEWAY_EMBEDDER_HOST: Embedder gRPC host (default: localhost)
     MCP_GATEWAY_EMBEDDER_PORT: Embedder gRPC port (default: 50051)
+    MCP_GATEWAY_EMBEDDER_MODEL: Embedder model name (documentation/future use)
     MCP_GATEWAY_DATABASE_URL: PostgreSQL async URL
     MCP_GATEWAY_NATS_URL: NATS server URL
     MCP_GATEWAY_NATS_USER: NATS username (optional)
     MCP_GATEWAY_NATS_PASSWORD: NATS password (optional)
     MCP_GATEWAY_SKILLS_DIR: Skills directory path (default: /app/config/skills)
     MCP_GATEWAY_LOG_LEVEL: Logging level (default: INFO)
-    GOOGLE_SEARCH_API_KEY: Google Custom Search API key (optional)
-    GOOGLE_SEARCH_CX: Google Custom Search engine ID (optional)
 """
 
 import asyncio
 import logging
-import os
 import signal
-import sys
 import threading
+import urllib.parse
 
 from fastmcp import FastMCP
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from echomind_lib.db.qdrant import QdrantDB
 from echomind_lib.helpers.readiness_probe import HealthServer
 
 from mcp_gateway.backends.api_key_manager import ApiKeyManager
+from mcp_gateway.backends.client_holder import ClientHolder
 from mcp_gateway.backends.connector_backend import ConnectorBackend
 from mcp_gateway.backends.embedder_client import EmbedderClient
 from mcp_gateway.backends.nats_backend import NatsBackend
@@ -56,12 +52,31 @@ from mcp_gateway.tools.connectors import register_connector_tools
 from mcp_gateway.tools.search import register_search_tools
 from mcp_gateway.tools.skills import register_skills_tools
 
-# Configure logging
-logging.basicConfig(
-    level=os.getenv("MCP_GATEWAY_LOG_LEVEL", "INFO"),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger("echomind-mcp-gateway")
+
+
+def _mask_db_url(url: str) -> str:
+    """
+    Mask credentials in a database URL for safe logging.
+
+    Extracts only host, port, and database name from the URL.
+
+    Args:
+        url: Full database connection URL.
+
+    Returns:
+        Masked string showing only host:port/dbname.
+    """
+    if not url:
+        return "<not configured>"
+    try:
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.hostname or "unknown"
+        port = parsed.port or "5432"
+        dbname = parsed.path.lstrip("/") or "unknown"
+        return f"{host}:{port}/{dbname}"
+    except Exception:
+        return "<invalid url>"
 
 
 class MCPGateway:
@@ -76,19 +91,25 @@ class MCPGateway:
     def __init__(self) -> None:
         """Initialize MCP Gateway."""
         self._settings = get_settings()
+
+        # Configure logging from settings
+        logging.basicConfig(
+            level=self._settings.log_level,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            force=True,
+        )
+
         self._health_server: HealthServer | None = None
-        self._running = False
         self._qdrant_connected = False
         self._embedder_connected = False
         self._db_connected = False
         self._nats_connected = False
         self._retry_tasks: list[asyncio.Task] = []
         self._mcp_task: asyncio.Task | None = None
-        self._qdrant: QdrantDB | None = None
-        self._embedder: EmbedderClient | None = None
-        self._session_factory: async_sessionmaker[AsyncSession] | None = None
         self._db_engine = None
-        self._nats: NatsBackend | None = None
+
+        # Shared mutable client holder — backends read from this on every call
+        self._clients = ClientHolder()
 
     def _is_ready(self) -> bool:
         """Check if all required connections are established."""
@@ -118,6 +139,18 @@ class MCPGateway:
         - API key manager
         - FastMCP server with registered tools and audit middleware
         """
+        db_url = self._settings.database_url.get_secret_value()
+        nats_password = (
+            self._settings.nats_password.get_secret_value()
+            if self._settings.nats_password
+            else None
+        )
+        qdrant_api_key = (
+            self._settings.qdrant_api_key.get_secret_value()
+            if self._settings.qdrant_api_key
+            else None
+        )
+
         logger.info("🚀 EchoMind MCP Gateway Service starting...")
         logger.info("📋 Configuration:")
         logger.info(f"   ⚙️ Enabled: {self._settings.enabled}")
@@ -129,9 +162,10 @@ class MCPGateway:
         logger.info(
             f"   🧠 Embedder: {self._settings.embedder_host}:{self._settings.embedder_port}"
         )
-        logger.info(f"   🐘 Database: {self._settings.database_url.split('@')[-1]}")
+        logger.info(f"   🐘 Database: {_mask_db_url(db_url)}")
         logger.info(f"   📡 NATS: {self._settings.nats_url}")
         logger.info(f"   📂 Skills dir: {self._settings.skills_dir}")
+        logger.info(f"   🔤 Embedder model: {self._settings.embedder_model}")
 
         if not self._settings.enabled:
             logger.warning("⚠️ MCP Gateway is disabled via configuration")
@@ -149,7 +183,7 @@ class MCPGateway:
         logger.info("🛠️ Connecting to PostgreSQL...")
         try:
             self._db_engine = create_async_engine(
-                self._settings.database_url,
+                db_url,
                 pool_size=5,
                 max_overflow=10,
                 pool_pre_ping=True,
@@ -157,7 +191,7 @@ class MCPGateway:
             # Verify connectivity
             async with self._db_engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
-            self._session_factory = async_sessionmaker(
+            self._clients.session_factory = async_sessionmaker(
                 bind=self._db_engine,
                 class_=AsyncSession,
                 expire_on_commit=False,
@@ -176,12 +210,12 @@ class MCPGateway:
         # Initialize NATS
         logger.info("🛠️ Connecting to NATS...")
         try:
-            self._nats = NatsBackend(
+            self._clients.nats = NatsBackend(
                 url=self._settings.nats_url,
                 user=self._settings.nats_user,
-                password=self._settings.nats_password,
+                password=nats_password,
             )
-            await self._nats.connect()
+            await self._clients.nats.connect()
             self._nats_connected = True
             logger.info("📡 NATS connected")
         except Exception as e:
@@ -194,12 +228,12 @@ class MCPGateway:
         # Initialize Qdrant
         logger.info("🛠️ Connecting to Qdrant...")
         try:
-            self._qdrant = QdrantDB(
+            self._clients.qdrant = QdrantDB(
                 host=self._settings.qdrant_host,
                 port=self._settings.qdrant_port,
-                api_key=self._settings.qdrant_api_key,
+                api_key=qdrant_api_key,
             )
-            await self._qdrant.init()
+            await self._clients.qdrant.init()
             self._qdrant_connected = True
             logger.info("🗄️ Qdrant connected")
         except Exception as e:
@@ -212,12 +246,13 @@ class MCPGateway:
         # Initialize Embedder client
         logger.info("🛠️ Connecting to Embedder...")
         try:
-            self._embedder = EmbedderClient(
+            self._clients.embedder = EmbedderClient(
                 host=self._settings.embedder_host,
                 port=self._settings.embedder_port,
                 timeout=self._settings.embedder_timeout,
+                model_name=self._settings.embedder_model,
             )
-            healthy = await self._embedder.health_check()
+            healthy = await self._clients.embedder.health_check()
             if healthy:
                 self._embedder_connected = True
                 logger.info("🧠 Embedder connected")
@@ -246,19 +281,9 @@ class MCPGateway:
         # Create API key manager
         api_key_manager = ApiKeyManager()
 
-        # Create search backend
-        search_backend = SearchBackend(
-            qdrant=self._qdrant,
-            embedder=self._embedder,
-        )
-
-        # Create connector backend
-        connector_backend = ConnectorBackend(
-            session_factory=self._session_factory,
-            nats_publisher=self._nats,
-            qdrant=self._qdrant,
-            embedder=self._embedder,
-        )
+        # Create backends with shared client holder
+        search_backend = SearchBackend(clients=self._clients)
+        connector_backend = ConnectorBackend(clients=self._clients)
 
         # Create FastMCP server with audit middleware
         mcp = FastMCP("echomind-mcp-gateway")
@@ -284,7 +309,6 @@ class MCPGateway:
 
         # Update readiness
         self._update_readiness()
-        self._running = True
 
         if self._is_ready():
             logger.info("🚀 MCP Gateway ready")
@@ -295,18 +319,23 @@ class MCPGateway:
 
     async def _retry_db_connection(self) -> None:
         """Background task to retry PostgreSQL connection every 30 seconds."""
+        db_url = self._settings.database_url.get_secret_value()
         while not self._db_connected:
             await asyncio.sleep(30)
             try:
+                # Dispose old engine before creating a new one
+                if self._db_engine:
+                    await self._db_engine.dispose()
+
                 self._db_engine = create_async_engine(
-                    self._settings.database_url,
+                    db_url,
                     pool_size=5,
                     max_overflow=10,
                     pool_pre_ping=True,
                 )
                 async with self._db_engine.connect() as conn:
                     await conn.execute(text("SELECT 1"))
-                self._session_factory = async_sessionmaker(
+                self._clients.session_factory = async_sessionmaker(
                     bind=self._db_engine,
                     class_=AsyncSession,
                     expire_on_commit=False,
@@ -321,15 +350,20 @@ class MCPGateway:
 
     async def _retry_nats_connection(self) -> None:
         """Background task to retry NATS connection every 30 seconds."""
+        nats_password = (
+            self._settings.nats_password.get_secret_value()
+            if self._settings.nats_password
+            else None
+        )
         while not self._nats_connected:
             await asyncio.sleep(30)
             try:
-                self._nats = NatsBackend(
+                self._clients.nats = NatsBackend(
                     url=self._settings.nats_url,
                     user=self._settings.nats_user,
-                    password=self._settings.nats_password,
+                    password=nats_password,
                 )
-                await self._nats.connect()
+                await self._clients.nats.connect()
                 self._nats_connected = True
                 logger.info("📡 NATS reconnected")
                 self._update_readiness()
@@ -338,15 +372,20 @@ class MCPGateway:
 
     async def _retry_qdrant_connection(self) -> None:
         """Background task to retry Qdrant connection every 30 seconds."""
+        qdrant_api_key = (
+            self._settings.qdrant_api_key.get_secret_value()
+            if self._settings.qdrant_api_key
+            else None
+        )
         while not self._qdrant_connected:
             await asyncio.sleep(30)
             try:
-                self._qdrant = QdrantDB(
+                self._clients.qdrant = QdrantDB(
                     host=self._settings.qdrant_host,
                     port=self._settings.qdrant_port,
-                    api_key=self._settings.qdrant_api_key,
+                    api_key=qdrant_api_key,
                 )
-                await self._qdrant.init()
+                await self._clients.qdrant.init()
                 self._qdrant_connected = True
                 logger.info("🗄️ Qdrant reconnected")
                 self._update_readiness()
@@ -358,12 +397,13 @@ class MCPGateway:
         while not self._embedder_connected:
             await asyncio.sleep(30)
             try:
-                self._embedder = EmbedderClient(
+                self._clients.embedder = EmbedderClient(
                     host=self._settings.embedder_host,
                     port=self._settings.embedder_port,
                     timeout=self._settings.embedder_timeout,
+                    model_name=self._settings.embedder_model,
                 )
-                healthy = await self._embedder.health_check()
+                healthy = await self._clients.embedder.health_check()
                 if not healthy:
                     raise ConnectionError("Embedder health check failed")
                 self._embedder_connected = True
@@ -381,15 +421,16 @@ class MCPGateway:
         Cancels retry tasks, stops MCP server, closes connections.
         """
         logger.info("🛑 MCP Gateway shutting down...")
-        self._running = False
 
         # Mark as not ready
         if self._health_server:
             self._health_server.set_ready(False)
 
-        # Cancel retry tasks
+        # Cancel retry tasks and await them
         for task in self._retry_tasks:
             task.cancel()
+        if self._retry_tasks:
+            await asyncio.gather(*self._retry_tasks, return_exceptions=True)
 
         # Stop MCP server
         if self._mcp_task:
@@ -401,8 +442,8 @@ class MCPGateway:
             logger.info("🌐 MCP server stopped")
 
         # Close NATS
-        if self._nats:
-            await self._nats.close()
+        if self._clients.nats:
+            await self._clients.nats.close()
             logger.info("📡 NATS disconnected")
 
         # Close database
@@ -411,13 +452,13 @@ class MCPGateway:
             logger.info("🐘 PostgreSQL disconnected")
 
         # Close Qdrant
-        if self._qdrant:
-            await self._qdrant.close()
+        if self._clients.qdrant:
+            await self._clients.qdrant.close()
             logger.info("🗄️ Qdrant disconnected")
 
         # Close Embedder
-        if self._embedder:
-            await self._embedder.close()
+        if self._clients.embedder:
+            await self._clients.embedder.close()
             logger.info("🧠 Embedder disconnected")
 
         logger.info("👋 MCP Gateway stopped")
@@ -443,8 +484,8 @@ async def main() -> None:
         # Wait for stop signal
         await stop_event.wait()
 
-    except KeyboardInterrupt:
-        logger.info("🛑 Received keyboard interrupt")
+    except asyncio.CancelledError:
+        logger.info("🛑 Received cancellation")
     finally:
         await gateway.stop()
 

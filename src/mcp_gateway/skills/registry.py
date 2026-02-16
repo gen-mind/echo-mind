@@ -6,7 +6,7 @@ and provides a registry of available skills.
 """
 
 import logging
-import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -14,6 +14,9 @@ from typing import Any
 import yaml
 
 logger = logging.getLogger("echomind-mcp-gateway")
+
+# Valid skill name pattern: lowercase alphanumeric with hyphens
+_SKILL_NAME_PATTERN = re.compile(r'^[a-z0-9][a-z0-9-]*$')
 
 
 @dataclass
@@ -36,6 +39,7 @@ class SkillDefinition:
     args: list[SkillArgument] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     timeout: int = 30
+    max_output_bytes: int | None = None
     documentation: str = ""
     source_path: str = ""
 
@@ -66,16 +70,13 @@ class SkillRegistry:
 
         Returns:
             Number of skills loaded.
-
-        Raises:
-            FileNotFoundError: If skills directory does not exist.
         """
         skills_path = Path(self._skills_dir)
         if not skills_path.exists():
             logger.warning(f"⚠️ Skills directory not found: {self._skills_dir}")
             return 0
 
-        self._skills.clear()
+        new_skills: dict[str, SkillDefinition] = {}
         count = 0
 
         for item in sorted(skills_path.iterdir()):
@@ -88,11 +89,19 @@ class SkillRegistry:
 
             try:
                 skill = self._parse_skill_file(skill_file)
-                self._skills[skill.name] = skill
+                if skill.name in new_skills:
+                    logger.warning(
+                        f"⚠️ Duplicate skill name '{skill.name}' "
+                        f"from {skill_file}, overwriting previous definition"
+                    )
+                new_skills[skill.name] = skill
                 count += 1
                 logger.info(f"📦 Loaded skill: {skill.name}")
             except Exception as e:
                 logger.error(f"❌ Failed to parse {skill_file}: {e}")
+
+        # Atomic swap for thread safety
+        self._skills = new_skills
 
         logger.info(f"✅ Loaded {count} skills from {self._skills_dir}")
         return count
@@ -131,6 +140,14 @@ class SkillRegistry:
             if required not in frontmatter:
                 raise ValueError(f"Missing required field '{required}' in {path}")
 
+        # Validate skill name format
+        name = frontmatter["name"]
+        if not _SKILL_NAME_PATTERN.match(name):
+            logger.warning(
+                f"⚠️ Skill name '{name}' in {path} does not match "
+                f"required format [a-z0-9][a-z0-9-]*"
+            )
+
         # Parse arguments
         args = []
         for arg_data in frontmatter.get("args", []):
@@ -141,16 +158,43 @@ class SkillRegistry:
                 default=arg_data.get("default"),
             ))
 
-        return SkillDefinition(
-            name=frontmatter["name"],
+        skill = SkillDefinition(
+            name=name,
             description=frontmatter["description"],
             command=frontmatter["command"],
             args=args,
             tags=frontmatter.get("tags", []),
             timeout=frontmatter.get("timeout", 30),
+            max_output_bytes=frontmatter.get("max_output_bytes"),
             documentation=documentation,
             source_path=str(path),
         )
+
+        self._validate_placeholders(skill)
+
+        return skill
+
+    def _validate_placeholders(self, skill: SkillDefinition) -> None:
+        """
+        Warn if command placeholders don't match defined args.
+
+        Args:
+            skill: The skill definition to validate.
+        """
+        placeholders = set(re.findall(r'\$\{(\w+)\}', skill.command))
+        arg_names = {a.name for a in skill.args}
+
+        undefined = placeholders - arg_names
+        unused = arg_names - placeholders
+
+        for name in sorted(undefined):
+            logger.warning(
+                f"⚠️ Skill '{skill.name}': placeholder ${{{name}}} has no matching arg"
+            )
+        for name in sorted(unused):
+            logger.warning(
+                f"⚠️ Skill '{skill.name}': arg '{name}' not referenced in command"
+            )
 
     def get_skill(self, name: str) -> SkillDefinition | None:
         """

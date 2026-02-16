@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mcp_gateway.backends.client_holder import ClientHolder
 from mcp_gateway.backends.search_backend import SearchBackend
 
 
@@ -29,9 +30,18 @@ def mock_embedder() -> AsyncMock:
 
 
 @pytest.fixture
-def backend(mock_qdrant: MagicMock, mock_embedder: AsyncMock) -> SearchBackend:
+def client_holder(mock_qdrant: MagicMock, mock_embedder: AsyncMock) -> ClientHolder:
+    """Create a ClientHolder with mocked dependencies."""
+    holder = ClientHolder()
+    holder.qdrant = mock_qdrant
+    holder.embedder = mock_embedder
+    return holder
+
+
+@pytest.fixture
+def backend(client_holder: ClientHolder) -> SearchBackend:
     """Create a SearchBackend with mocked dependencies."""
-    return SearchBackend(qdrant=mock_qdrant, embedder=mock_embedder)
+    return SearchBackend(clients=client_holder)
 
 
 class TestSearchBackendInit:
@@ -40,16 +50,30 @@ class TestSearchBackendInit:
     def test_stores_qdrant_reference(
         self, mock_qdrant: MagicMock, mock_embedder: AsyncMock
     ) -> None:
-        """Verify qdrant client is stored."""
-        backend = SearchBackend(qdrant=mock_qdrant, embedder=mock_embedder)
-        assert backend._qdrant is mock_qdrant
+        """Verify qdrant client is stored via client holder."""
+        holder = ClientHolder()
+        holder.qdrant = mock_qdrant
+        holder.embedder = mock_embedder
+        backend = SearchBackend(clients=holder)
+        assert backend._clients.qdrant is mock_qdrant
 
     def test_stores_embedder_reference(
         self, mock_qdrant: MagicMock, mock_embedder: AsyncMock
     ) -> None:
-        """Verify embedder client is stored."""
-        backend = SearchBackend(qdrant=mock_qdrant, embedder=mock_embedder)
-        assert backend._embedder is mock_embedder
+        """Verify embedder client is stored via client holder."""
+        holder = ClientHolder()
+        holder.qdrant = mock_qdrant
+        holder.embedder = mock_embedder
+        backend = SearchBackend(clients=holder)
+        assert backend._clients.embedder is mock_embedder
+
+    @pytest.mark.asyncio
+    async def test_search_raises_when_not_connected(self) -> None:
+        """Raises RuntimeError when qdrant and embedder are None."""
+        holder = ClientHolder()
+        backend = SearchBackend(clients=holder)
+        with pytest.raises(RuntimeError, match="Qdrant and Embedder must be connected"):
+            await backend.search_documents(collection_name="col", query="q")
 
 
 class TestSearchDocuments:

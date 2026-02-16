@@ -6,6 +6,7 @@ listing, and document chunk retrieval via FastMCP decorators.
 """
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from fastmcp import FastMCP
@@ -15,7 +16,11 @@ from mcp_gateway.backends.search_backend import SearchBackend
 logger = logging.getLogger("echomind-mcp-gateway")
 
 
-def register_search_tools(mcp: FastMCP, backend: SearchBackend) -> None:
+def register_search_tools(
+    mcp: FastMCP,
+    backend: SearchBackend,
+    readiness_check: Callable[[], bool] | None = None,
+) -> None:
     """
     Register search-related MCP tools on the FastMCP server.
 
@@ -25,6 +30,8 @@ def register_search_tools(mcp: FastMCP, backend: SearchBackend) -> None:
     Args:
         mcp: FastMCP server instance to register tools on.
         backend: SearchBackend providing vector search operations.
+        readiness_check: Optional callback returning True when the service
+            is ready to handle requests.
     """
 
     @mcp.tool()
@@ -49,7 +56,17 @@ def register_search_tools(mcp: FastMCP, backend: SearchBackend) -> None:
         Returns:
             List of matching document chunks with scores and metadata.
         """
-        logger.info(f"🔍 search_documents: collection='{collection}', query='{query[:50]}...'")
+        if readiness_check and not readiness_check():
+            return {"error": "Search service is not ready. Backend connections are being established."}
+
+        if not query.strip():
+            return {"error": "Query cannot be empty"}
+        limit = max(1, min(limit, 1000))
+        if score_threshold is not None and not (0.0 <= score_threshold <= 1.0):
+            return {"error": "score_threshold must be between 0.0 and 1.0"}
+
+        display_query = f"{query[:50]}..." if len(query) > 50 else query
+        logger.info(f"🔍 search_documents: collection='{collection}', query='{display_query}'")
         return await backend.search_documents(
             collection_name=collection,
             query=query,
@@ -65,6 +82,9 @@ def register_search_tools(mcp: FastMCP, backend: SearchBackend) -> None:
         Returns:
             List of collection names and metadata.
         """
+        if readiness_check and not readiness_check():
+            return {"error": "Search service is not ready. Backend connections are being established."}
+
         logger.info("📋 list_collections")
         return await backend.list_collections()
 
@@ -79,6 +99,9 @@ def register_search_tools(mcp: FastMCP, backend: SearchBackend) -> None:
         Returns:
             Collection statistics including vector count and status.
         """
+        if readiness_check and not readiness_check():
+            return {"error": "Search service is not ready. Backend connections are being established."}
+
         logger.info(f"ℹ️ get_collection_info: collection='{collection}'")
         return await backend.get_collection_info(collection)
 
@@ -99,6 +122,10 @@ def register_search_tools(mcp: FastMCP, backend: SearchBackend) -> None:
         Returns:
             List of document chunks with their payloads.
         """
+        if readiness_check and not readiness_check():
+            return {"error": "Search service is not ready. Backend connections are being established."}
+
+        limit = max(1, min(limit, 1000))
         logger.info(f"📄 get_document_chunks: collection='{collection}', doc='{document_id}'")
         return await backend.get_document_chunks(
             collection_name=collection,

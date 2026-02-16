@@ -664,6 +664,9 @@ services:
       - MCP_GATEWAY_NATS_URL=nats://nats:4222
       - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
       - GOOGLE_SEARCH_CX=${GOOGLE_SEARCH_CX:-}
+      - MCP_GATEWAY_EMBEDDER_MODEL=${MCP_GATEWAY_EMBEDDER_MODEL:-nvidia/llama-nemotron-embed-1b-v2}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - ${CONFIG_PATH}/mcp-gateway/skills:/app/config/skills:ro
     healthcheck:
@@ -681,6 +684,11 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
     restart: unless-stopped
     networks:
       - backend

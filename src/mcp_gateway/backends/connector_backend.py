@@ -2,8 +2,8 @@
 Connector backend for MCP Gateway.
 
 Wraps echomind_lib ConnectorCRUD to provide connector data and actions
-to MCP tools. Manages its own database session factory since the MCP
-gateway is a separate service from the API.
+to MCP tools. Uses a shared ClientHolder so reconnected clients are
+picked up automatically without stale references.
 """
 
 import logging
@@ -13,16 +13,13 @@ from typing import Any
 
 from google.protobuf import struct_pb2
 from qdrant_client.models import FieldCondition, Filter, MatchValue
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from echomind_lib.db.crud.connector import connector_crud
 from echomind_lib.db.models import Connector
-from echomind_lib.db.qdrant import QdrantDB
 from echomind_lib.models.internal.orchestrator_pb2 import ConnectorSyncRequest
 from echomind_lib.models.public import connector_pb2
 
-from mcp_gateway.backends.embedder_client import EmbedderClient
-from mcp_gateway.backends.nats_backend import NatsBackend
+from mcp_gateway.backends.client_holder import ClientHolder
 
 logger = logging.getLogger("echomind-mcp-gateway")
 
@@ -87,33 +84,22 @@ class ConnectorBackend:
     Provides read access to connectors, document search scoped to a
     connector, and manual sync triggering via NATS.
 
+    Uses a shared ClientHolder so reconnected clients are picked up
+    automatically without stale references.
+
     Attributes:
-        _session_factory: Async SQLAlchemy session factory.
-        _nats: Optional NATS publisher for sync commands.
-        _qdrant: Optional Qdrant client for document search.
-        _embedder: Optional embedder client for query vectorization.
+        _clients: Shared mutable client holder.
     """
 
-    def __init__(
-        self,
-        session_factory: async_sessionmaker[AsyncSession],
-        nats_publisher: NatsBackend | None = None,
-        qdrant: QdrantDB | None = None,
-        embedder: EmbedderClient | None = None,
-    ) -> None:
+    def __init__(self, clients: ClientHolder) -> None:
         """
         Initialize ConnectorBackend.
 
         Args:
-            session_factory: Async session factory for database access.
-            nats_publisher: Optional NATS backend for publishing sync messages.
-            qdrant: Optional Qdrant client for vector search.
-            embedder: Optional embedder client for query vectorization.
+            clients: Shared client holder providing session_factory,
+                nats, qdrant, and embedder references.
         """
-        self._session_factory = session_factory
-        self._nats = nats_publisher
-        self._qdrant = qdrant
-        self._embedder = embedder
+        self._clients = clients
 
     async def list_connectors(self, user_id: int) -> list[dict[str, Any]]:
         """
@@ -125,8 +111,14 @@ class ConnectorBackend:
         Returns:
             List of connector summary dicts with id, name, type,
             status, last_sync_at, and docs_analyzed.
+
+        Raises:
+            RuntimeError: If database session factory is not available.
         """
-        async with self._session_factory() as session:
+        if self._clients.session_factory is None:
+            raise RuntimeError("Database not connected")
+
+        async with self._clients.session_factory() as session:
             connectors = await connector_crud.get_by_user(session, user_id)
             result = [_connector_to_summary(c) for c in connectors]
 
@@ -144,8 +136,14 @@ class ConnectorBackend:
             Dict with id, name, type, status, status_message, state,
             config (sanitized), last_sync_at, docs_analyzed, scope,
             scope_id, and refresh_freq_minutes. None if not found.
+
+        Raises:
+            RuntimeError: If database session factory is not available.
         """
-        async with self._session_factory() as session:
+        if self._clients.session_factory is None:
+            raise RuntimeError("Database not connected")
+
+        async with self._clients.session_factory() as session:
             connector = await connector_crud.get_by_id_active(session, connector_id)
             if connector is None:
                 logger.warning("⚠️ Connector %d not found", connector_id)
@@ -201,12 +199,12 @@ class ConnectorBackend:
         Raises:
             RuntimeError: If Qdrant or Embedder are not configured.
         """
-        if self._qdrant is None or self._embedder is None:
+        if self._clients.qdrant is None or self._clients.embedder is None:
             raise RuntimeError(
                 "Qdrant and Embedder must be configured for document search"
             )
 
-        vector = await self._embedder.embed_query(query)
+        vector = await self._clients.embedder.embed_query(query)
         query_filter = Filter(
             must=[
                 FieldCondition(
@@ -215,7 +213,7 @@ class ConnectorBackend:
                 )
             ]
         )
-        results = await self._qdrant.search(
+        results = await self._clients.qdrant.search(
             collection_name=collection_name,
             query_vector=vector,
             limit=limit,
@@ -249,13 +247,15 @@ class ConnectorBackend:
             and chunking_session UUID.
 
         Raises:
-            RuntimeError: If NATS publisher is not configured.
+            RuntimeError: If NATS publisher or database is not configured.
             ValueError: If connector not found or user doesn't own it.
         """
-        if self._nats is None:
+        if self._clients.nats is None:
             raise RuntimeError("NATS publisher must be configured for sync operations")
+        if self._clients.session_factory is None:
+            raise RuntimeError("Database not connected")
 
-        async with self._session_factory() as session:
+        async with self._clients.session_factory() as session:
             connector = await connector_crud.get_by_id_active(session, connector_id)
             if connector is None:
                 raise ValueError(f"Connector {connector_id} not found")
@@ -315,7 +315,7 @@ class ConnectorBackend:
 
             # Publish to NATS
             subject = f"connector.sync.{connector.type}"
-            await self._nats.publish(subject, request.SerializeToString())
+            await self._clients.nats.publish(subject, request.SerializeToString())
 
         logger.info(
             "📤 Triggered sync for connector %d to %s (session: %s)",

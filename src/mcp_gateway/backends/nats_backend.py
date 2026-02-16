@@ -6,6 +6,7 @@ management for the MCP gateway service, which manages its own NATS
 connection independently from other services.
 """
 
+import asyncio
 import logging
 
 from echomind_lib.db.nats_publisher import JetStreamPublisher
@@ -51,6 +52,7 @@ class NatsBackend:
             password=password,
         )
         self._connected = False
+        self._lock = asyncio.Lock()
 
     async def connect(self) -> None:
         """
@@ -59,9 +61,10 @@ class NatsBackend:
         Raises:
             Exception: If connection to NATS fails.
         """
-        await self._publisher.init()
-        self._connected = True
-        logger.info("📡 Connected to NATS at %s", self._url)
+        async with self._lock:
+            await self._publisher.init()
+            self._connected = True
+            logger.info("📡 Connected to NATS at %s", self._url)
 
     async def publish(self, subject: str, payload: bytes) -> None:
         """
@@ -74,18 +77,20 @@ class NatsBackend:
         Raises:
             RuntimeError: If not connected to NATS.
         """
-        if not self._connected:
-            raise RuntimeError("NATS backend not connected. Call connect() first.")
+        async with self._lock:
+            if not self._connected:
+                raise RuntimeError("NATS backend not connected. Call connect() first.")
 
-        await self._publisher.publish(subject, payload)
-        logger.debug("📤 Published %d bytes to '%s'", len(payload), subject)
+            await self._publisher.publish(subject, payload)
+            logger.debug("📤 Published %d bytes to '%s'", len(payload), subject)
 
     async def close(self) -> None:
         """Close the NATS connection and release resources."""
-        if self._connected:
-            await self._publisher.close()
-            self._connected = False
-            logger.info("🔌 Disconnected from NATS")
+        async with self._lock:
+            if self._connected:
+                await self._publisher.close()
+                self._connected = False
+                logger.info("🔌 Disconnected from NATS")
 
     @property
     def is_connected(self) -> bool:

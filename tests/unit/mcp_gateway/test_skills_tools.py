@@ -1,7 +1,7 @@
 """Unit tests for mcp_gateway.tools.skills."""
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -44,7 +44,7 @@ def mock_registry() -> MagicMock:
 def mock_executor() -> MagicMock:
     """Create a mock SkillExecutor."""
     executor = MagicMock()
-    executor.execute = MagicMock()
+    executor.execute = AsyncMock()
     return executor
 
 
@@ -149,25 +149,36 @@ class TestSkillsGetInfoTool:
         mock_registry.get_skill.assert_called_once_with("my-skill")
         assert result["name"] == "my-skill"
         assert result["description"] == "Does something"
-        assert result["command"] == "do-it"
         assert result["timeout"] == 60
         assert result["documentation"] == "Full docs here"
         assert result["tags"] == ["util"]
+        assert result["max_output_bytes"] is None
         assert len(result["args"]) == 1
         assert result["args"][0]["name"] == "target"
         assert result["args"][0]["required"] is True
 
     @pytest.mark.asyncio
-    async def test_returns_error_when_not_found(
+    async def test_raises_when_not_found(
         self, tool_functions: dict[str, Any], mock_registry: MagicMock
     ) -> None:
-        """Verify error dict returned when skill not found."""
+        """Verify ValueError is raised when skill not found."""
         mock_registry.get_skill.return_value = None
 
-        result = await tool_functions["skills_get_info"](name="nonexistent")
+        with pytest.raises(ValueError, match="nonexistent"):
+            await tool_functions["skills_get_info"](name="nonexistent")
 
-        assert "error" in result
-        assert "nonexistent" in result["error"]
+    @pytest.mark.asyncio
+    async def test_returns_max_output_bytes_when_set(
+        self, tool_functions: dict[str, Any], mock_registry: MagicMock
+    ) -> None:
+        """Verify max_output_bytes is returned when set on skill."""
+        skill = _make_skill()
+        skill.max_output_bytes = 262144
+        mock_registry.get_skill.return_value = skill
+
+        result = await tool_functions["skills_get_info"](name="test-skill")
+
+        assert result["max_output_bytes"] == 262144
 
     @pytest.mark.asyncio
     async def test_returns_empty_args_and_tags(
@@ -217,19 +228,18 @@ class TestSkillsExecuteTool:
         assert result["timed_out"] is False
 
     @pytest.mark.asyncio
-    async def test_returns_error_when_skill_not_found(
+    async def test_raises_when_skill_not_found(
         self,
         tool_functions: dict[str, Any],
         mock_registry: MagicMock,
         mock_executor: MagicMock,
     ) -> None:
-        """Verify error returned when skill does not exist."""
+        """Verify ValueError raised when skill does not exist."""
         mock_registry.get_skill.return_value = None
 
-        result = await tool_functions["skills_execute"](name="missing")
+        with pytest.raises(ValueError, match="missing"):
+            await tool_functions["skills_execute"](name="missing")
 
-        assert "error" in result
-        assert "missing" in result["error"]
         mock_executor.execute.assert_not_called()
 
     @pytest.mark.asyncio

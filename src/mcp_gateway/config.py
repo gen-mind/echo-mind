@@ -4,7 +4,9 @@ Configuration for the MCP Gateway Service.
 Uses Pydantic Settings to load environment variables with MCP_GATEWAY_ prefix.
 """
 
-from pydantic import Field
+import threading
+
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,7 +42,7 @@ class MCPGatewaySettings(BaseSettings):
         6333,
         description="Qdrant REST port",
     )
-    qdrant_api_key: str | None = Field(
+    qdrant_api_key: SecretStr | None = Field(
         None,
         description="Qdrant API key",
     )
@@ -58,10 +60,14 @@ class MCPGatewaySettings(BaseSettings):
         30.0,
         description="Embedder gRPC timeout in seconds",
     )
+    embedder_model: str = Field(
+        "nvidia/llama-nemotron-embed-1b-v2",
+        description="Embedder model name (server-side selection via EMBEDDER_MODEL_NAME)",
+    )
 
     # Database
-    database_url: str = Field(
-        "postgresql+asyncpg://echomind:echomind@localhost:5432/echomind",
+    database_url: SecretStr = Field(
+        SecretStr(""),
         description="PostgreSQL async connection URL",
     )
 
@@ -74,19 +80,9 @@ class MCPGatewaySettings(BaseSettings):
         None,
         description="NATS username for authentication",
     )
-    nats_password: str | None = Field(
+    nats_password: SecretStr | None = Field(
         None,
         description="NATS password for authentication",
-    )
-
-    # API Keys (for API proxy tools)
-    google_search_api_key: str | None = Field(
-        None,
-        description="Google Custom Search JSON API key",
-    )
-    google_search_cx: str | None = Field(
-        None,
-        description="Google Custom Search engine ID (CX)",
     )
 
     # Skills
@@ -105,7 +101,8 @@ class MCPGatewaySettings(BaseSettings):
         gt=0,
     )
 
-    model_config = SettingsConfigDict(
+    # Pydantic v2 metaclass requires this suppression
+    model_config = SettingsConfigDict(  # type: ignore[assignment]
         env_prefix="MCP_GATEWAY_",
         env_file=".env",
         extra="ignore",
@@ -113,18 +110,23 @@ class MCPGatewaySettings(BaseSettings):
 
 
 _settings: MCPGatewaySettings | None = None
+_settings_lock = threading.Lock()
 
 
 def get_settings() -> MCPGatewaySettings:
     """
     Get MCP Gateway settings from environment.
 
+    Thread-safe singleton accessor.
+
     Returns:
         MCPGatewaySettings instance (singleton).
     """
     global _settings
     if _settings is None:
-        _settings = MCPGatewaySettings()  # type: ignore[call-arg]
+        with _settings_lock:
+            if _settings is None:
+                _settings = MCPGatewaySettings()  # type: ignore[call-arg]
     return _settings
 
 
@@ -135,4 +137,5 @@ def reset_settings() -> None:
     Allows tests to override environment variables and get fresh settings.
     """
     global _settings
-    _settings = None
+    with _settings_lock:
+        _settings = None

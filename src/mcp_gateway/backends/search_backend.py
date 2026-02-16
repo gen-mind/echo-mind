@@ -10,9 +10,7 @@ from typing import Any
 
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from echomind_lib.db.qdrant import QdrantDB
-
-from mcp_gateway.backends.embedder_client import EmbedderClient
+from mcp_gateway.backends.client_holder import ClientHolder
 
 logger = logging.getLogger("echomind-mcp-gateway")
 
@@ -24,21 +22,21 @@ class SearchBackend:
     Combines the Embedder service (for query vectorization) with Qdrant
     (for similarity search) to provide semantic document search.
 
+    Uses a shared ClientHolder so reconnected clients are picked up
+    automatically without stale references.
+
     Attributes:
-        _qdrant: Qdrant vector database client.
-        _embedder: Embedder gRPC client for query vectorization.
+        _clients: Shared mutable client holder.
     """
 
-    def __init__(self, qdrant: QdrantDB, embedder: EmbedderClient) -> None:
+    def __init__(self, clients: ClientHolder) -> None:
         """
         Initialize SearchBackend.
 
         Args:
-            qdrant: Initialized QdrantDB client for vector operations.
-            embedder: Initialized EmbedderClient for query embedding.
+            clients: Shared client holder providing qdrant and embedder.
         """
-        self._qdrant = qdrant
-        self._embedder = embedder
+        self._clients = clients
 
     async def search_documents(
         self,
@@ -67,10 +65,16 @@ class SearchBackend:
                 - payload: Document metadata and content.
 
         Raises:
+            RuntimeError: If Qdrant or Embedder are not connected.
             ConnectionError: If the Embedder service is unavailable.
         """
-        vector = await self._embedder.embed_query(query)
-        results = await self._qdrant.search(
+        if self._clients.qdrant is None or self._clients.embedder is None:
+            raise RuntimeError(
+                "Qdrant and Embedder must be connected for search operations"
+            )
+
+        vector = await self._clients.embedder.embed_query(query)
+        results = await self._clients.qdrant.search(
             collection_name=collection_name,
             query_vector=vector,
             limit=limit,
@@ -86,8 +90,14 @@ class SearchBackend:
         Returns:
             List of dicts, each containing:
                 - name: Collection name string.
+
+        Raises:
+            RuntimeError: If Qdrant is not connected.
         """
-        collections = await self._qdrant._client.get_collections()
+        if self._clients.qdrant is None:
+            raise RuntimeError("Qdrant must be connected to list collections")
+
+        collections = await self._clients.qdrant._client.get_collections()
         result: list[dict[str, Any]] = []
         for c in collections.collections:
             result.append({"name": c.name})
@@ -107,8 +117,14 @@ class SearchBackend:
                 - vectors_count: Total number of vectors.
                 - points_count: Total number of points.
                 - status: Collection status string.
+
+        Raises:
+            RuntimeError: If Qdrant is not connected.
         """
-        info = await self._qdrant.get_collection_info(collection_name)
+        if self._clients.qdrant is None:
+            raise RuntimeError("Qdrant must be connected to get collection info")
+
+        info = await self._clients.qdrant.get_collection_info(collection_name)
         logger.info(f"ℹ️ Retrieved info for collection '{collection_name}'")
         return info
 
@@ -133,8 +149,14 @@ class SearchBackend:
             List of document chunks, each containing:
                 - id: Point ID as string.
                 - payload: Chunk metadata and content.
+
+        Raises:
+            RuntimeError: If Qdrant is not connected.
         """
-        results = await self._qdrant._client.scroll(
+        if self._clients.qdrant is None:
+            raise RuntimeError("Qdrant must be connected to get document chunks")
+
+        results = await self._clients.qdrant._client.scroll(
             collection_name=collection_name,
             scroll_filter=Filter(
                 must=[

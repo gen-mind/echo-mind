@@ -41,17 +41,24 @@ class TestRedactSensitive:
         assert result["user_password"] == "[REDACTED]"
 
     def test_redacts_key_key(self) -> None:
-        """Keys containing 'key' are redacted."""
+        """Keys containing 'api_key' are redacted, but 'monkey' is not."""
         data = {"api_key": "sk-xxx", "monkey": "business"}
         result = redact_sensitive(data)
         assert result["api_key"] == "[REDACTED]"
-        assert result["monkey"] == "[REDACTED]"
+        assert result["monkey"] == "business"
 
     def test_redacts_credential_key(self) -> None:
         """Keys containing 'credential' are redacted."""
         data = {"credential_file": "/path"}
         result = redact_sensitive(data)
         assert result["credential_file"] == "[REDACTED]"
+
+    def test_redacts_auth_key(self) -> None:
+        """Keys containing 'auth' are redacted."""
+        data = {"auth_header": "Bearer xxx", "author": "John"}
+        result = redact_sensitive(data)
+        assert result["auth_header"] == "[REDACTED]"
+        assert result["author"] == "[REDACTED]"
 
     def test_case_insensitive(self) -> None:
         """Redaction is case-insensitive."""

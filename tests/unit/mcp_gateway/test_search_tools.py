@@ -186,3 +186,96 @@ class TestGetDocumentChunksTool:
             document_id="doc1",
             limit=25,
         )
+
+
+class TestSearchDocumentsValidation:
+    """Tests for input validation in search_documents."""
+
+    @pytest.mark.asyncio
+    async def test_empty_query_returns_error(self, mock_backend: AsyncMock) -> None:
+        """Empty query returns error dict."""
+        captured: dict[str, Any] = {}
+
+        class FakeMCP:
+            """Fake FastMCP that captures tool registrations."""
+
+            def tool(self) -> Any:
+                """Return decorator that captures the function."""
+                def decorator(fn: Any) -> Any:
+                    captured[fn.__name__] = fn
+                    return fn
+                return decorator
+
+        register_search_tools(FakeMCP(), mock_backend)  # type: ignore[arg-type]
+        result = await captured["search_documents"](collection="col", query="   ")
+        assert "error" in result
+        assert "empty" in result["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_limit_clamped_to_range(self, mock_backend: AsyncMock) -> None:
+        """Limit is clamped to 1-1000 range."""
+        captured: dict[str, Any] = {}
+
+        class FakeMCP:
+            """Fake FastMCP that captures tool registrations."""
+
+            def tool(self) -> Any:
+                """Return decorator that captures the function."""
+                def decorator(fn: Any) -> Any:
+                    captured[fn.__name__] = fn
+                    return fn
+                return decorator
+
+        register_search_tools(FakeMCP(), mock_backend)  # type: ignore[arg-type]
+        mock_backend.search_documents.return_value = []
+        # Over-limit
+        await captured["search_documents"](collection="col", query="test", limit=5000)
+        assert mock_backend.search_documents.call_args.kwargs["limit"] == 1000
+        # Under-limit
+        mock_backend.search_documents.reset_mock()
+        mock_backend.search_documents.return_value = []
+        await captured["search_documents"](collection="col", query="test", limit=-1)
+        assert mock_backend.search_documents.call_args.kwargs["limit"] == 1
+
+    @pytest.mark.asyncio
+    async def test_invalid_score_threshold(self, mock_backend: AsyncMock) -> None:
+        """Invalid score_threshold returns error."""
+        captured: dict[str, Any] = {}
+
+        class FakeMCP:
+            """Fake FastMCP that captures tool registrations."""
+
+            def tool(self) -> Any:
+                """Return decorator that captures the function."""
+                def decorator(fn: Any) -> Any:
+                    captured[fn.__name__] = fn
+                    return fn
+                return decorator
+
+        register_search_tools(FakeMCP(), mock_backend)  # type: ignore[arg-type]
+        result = await captured["search_documents"](collection="col", query="test", score_threshold=1.5)
+        assert "error" in result
+
+
+class TestSearchToolsReadiness:
+    """Tests for readiness check in search tools."""
+
+    @pytest.mark.asyncio
+    async def test_returns_error_when_not_ready(self, mock_backend: AsyncMock) -> None:
+        """Returns error dict when readiness check fails."""
+        captured: dict[str, Any] = {}
+
+        class FakeMCP:
+            """Fake FastMCP that captures tool registrations."""
+
+            def tool(self) -> Any:
+                """Return decorator that captures the function."""
+                def decorator(fn: Any) -> Any:
+                    captured[fn.__name__] = fn
+                    return fn
+                return decorator
+
+        register_search_tools(FakeMCP(), mock_backend, readiness_check=lambda: False)  # type: ignore[arg-type]
+        result = await captured["search_documents"](collection="col", query="test")
+        assert "error" in result
+        assert "not ready" in result["error"].lower()

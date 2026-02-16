@@ -22,7 +22,7 @@ from fastmcp.tools.tool import ToolResult
 logger = logging.getLogger("echomind-mcp-audit")
 
 _SENSITIVE_SUBSTRINGS: frozenset[str] = frozenset(
-    {"token", "secret", "password", "key", "credential"}
+    {"token", "secret", "password", "api_key", "apikey", "credential", "auth"}
 )
 
 _REDACTED: str = "[REDACTED]"
@@ -32,8 +32,9 @@ def redact_sensitive(data: dict[str, Any]) -> dict[str, Any]:
     """Deep-copy and redact sensitive values from a dictionary.
 
     Any key whose **lowercased** name contains one of the sensitive
-    substrings (``token``, ``secret``, ``password``, ``key``,
-    ``credential``) will have its value replaced with ``[REDACTED]``.
+    substrings (``token``, ``secret``, ``password``, ``api_key``,
+    ``apikey``, ``credential``, ``auth``) will have its value replaced
+    with ``[REDACTED]``.
     Nested dicts and lists of dicts are handled recursively.
 
     Args:
@@ -161,5 +162,6 @@ def _emit_audit_entry(
         "result_status": result_status,
         "duration_ms": duration_ms,
         "error": error,
+        "request_id": None,  # TODO: Extract from MCP request context in Phase 8
     }
     logger.info(json.dumps(entry, default=str))

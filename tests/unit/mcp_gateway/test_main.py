@@ -16,18 +16,14 @@ class TestMCPGatewayInit:
         gateway = MCPGateway()
 
         assert gateway._health_server is None
-        assert gateway._running is False
         assert gateway._qdrant_connected is False
         assert gateway._embedder_connected is False
         assert gateway._db_connected is False
         assert gateway._nats_connected is False
         assert gateway._retry_tasks == []
         assert gateway._mcp_task is None
-        assert gateway._qdrant is None
-        assert gateway._embedder is None
-        assert gateway._session_factory is None
         assert gateway._db_engine is None
-        assert gateway._nats is None
+        assert gateway._clients is not None
 
     def test_init_loads_settings(self) -> None:
         """MCPGateway loads settings on init."""
@@ -171,7 +167,6 @@ class TestMCPGatewayStart:
         assert gateway._embedder_connected is True
         assert gateway._db_connected is True
         assert gateway._nats_connected is True
-        assert gateway._running is True
 
         # Verify Qdrant init
         mock_qdrant.init.assert_awaited_once()
@@ -204,7 +199,6 @@ class TestMCPGatewayStart:
         gateway = MCPGateway()
         await gateway.start()
 
-        assert gateway._running is False
         assert gateway._health_server is None
 
     @pytest.mark.asyncio
@@ -279,7 +273,6 @@ class TestMCPGatewayStart:
 
         assert gateway._qdrant_connected is False
         assert gateway._embedder_connected is True
-        assert gateway._running is True
 
         # Not ready because Qdrant is down
         mock_health.set_ready.assert_called_with(False)
@@ -435,7 +428,6 @@ class TestMCPGatewayStart:
         assert gateway._db_connected is False
         assert gateway._nats_connected is False
         assert len(gateway._retry_tasks) == 4
-        assert gateway._running is True
 
         await gateway.stop()
 
@@ -449,33 +441,32 @@ class TestMCPGatewayStop:
         gateway = MCPGateway()
         mock_health = MagicMock()
         gateway._health_server = mock_health
-        gateway._running = True
 
         await gateway.stop()
 
         mock_health.set_ready.assert_called_with(False)
-        assert gateway._running is False
 
     @pytest.mark.asyncio
     async def test_stop_cancels_retry_tasks(self) -> None:
         """Stop cancels all pending retry tasks."""
         gateway = MCPGateway()
-        gateway._running = True
 
-        mock_task1 = MagicMock()
-        mock_task2 = MagicMock()
-        gateway._retry_tasks = [mock_task1, mock_task2]
+        async def _noop() -> None:
+            await asyncio.sleep(999999)
+
+        task1 = asyncio.create_task(_noop())
+        task2 = asyncio.create_task(_noop())
+        gateway._retry_tasks = [task1, task2]
 
         await gateway.stop()
 
-        mock_task1.cancel.assert_called_once()
-        mock_task2.cancel.assert_called_once()
+        assert task1.cancelled()
+        assert task2.cancelled()
 
     @pytest.mark.asyncio
     async def test_stop_cancels_mcp_task(self) -> None:
         """Stop cancels the MCP server task."""
         gateway = MCPGateway()
-        gateway._running = True
 
         async def _block_forever() -> None:
             await asyncio.sleep(999999)
@@ -489,10 +480,9 @@ class TestMCPGatewayStop:
     async def test_stop_closes_qdrant(self) -> None:
         """Stop closes the Qdrant connection."""
         gateway = MCPGateway()
-        gateway._running = True
 
         mock_qdrant = AsyncMock()
-        gateway._qdrant = mock_qdrant
+        gateway._clients.qdrant = mock_qdrant
 
         await gateway.stop()
 
@@ -502,10 +492,9 @@ class TestMCPGatewayStop:
     async def test_stop_closes_embedder(self) -> None:
         """Stop closes the Embedder connection."""
         gateway = MCPGateway()
-        gateway._running = True
 
         mock_embedder = AsyncMock()
-        gateway._embedder = mock_embedder
+        gateway._clients.embedder = mock_embedder
 
         await gateway.stop()
 
@@ -517,7 +506,6 @@ class TestMCPGatewayStop:
         gateway = MCPGateway()
         # Should not raise
         await gateway.stop()
-        assert gateway._running is False
 
 
 class TestMCPGatewayRetry:

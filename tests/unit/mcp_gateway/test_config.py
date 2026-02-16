@@ -55,7 +55,7 @@ class TestMCPGatewaySettings:
         assert settings.log_level == "DEBUG"
         assert settings.qdrant_host == "qdrant-server"
         assert settings.qdrant_port == 6334
-        assert settings.qdrant_api_key == "secret-key"
+        assert settings.qdrant_api_key.get_secret_value() == "secret-key"
         assert settings.embedder_host == "embedder-server"
         assert settings.embedder_port == 50052
         assert settings.embedder_timeout == 60.0
@@ -93,6 +93,23 @@ class TestMCPGatewaySettings:
         monkeypatch.setenv("MCP_GATEWAY_ENABLED", "0")
         settings = MCPGatewaySettings()  # type: ignore[call-arg]
         assert settings.enabled is False
+
+    def test_database_url_is_secret_str(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """database_url is stored as SecretStr."""
+        monkeypatch.setenv("MCP_GATEWAY_DATABASE_URL", "postgresql+asyncpg://u:p@h/d")
+        settings = MCPGatewaySettings()  # type: ignore[call-arg]
+        assert settings.database_url.get_secret_value() == "postgresql+asyncpg://u:p@h/d"
+
+    def test_embedder_model_default(self) -> None:
+        """embedder_model has a default value."""
+        settings = MCPGatewaySettings()  # type: ignore[call-arg]
+        assert settings.embedder_model == "nvidia/llama-nemotron-embed-1b-v2"
+
+    def test_nats_password_is_secret_str(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """nats_password is stored as SecretStr."""
+        monkeypatch.setenv("MCP_GATEWAY_NATS_PASSWORD", "nats-secret")
+        settings = MCPGatewaySettings()  # type: ignore[call-arg]
+        assert settings.nats_password.get_secret_value() == "nats-secret"
 
 
 class TestGetSettings:

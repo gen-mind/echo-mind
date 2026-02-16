@@ -26,9 +26,7 @@ COPY mcp_gateway /app/src/mcp_gateway
 # Expose ports (health: 8080, MCP: 8100)
 EXPOSE 8080 8100
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8080/healthz || exit 1
+# Health check defined in docker-compose.yml (overrides Dockerfile HEALTHCHECK)
 
 # Run as non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
