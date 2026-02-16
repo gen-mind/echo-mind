@@ -168,7 +168,7 @@ fi
 
 # Check if echomind-webui repo exists (external repo, not always cloned)
 WEBUI_PROFILE=""
-if [ -d "$SCRIPT_DIR/../../../echomind-webui" ]; then
+if [ -d "$SCRIPT_DIR/../../../echo-mind-webui" ]; then
     WEBUI_PROFILE="--profile webui"
 fi
 
@@ -592,8 +592,8 @@ build_services() {
 
         for svc in "${services[@]}"; do
             # Skip webui if external repo not cloned
-            if [ "$svc" = "webui" ] && [ ! -d "$SCRIPT_DIR/../../../echomind-webui" ]; then
-                log_warning "Skipping ${svc} build (echomind-webui repo not found at ../../../echomind-webui)"
+            if [ "$svc" = "webui" ] && [ ! -d "$SCRIPT_DIR/../../../echo-mind-webui" ]; then
+                log_warning "Skipping ${svc} build (echo-mind-webui repo not found at ../../../echo-mind-webui)"
                 continue
             fi
             log_info "Building ${svc}..."

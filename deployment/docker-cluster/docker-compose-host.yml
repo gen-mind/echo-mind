@@ -847,7 +847,7 @@ services:
     profiles:
       - webui
     build:
-      context: ../../../echomind-webui
+      context: ../../../echo-mind-webui
       dockerfile: Dockerfile.nginx
       args:
         - BUILD_HASH=${BUILD_HASH:-dev}
