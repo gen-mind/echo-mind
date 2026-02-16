@@ -63,6 +63,10 @@ routing:
   defaults:
     agentId: assistant  # Default agent for all unmatched routes
 
+  intentFallback:
+    enabled: false       # LLM-based intent classification when no binding matches
+    model: "gpt-4o-mini"
+
   bindings:
     # Route specific channels or users to specific agents
     - match:
@@ -71,6 +75,11 @@ routing:
     - match:
         channel: research
       agentId: researcher
+
+# Session persistence configuration
+session:
+  sessionsDir: "data/sessions"  # Directory for JSONL session files
+  # maxMessages: 200            # Optional: limit history per session (null = unlimited)
 
 # Sandbox configuration (disabled for Phase 1)
 sandbox:

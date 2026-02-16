@@ -9,6 +9,7 @@ import pytest
 
 from src.agent.config.schema import (
     AgentConfig,
+    IntentFallbackConfig,
     MoltbotConfig,
     RouteBindingConfig,
     RoutingConfig,
@@ -111,6 +112,32 @@ class TestRouteBindingConfig:
             RouteBindingConfig(match={"channel": "test"}, agent_id="")
 
 
+class TestIntentFallbackConfig:
+    """Tests for IntentFallbackConfig dataclass."""
+
+    def test_default_values(self):
+        """Test default intent fallback config."""
+        config = IntentFallbackConfig()
+        assert config.enabled is False
+        assert config.model == "gpt-4o-mini"
+
+    def test_enabled_with_model(self):
+        """Test enabled intent fallback with custom model."""
+        config = IntentFallbackConfig(enabled=True, model="claude-3-haiku")
+        assert config.enabled is True
+        assert config.model == "claude-3-haiku"
+
+    def test_enabled_empty_model_raises(self):
+        """Test that enabled with empty model raises ValueError."""
+        with pytest.raises(ValueError, match="model cannot be empty"):
+            IntentFallbackConfig(enabled=True, model="")
+
+    def test_disabled_empty_model_ok(self):
+        """Test that disabled with empty model is allowed."""
+        config = IntentFallbackConfig(enabled=False, model="")
+        assert config.enabled is False
+
+
 class TestRoutingConfig:
     """Tests for RoutingConfig dataclass."""
 
@@ -119,6 +146,7 @@ class TestRoutingConfig:
         config = RoutingConfig(defaults={"agentId": "assistant"})
         assert config.defaults == {"agentId": "assistant"}
         assert config.bindings == []
+        assert config.intent_fallback.enabled is False
 
     def test_with_bindings(self):
         """Test routing with bindings."""

@@ -16,10 +16,14 @@ import yaml
 
 from .schema import (
     AgentConfig,
+    IntentFallbackConfig,
     MoltbotConfig,
+    PathRestrictionConfig,
     RouteBindingConfig,
     RoutingConfig,
     SandboxConfig,
+    SessionConfig,
+    ToolApprovalConfig,
     ToolPolicy,
 )
 
@@ -139,6 +143,11 @@ class ConfigParser:
 
         # Parse routing
         routing_raw = raw.get("routing", {})
+        intent_fallback_raw = routing_raw.get("intentFallback", {})
+        intent_fallback = IntentFallbackConfig(
+            enabled=intent_fallback_raw.get("enabled", False),
+            model=intent_fallback_raw.get("model", "gpt-4o-mini"),
+        )
         routing = RoutingConfig(
             defaults=routing_raw.get("defaults", {}),
             bindings=[
@@ -148,6 +157,7 @@ class ConfigParser:
                 )
                 for b in routing_raw.get("bindings", [])
             ],
+            intent_fallback=intent_fallback,
         )
 
         # Parse global tools
@@ -155,6 +165,15 @@ class ConfigParser:
 
         # Parse sandbox
         sandbox_raw = raw.get("sandbox", {})
+
+        # Parse path restriction within sandbox
+        path_restriction_raw = sandbox_raw.get("pathRestriction", {})
+        path_restriction = PathRestrictionConfig(
+            enabled=path_restriction_raw.get("enabled", False),
+            allowed_paths=path_restriction_raw.get("allowedPaths", []),
+            denied_paths=path_restriction_raw.get("deniedPaths", []),
+        )
+
         sandbox = SandboxConfig(
             enabled=sandbox_raw.get("enabled", False),
             safe_bins=sandbox_raw.get("safeBins", []),
@@ -164,6 +183,21 @@ class ConfigParser:
                 "subagentDeniedTools",
                 ["write", "bash", "git_add", "git_commit"],
             ),
+            path_restriction=path_restriction,
+        )
+
+        # Parse session config
+        session_raw = raw.get("session", {})
+        session = SessionConfig(
+            sessions_dir=session_raw.get("sessionsDir", "data/sessions"),
+            max_messages=session_raw.get("maxMessages"),
+        )
+
+        # Parse approval config
+        approval_raw = raw.get("approval", {})
+        approval = ToolApprovalConfig(
+            require_approval=approval_raw.get("requireApproval", []),
+            skip_approval=approval_raw.get("skipApproval", []),
         )
 
         return MoltbotConfig(
@@ -171,6 +205,8 @@ class ConfigParser:
             routing=routing,
             tools=tools,
             sandbox=sandbox,
+            session=session,
+            approval=approval,
         )
 
     def _parse_tool_policy(self, raw: dict[str, Any]) -> ToolPolicy:

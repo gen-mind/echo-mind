@@ -16,6 +16,7 @@ from src.agent.agent import (
     BasicAgentWrapper,
 )
 from src.agent.config.schema import AgentConfig, ToolPolicy
+from src.agent.sessions.manager import SessionManager
 from src.agent.tools.registry import ToolsRegistry
 
 
@@ -27,6 +28,7 @@ class TestAgentRunRequest:
         request = AgentRunRequest(input="Hello")
         assert request.input == "Hello"
         assert request.stream is False
+        assert request.session_key is None
         assert request.context == {}
 
     def test_full_request(self):
@@ -38,7 +40,17 @@ class TestAgentRunRequest:
         )
         assert request.input == "Test query"
         assert request.stream is True
+        assert request.session_key is None
         assert request.context == {"user_id": 123}
+
+    def test_request_with_session_key(self):
+        """Test creating request with session key."""
+        request = AgentRunRequest(
+            input="Hello",
+            session_key="org:1:user:42",
+        )
+        assert request.session_key == "org:1:user:42"
+        assert request.stream is False
 
 
 class TestAgentRunResponse:
@@ -482,6 +494,200 @@ class TestBasicAgentWrapper:
                 pass
 
 
+    @patch("src.agent.agent.OpenAIChatClient")
+    @patch("src.agent.agent.Agent")
+    def test_initialization_with_session_manager(
+        self, mock_agent_class, mock_client_class, mock_config, mock_tools_registry
+    ):
+        """Test that session_manager creates a history provider and passes to Agent."""
+        mock_client_class.return_value = Mock()
+        mock_agent_class.return_value = Mock()
+
+        mock_session_mgr = Mock(spec=SessionManager)
+
+        wrapper = BasicAgentWrapper(
+            config=mock_config,
+            tools_registry=mock_tools_registry,
+            api_key="test-key",
+            session_manager=mock_session_mgr,
+            max_messages=50,
+        )
+
+        # Verify session_manager stored
+        assert wrapper.session_manager is mock_session_mgr
+
+        # Verify Agent was called with context_providers
+        call_kwargs = mock_agent_class.call_args.kwargs
+        assert "context_providers" in call_kwargs
+        providers = call_kwargs["context_providers"]
+        assert len(providers) == 1
+        assert providers[0].max_messages == 50
+
+    @patch("src.agent.agent.OpenAIChatClient")
+    @patch("src.agent.agent.Agent")
+    def test_initialization_without_session_manager(
+        self, mock_agent_class, mock_client_class, mock_config, mock_tools_registry
+    ):
+        """Test that no session_manager means no context_providers (backward compat)."""
+        mock_client_class.return_value = Mock()
+        mock_agent_class.return_value = Mock()
+
+        BasicAgentWrapper(
+            config=mock_config,
+            tools_registry=mock_tools_registry,
+            api_key="test-key",
+        )
+
+        # Verify Agent was NOT called with context_providers
+        call_kwargs = mock_agent_class.call_args.kwargs
+        assert "context_providers" not in call_kwargs
+
+    @pytest.mark.asyncio
+    @patch("src.agent.agent.AgentSession")
+    @patch("src.agent.agent.OpenAIChatClient")
+    @patch("src.agent.agent.Agent")
+    async def test_run_with_session_key(
+        self, mock_agent_class, mock_client_class, mock_session_class,
+        mock_config, mock_tools_registry
+    ):
+        """Test that run() creates AgentSession when session_key is provided."""
+        mock_client_class.return_value = Mock()
+
+        mock_response = Mock()
+        mock_response.content = "Response with session"
+        mock_response.finish_reason = "stop"
+        mock_response.usage = None
+
+        mock_agent = AsyncMock()
+        mock_agent.run = AsyncMock(return_value=mock_response)
+        mock_agent_class.return_value = mock_agent
+
+        mock_session = Mock()
+        mock_session_class.return_value = mock_session
+
+        wrapper = BasicAgentWrapper(
+            config=mock_config,
+            tools_registry=mock_tools_registry,
+            api_key="test-key",
+        )
+
+        request = AgentRunRequest(input="Hello", session_key="org:1:user:42")
+        response = await wrapper.run(request)
+
+        # Verify AgentSession created with correct session_id
+        mock_session_class.assert_called_once_with(session_id="org:1:user:42")
+
+        # Verify agent.run called with session
+        mock_agent.run.assert_called_once_with("Hello", session=mock_session)
+        assert response.output == "Response with session"
+
+    @pytest.mark.asyncio
+    @patch("src.agent.agent.OpenAIChatClient")
+    @patch("src.agent.agent.Agent")
+    async def test_run_without_session_key_stateless(
+        self, mock_agent_class, mock_client_class, mock_config, mock_tools_registry
+    ):
+        """Test that run() without session_key remains stateless (backward compat)."""
+        mock_client_class.return_value = Mock()
+
+        mock_response = Mock()
+        mock_response.content = "Stateless response"
+        mock_response.finish_reason = "stop"
+        mock_response.usage = None
+
+        mock_agent = AsyncMock()
+        mock_agent.run = AsyncMock(return_value=mock_response)
+        mock_agent_class.return_value = mock_agent
+
+        wrapper = BasicAgentWrapper(
+            config=mock_config,
+            tools_registry=mock_tools_registry,
+            api_key="test-key",
+        )
+
+        request = AgentRunRequest(input="Hello")
+        response = await wrapper.run(request)
+
+        # Verify agent.run called WITHOUT session kwarg
+        mock_agent.run.assert_called_once_with("Hello")
+        assert response.output == "Stateless response"
+
+    @pytest.mark.asyncio
+    @patch("src.agent.agent.AgentSession")
+    @patch("src.agent.agent.OpenAIChatClient")
+    @patch("src.agent.agent.Agent")
+    async def test_run_stream_with_session_key(
+        self, mock_agent_class, mock_client_class, mock_session_class,
+        mock_config, mock_tools_registry
+    ):
+        """Test that run_stream() creates AgentSession when session_key is provided."""
+        mock_client_class.return_value = Mock()
+
+        mock_session = Mock()
+        mock_session_class.return_value = mock_session
+
+        class MockResponseStream:
+            async def __aiter__(self):
+                yield Mock(content="Chunk 1")
+                yield Mock(content=" Chunk 2")
+
+        mock_agent = Mock()
+        mock_agent.run = Mock(return_value=MockResponseStream())
+        mock_agent_class.return_value = mock_agent
+
+        wrapper = BasicAgentWrapper(
+            config=mock_config,
+            tools_registry=mock_tools_registry,
+            api_key="test-key",
+        )
+
+        request = AgentRunRequest(input="Stream me", stream=True, session_key="sess:abc")
+        chunks = []
+        async for chunk in wrapper.run_stream(request):
+            chunks.append(chunk)
+
+        # Verify AgentSession created
+        mock_session_class.assert_called_once_with(session_id="sess:abc")
+
+        # Verify agent.run called with stream=True and session
+        mock_agent.run.assert_called_once_with(
+            "Stream me", stream=True, session=mock_session
+        )
+        assert chunks == ["Chunk 1", " Chunk 2"]
+
+    @pytest.mark.asyncio
+    @patch("src.agent.agent.OpenAIChatClient")
+    @patch("src.agent.agent.Agent")
+    async def test_run_stream_without_session_key_stateless(
+        self, mock_agent_class, mock_client_class, mock_config, mock_tools_registry
+    ):
+        """Test that run_stream() without session_key remains stateless."""
+        mock_client_class.return_value = Mock()
+
+        class MockResponseStream:
+            async def __aiter__(self):
+                yield Mock(content="Hello")
+
+        mock_agent = Mock()
+        mock_agent.run = Mock(return_value=MockResponseStream())
+        mock_agent_class.return_value = mock_agent
+
+        wrapper = BasicAgentWrapper(
+            config=mock_config,
+            tools_registry=mock_tools_registry,
+            api_key="test-key",
+        )
+
+        request = AgentRunRequest(input="Test", stream=True)
+        chunks = []
+        async for chunk in wrapper.run_stream(request):
+            chunks.append(chunk)
+
+        # Verify agent.run called with ONLY stream=True, no session
+        mock_agent.run.assert_called_once_with("Test", stream=True)
+        assert chunks == ["Hello"]
+
+
 class TestAgentFactory:
     """Tests for AgentFactory class."""
 
@@ -564,3 +770,50 @@ class TestAgentFactory:
         # Verify exception raised
         with pytest.raises(ValueError, match="Failed to create agent"):
             factory.create_agent(config)
+
+    @patch("src.agent.agent.BasicAgentWrapper")
+    @patch("src.agent.agent.ToolsRegistry")
+    def test_create_agent_with_session_manager(
+        self, mock_registry_class, mock_wrapper_class
+    ):
+        """Test factory passes session_manager and max_messages to BasicAgentWrapper."""
+        mock_registry_class.return_value = Mock(count=Mock(return_value=5))
+        mock_wrapper_class.return_value = Mock()
+
+        mock_session_mgr = Mock(spec=SessionManager)
+
+        factory = AgentFactory(
+            api_key="factory-key",
+            session_manager=mock_session_mgr,
+            max_messages=100,
+        )
+
+        assert factory.session_manager is mock_session_mgr
+        assert factory.max_messages == 100
+
+        config = AgentConfig(id="test", name="Test", model="gpt-4o-mini")
+        factory.create_agent(config)
+
+        # Verify session_manager and max_messages passed through
+        call_kwargs = mock_wrapper_class.call_args.kwargs
+        assert call_kwargs["session_manager"] is mock_session_mgr
+        assert call_kwargs["max_messages"] == 100
+
+    @patch("src.agent.agent.BasicAgentWrapper")
+    @patch("src.agent.agent.ToolsRegistry")
+    def test_create_agent_without_session_manager(
+        self, mock_registry_class, mock_wrapper_class
+    ):
+        """Test factory without session_manager passes None (backward compat)."""
+        mock_registry_class.return_value = Mock(count=Mock(return_value=5))
+        mock_wrapper_class.return_value = Mock()
+
+        factory = AgentFactory(api_key="factory-key")
+
+        config = AgentConfig(id="test", name="Test", model="gpt-4o-mini")
+        factory.create_agent(config)
+
+        # Verify None passed for session params
+        call_kwargs = mock_wrapper_class.call_args.kwargs
+        assert call_kwargs["session_manager"] is None
+        assert call_kwargs["max_messages"] is None

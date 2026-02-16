@@ -17,62 +17,35 @@ from src.agent.tools.registry import ToolsRegistry
 class TestRegistryInit:
     """Tests for ToolsRegistry initialization."""
 
-    @patch("src.agent.tools.registry.create_bash_tool")
-    @patch("src.agent.tools.registry.create_read_tool")
-    @patch("src.agent.tools.registry.create_write_tool")
-    @patch("src.agent.tools.registry.create_grep_tool")
-    @patch("src.agent.tools.registry.create_glob_tool")
-    @patch("src.agent.tools.registry.create_git_log_tool")
-    @patch("src.agent.tools.registry.create_git_diff_tool")
-    @patch("src.agent.tools.registry.create_git_status_tool")
-    @patch("src.agent.tools.registry.create_git_add_tool")
-    @patch("src.agent.tools.registry.create_git_commit_tool")
-    def test_registers_core_tools(
-        self,
-        mock_git_commit,
-        mock_git_add,
-        mock_git_status,
-        mock_git_diff,
-        mock_git_log,
-        mock_glob,
-        mock_grep,
-        mock_write,
-        mock_read,
-        mock_bash,
-    ):
-        """Test that __init__ registers all 10 core tools."""
+    def test_registers_all_tools(self):
+        """Test that __init__ registers all 30 tools."""
         registry = ToolsRegistry()
-        assert registry.count() == 10
+        assert registry.count() == 30
 
-    @patch("src.agent.tools.registry.create_bash_tool")
-    @patch("src.agent.tools.registry.create_read_tool")
-    @patch("src.agent.tools.registry.create_write_tool")
-    @patch("src.agent.tools.registry.create_grep_tool")
-    @patch("src.agent.tools.registry.create_glob_tool")
-    @patch("src.agent.tools.registry.create_git_log_tool")
-    @patch("src.agent.tools.registry.create_git_diff_tool")
-    @patch("src.agent.tools.registry.create_git_status_tool")
-    @patch("src.agent.tools.registry.create_git_add_tool")
-    @patch("src.agent.tools.registry.create_git_commit_tool")
-    def test_expected_tool_names(
-        self,
-        mock_git_commit,
-        mock_git_add,
-        mock_git_status,
-        mock_git_diff,
-        mock_git_log,
-        mock_glob,
-        mock_grep,
-        mock_write,
-        mock_read,
-        mock_bash,
-    ):
+    def test_expected_tool_names(self):
         """Test that all expected tool names are registered."""
         registry = ToolsRegistry()
-        expected = [
-            "bash", "git_add", "git_commit", "git_diff", "git_log",
-            "git_status", "glob", "grep", "read", "write",
-        ]
+        expected = sorted([
+            # Filesystem (4)
+            "read", "write", "grep", "glob",
+            # Edit (1)
+            "edit",
+            # Directory (5)
+            "list_dir", "tree", "mkdir", "move", "delete",
+            # Execution (1)
+            "bash",
+            # Web (1)
+            "http_request",
+            # Core git (5)
+            "git_log", "git_diff", "git_status", "git_add", "git_commit",
+            # Extended git (8)
+            "git_branch", "git_checkout", "git_stash", "git_push",
+            "git_pull", "git_reset", "git_clone", "git_tag",
+            # System (3)
+            "env_get", "which", "find_replace",
+            # Text (2)
+            "diff", "patch",
+        ])
         assert registry.list_names() == expected
 
 
@@ -193,7 +166,7 @@ class TestRegistryGetFiltered:
 
     @pytest.fixture
     def registry(self):
-        """Create registry with test tools."""
+        """Create registry with test tools (subset for filtering tests)."""
         with patch.object(ToolsRegistry, "_register_core_tools"):
             reg = ToolsRegistry()
 

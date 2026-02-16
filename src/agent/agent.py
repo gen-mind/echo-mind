@@ -8,18 +8,22 @@ This module provides a wrapper around the Microsoft Agent Framework that:
 - Provides a simple interface for running agents
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from collections.abc import AsyncIterator
 from typing import Any
 
-from agent_framework import Agent
+from agent_framework import Agent, AgentSession
 from agent_framework.openai import OpenAIChatClient
 from pydantic import BaseModel, Field
 
 from .config.schema import AgentConfig, MoltbotConfig
 from .policy.engine import ToolPolicyEngine
 from .policy.middleware import ToolPolicyMiddleware
+from .sessions.manager import SessionManager
+from .sessions.provider import JSONLHistoryProvider
 from .tools.registry import ToolsRegistry
 
 logger = logging.getLogger(__name__)
@@ -30,6 +34,9 @@ class AgentRunRequest(BaseModel):
 
     input: str = Field(..., description="User input message")
     stream: bool = Field(False, description="Enable streaming responses")
+    session_key: str | None = Field(
+        None, description="Session key for conversation state"
+    )
     context: dict[str, Any] = Field(
         default_factory=dict, description="Additional context"
     )
@@ -64,6 +71,8 @@ class BasicAgentWrapper:
         api_key: str | None = None,
         base_url: str | None = None,
         global_config: MoltbotConfig | None = None,
+        session_manager: SessionManager | None = None,
+        max_messages: int | None = None,
     ) -> None:
         """
         Initialize agent wrapper.
@@ -74,6 +83,8 @@ class BasicAgentWrapper:
             api_key: OpenAI API key (or from env)
             base_url: OpenAI base URL (or from env)
             global_config: Root config for policy engine (optional)
+            session_manager: Session manager for JSONL persistence (optional)
+            max_messages: Max history messages to load per session (optional)
 
         Raises:
             ValueError: If API key is missing
@@ -81,6 +92,7 @@ class BasicAgentWrapper:
         self.config = config
         self.tools_registry = tools_registry
         self.global_config = global_config
+        self.session_manager = session_manager
 
         # Get API credentials
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
@@ -120,6 +132,22 @@ class BasicAgentWrapper:
         else:
             self._policy_engine = None
 
+        # Build context providers (session history)
+        context_providers: list[Any] = []
+        if session_manager:
+            history_provider = JSONLHistoryProvider(
+                "history",
+                session_manager,
+                max_messages=max_messages,
+            )
+            context_providers.append(history_provider)
+            logger.info(
+                "📜 History provider enabled for agent '%s' "
+                "(max_messages=%s)",
+                config.id,
+                max_messages,
+            )
+
         # Create agent
         agent_kwargs: dict[str, Any] = {
             "client": self.client,
@@ -130,6 +158,8 @@ class BasicAgentWrapper:
         }
         if middleware:
             agent_kwargs["middleware"] = middleware
+        if context_providers:
+            agent_kwargs["context_providers"] = context_providers
 
         self.agent = Agent(**agent_kwargs)
 
@@ -168,8 +198,17 @@ class BasicAgentWrapper:
         try:
             logger.info(f"🏃 Running agent '{self.config.name}' (non-streaming)")
 
+            # Build session if session_key provided
+            session = None
+            if request.session_key:
+                session = AgentSession(session_id=request.session_key)
+
             # Execute agent
-            response = await self.agent.run(request.input)
+            run_kwargs: dict[str, Any] = {}
+            if session is not None:
+                run_kwargs["session"] = session
+
+            response = await self.agent.run(request.input, **run_kwargs)
 
             # Extract response text
             output = ""
@@ -234,10 +273,19 @@ class BasicAgentWrapper:
         try:
             logger.info(f"🏃 Running agent '{self.config.name}' (streaming)")
 
-            # Agent.run with stream=True returns a ResponseStream (async iterable)
-            stream = self.agent.run(request.input, stream=True)
+            # Build session if session_key provided
+            session = None
+            if request.session_key:
+                session = AgentSession(session_id=request.session_key)
 
-            async for chunk in stream:
+            # Agent.run with stream=True returns a ResponseStream (async iterable)
+            run_kwargs: dict[str, Any] = {"stream": True}
+            if session is not None:
+                run_kwargs["session"] = session
+
+            response_stream = self.agent.run(request.input, **run_kwargs)
+
+            async for chunk in response_stream:
                 if hasattr(chunk, "content") and chunk.content:
                     # Handle AgentResponseUpdate
                     if isinstance(chunk.content, list):
@@ -268,6 +316,8 @@ class AgentFactory:
         api_key: str | None = None,
         base_url: str | None = None,
         global_config: MoltbotConfig | None = None,
+        session_manager: SessionManager | None = None,
+        max_messages: int | None = None,
     ) -> None:
         """
         Initialize factory.
@@ -276,10 +326,14 @@ class AgentFactory:
             api_key: Default OpenAI API key
             base_url: Default OpenAI base URL
             global_config: Root config for policy engine (optional)
+            session_manager: Session manager for JSONL persistence (optional)
+            max_messages: Max history messages to load per session (optional)
         """
         self.api_key = api_key
         self.base_url = base_url
         self.global_config = global_config
+        self.session_manager = session_manager
+        self.max_messages = max_messages
         self.tools_registry = ToolsRegistry()
 
         logger.info(
@@ -313,6 +367,8 @@ class AgentFactory:
                 api_key=api_key or self.api_key,
                 base_url=base_url or self.base_url,
                 global_config=self.global_config,
+                session_manager=self.session_manager,
+                max_messages=self.max_messages,
             )
             logger.info(f"✅ Created agent '{config.name}'")
             return agent
