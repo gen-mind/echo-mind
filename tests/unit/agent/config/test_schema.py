@@ -10,10 +10,13 @@ import pytest
 from src.agent.config.schema import (
     AgentConfig,
     IntentFallbackConfig,
+    MCPServerConfig,
     MoltbotConfig,
+    PathRestrictionConfig,
     RouteBindingConfig,
     RoutingConfig,
     SandboxConfig,
+    ToolApprovalConfig,
     ToolPolicy,
 )
 
@@ -165,6 +168,47 @@ class TestRoutingConfig:
             RoutingConfig(defaults={})
 
 
+class TestToolApprovalConfig:
+    """Tests for ToolApprovalConfig dataclass."""
+
+    def test_default_values(self):
+        """Test default approval config."""
+        config = ToolApprovalConfig()
+        assert config.require_approval == []
+        assert config.skip_approval == []
+
+    def test_with_patterns(self):
+        """Test approval config with patterns."""
+        config = ToolApprovalConfig(
+            require_approval=["write", "bash", "git_*"],
+            skip_approval=["read", "grep"],
+        )
+        assert config.require_approval == ["write", "bash", "git_*"]
+        assert config.skip_approval == ["read", "grep"]
+
+
+class TestPathRestrictionConfig:
+    """Tests for PathRestrictionConfig dataclass."""
+
+    def test_default_values(self):
+        """Test default path restriction config."""
+        config = PathRestrictionConfig()
+        assert config.enabled is False
+        assert config.allowed_paths == []
+        assert config.denied_paths == []
+
+    def test_enabled_with_paths(self):
+        """Test path restriction with paths configured."""
+        config = PathRestrictionConfig(
+            enabled=True,
+            allowed_paths=["/project", "/tmp"],
+            denied_paths=["/etc", "/root", "~/.ssh"],
+        )
+        assert config.enabled is True
+        assert config.allowed_paths == ["/project", "/tmp"]
+        assert config.denied_paths == ["/etc", "/root", "~/.ssh"]
+
+
 class TestSandboxConfig:
     """Tests for SandboxConfig dataclass."""
 
@@ -175,6 +219,8 @@ class TestSandboxConfig:
         assert config.safe_bins == []
         assert config.path_prepend is None
         assert config.denied_tools == []
+        assert isinstance(config.path_restriction, PathRestrictionConfig)
+        assert config.path_restriction.enabled is False
 
     def test_all_fields(self):
         """Test all sandbox fields."""
@@ -183,11 +229,18 @@ class TestSandboxConfig:
             safe_bins=["git", "ls"],
             path_prepend="/usr/bin",
             denied_tools=["exec"],
+            path_restriction=PathRestrictionConfig(
+                enabled=True,
+                allowed_paths=["/project"],
+                denied_paths=["/etc"],
+            ),
         )
         assert config.enabled is True
         assert config.safe_bins == ["git", "ls"]
         assert config.path_prepend == "/usr/bin"
         assert config.denied_tools == ["exec"]
+        assert config.path_restriction.enabled is True
+        assert config.path_restriction.allowed_paths == ["/project"]
 
 
 class TestMoltbotConfig:
@@ -205,6 +258,10 @@ class TestMoltbotConfig:
         )
         assert len(config.agents) == 1
         assert config.routing.defaults["agentId"] == "assistant"
+        # Defaults
+        assert isinstance(config.approval, ToolApprovalConfig)
+        assert config.approval.require_approval == []
+        assert config.approval.skip_approval == []
 
     def test_empty_agents_raises_error(self):
         """Test that empty agents list raises ValueError."""
@@ -261,3 +318,176 @@ class TestMoltbotConfig:
 
         # Test non-existent agent
         assert config.get_agent("nonexistent") is None
+
+    def test_mcp_server_duplicate_names_raises(self):
+        """Test that duplicate MCP server names raise ValueError."""
+        with pytest.raises(ValueError, match="MCP server names must be unique"):
+            MoltbotConfig(
+                agents=[
+                    AgentConfig(id="a1", name="A1", model="gpt-4o-mini"),
+                ],
+                routing=RoutingConfig(defaults={"agentId": "a1"}),
+                tools=ToolPolicy(),
+                sandbox=SandboxConfig(),
+                mcp_servers=[
+                    MCPServerConfig(name="fs", transport="stdio", command="echo"),
+                    MCPServerConfig(name="fs", transport="http", url="https://x"),
+                ],
+            )
+
+    def test_agent_references_nonexistent_mcp_server(self):
+        """Test that agent referencing nonexistent MCP server raises ValueError."""
+        with pytest.raises(ValueError, match="references nonexistent MCP servers"):
+            MoltbotConfig(
+                agents=[
+                    AgentConfig(
+                        id="a1", name="A1", model="gpt-4o-mini",
+                        mcp_servers=["doesnt_exist"],
+                    ),
+                ],
+                routing=RoutingConfig(defaults={"agentId": "a1"}),
+                tools=ToolPolicy(),
+                sandbox=SandboxConfig(),
+                mcp_servers=[
+                    MCPServerConfig(name="fs", transport="stdio", command="echo"),
+                ],
+            )
+
+    def test_valid_mcp_server_references(self):
+        """Test that valid MCP server references pass validation."""
+        config = MoltbotConfig(
+            agents=[
+                AgentConfig(
+                    id="a1", name="A1", model="gpt-4o-mini",
+                    mcp_servers=["fs", "github"],
+                ),
+                AgentConfig(id="a2", name="A2", model="gpt-4o-mini"),
+            ],
+            routing=RoutingConfig(defaults={"agentId": "a1"}),
+            tools=ToolPolicy(),
+            sandbox=SandboxConfig(),
+            mcp_servers=[
+                MCPServerConfig(name="fs", transport="stdio", command="echo"),
+                MCPServerConfig(name="github", transport="http", url="https://x"),
+            ],
+        )
+        assert len(config.mcp_servers) == 2
+
+
+class TestMCPServerConfig:
+    """Tests for MCPServerConfig dataclass."""
+
+    def test_valid_stdio_config(self):
+        """Test valid stdio transport config."""
+        config = MCPServerConfig(
+            name="filesystem",
+            transport="stdio",
+            command="npx",
+            args=["-y", "server-filesystem", "/tmp"],
+            env={"NODE_ENV": "production"},
+        )
+        assert config.name == "filesystem"
+        assert config.transport == "stdio"
+        assert config.command == "npx"
+        assert config.args == ["-y", "server-filesystem", "/tmp"]
+        assert config.env == {"NODE_ENV": "production"}
+
+    def test_valid_http_config(self):
+        """Test valid http transport config."""
+        config = MCPServerConfig(
+            name="github",
+            transport="http",
+            url="https://mcp.example.com/github",
+            headers={"Authorization": "Bearer token123"},
+        )
+        assert config.name == "github"
+        assert config.transport == "http"
+        assert config.url == "https://mcp.example.com/github"
+        assert config.headers == {"Authorization": "Bearer token123"}
+
+    def test_valid_websocket_config(self):
+        """Test valid websocket transport config."""
+        config = MCPServerConfig(
+            name="ws-server",
+            transport="websocket",
+            url="wss://mcp.example.com/ws",
+        )
+        assert config.transport == "websocket"
+        assert config.url == "wss://mcp.example.com/ws"
+
+    def test_empty_name_raises(self):
+        """Test that empty name raises ValueError."""
+        with pytest.raises(ValueError, match="name cannot be empty"):
+            MCPServerConfig(name="", transport="stdio", command="echo")
+
+    def test_whitespace_name_raises(self):
+        """Test that whitespace-only name raises ValueError."""
+        with pytest.raises(ValueError, match="name cannot be empty"):
+            MCPServerConfig(name="   ", transport="stdio", command="echo")
+
+    def test_invalid_transport_raises(self):
+        """Test that invalid transport raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid MCP transport"):
+            MCPServerConfig(name="bad", transport="grpc", command="echo")
+
+    def test_stdio_without_command_raises(self):
+        """Test that stdio transport without command raises ValueError."""
+        with pytest.raises(ValueError, match="stdio transport requires 'command'"):
+            MCPServerConfig(name="bad", transport="stdio")
+
+    def test_http_without_url_raises(self):
+        """Test that http transport without url raises ValueError."""
+        with pytest.raises(ValueError, match="http transport requires 'url'"):
+            MCPServerConfig(name="bad", transport="http")
+
+    def test_websocket_without_url_raises(self):
+        """Test that websocket transport without url raises ValueError."""
+        with pytest.raises(ValueError, match="websocket transport requires 'url'"):
+            MCPServerConfig(name="bad", transport="websocket")
+
+    def test_invalid_approval_mode_raises(self):
+        """Test that invalid approval_mode raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid MCP approval_mode"):
+            MCPServerConfig(
+                name="bad", transport="stdio", command="echo",
+                approval_mode="auto",
+            )
+
+    def test_valid_approval_modes(self):
+        """Test that valid approval modes are accepted."""
+        for mode in ["always_require", "never_require"]:
+            config = MCPServerConfig(
+                name="test", transport="stdio", command="echo",
+                approval_mode=mode,
+            )
+            assert config.approval_mode == mode
+
+    def test_none_approval_mode_ok(self):
+        """Test that None approval_mode is accepted."""
+        config = MCPServerConfig(name="test", transport="stdio", command="echo")
+        assert config.approval_mode is None
+
+    def test_default_values(self):
+        """Test default values for optional fields."""
+        config = MCPServerConfig(name="test", transport="stdio", command="echo")
+        assert config.args == []
+        assert config.url is None
+        assert config.env == {}
+        assert config.headers == {}
+        assert config.allowed_tools is None
+        assert config.tool_approvals == {}
+        assert config.request_timeout is None
+
+    def test_with_allowed_tools_and_tool_approvals(self):
+        """Test config with allowed_tools and per-tool approvals."""
+        config = MCPServerConfig(
+            name="test",
+            transport="stdio",
+            command="echo",
+            allowed_tools=["read_file", "list_dir"],
+            tool_approvals={"delete_file": "always_require"},
+            request_timeout=30,
+        )
+        assert config.allowed_tools == ["read_file", "list_dir"]
+        assert config.tool_approvals == {"delete_file": "always_require"}
+        assert config.request_timeout == 30

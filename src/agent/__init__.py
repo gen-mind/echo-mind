@@ -6,9 +6,9 @@ This package provides a complete agent system with:
 - 5-tier routing for agent selection
 - JSONL-based session management
 - YAML configuration
-- 10 built-in tools with approval gates
+- 30 built-in tools with approval gates
 
-Future integration: MCP servers for zero-trust architecture
+MCP server integration for external tools
 """
 
 __version__ = "0.1.0"

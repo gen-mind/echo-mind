@@ -24,11 +24,27 @@ class ProfileDef:
 
 PROFILES: dict[str, ProfileDef] = {
     "minimal": ProfileDef(
-        allow=["read", "grep", "glob", "git_log", "git_diff", "git_status"],
+        allow=[
+            "read", "grep", "glob",
+            "list_dir", "tree",
+            "git_log", "git_diff", "git_status",
+            "diff",
+            "env_get", "which",
+            "http_request",
+        ],
         deny=[],
     ),
     "coding": ProfileDef(
-        allow=["read", "write", "grep", "glob", "bash", "git_*"],
+        allow=[
+            "read", "write", "grep", "glob",
+            "edit",
+            "list_dir", "tree", "mkdir", "move", "delete",
+            "bash",
+            "http_request",
+            "git_*",
+            "env_get", "which", "find_replace",
+            "diff", "patch",
+        ],
         deny=[],
     ),
     "messaging": ProfileDef(

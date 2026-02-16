@@ -52,14 +52,31 @@ class TestProfiles:
     def test_minimal_profile(self) -> None:
         """Test minimal profile allows only read-only tools."""
         profile = PROFILES["minimal"]
-        expected_allow = ["read", "grep", "glob", "git_log", "git_diff", "git_status"]
+        expected_allow = [
+            "read", "grep", "glob",
+            "list_dir", "tree",
+            "git_log", "git_diff", "git_status",
+            "diff",
+            "env_get", "which",
+            "http_request",
+        ]
         assert profile.allow == expected_allow
         assert profile.deny == []
 
     def test_coding_profile(self) -> None:
         """Test coding profile allows dev tools."""
         profile = PROFILES["coding"]
-        assert profile.allow == ["read", "write", "grep", "glob", "bash", "git_*"]
+        expected_allow = [
+            "read", "write", "grep", "glob",
+            "edit",
+            "list_dir", "tree", "mkdir", "move", "delete",
+            "bash",
+            "http_request",
+            "git_*",
+            "env_get", "which", "find_replace",
+            "diff", "patch",
+        ]
+        assert profile.allow == expected_allow
         assert profile.deny == []
 
     def test_messaging_profile(self) -> None:

@@ -12,8 +12,7 @@ tools:
     - "*"             # Allow everything else
   byProvider:
     anthropic:
-      deny:
-        - "sessions_spawn"  # Claude struggles with complex subagent tools
+      deny: []
 
 # Agent definitions
 agents:
@@ -81,7 +80,33 @@ session:
   sessionsDir: "data/sessions"  # Directory for JSONL session files
   # maxMessages: 200            # Optional: limit history per session (null = unlimited)
 
-# Sandbox configuration (disabled for Phase 1)
+# Tool approval overrides (override hardcoded defaults per-tool)
+approval:
+  requireApproval: []     # Tool name patterns forced to always_require
+  skipApproval: []        # Tool name patterns forced to never_require
+
+# MCP (Model Context Protocol) servers
+# Uncomment and configure to connect agents to external tool servers.
+# mcpServers:
+#   - name: filesystem
+#     transport: stdio
+#     command: npx
+#     args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+#     approvalMode: never_require
+#
+#   - name: github
+#     transport: http
+#     url: "https://mcp.example.com/github"
+#     headers:
+#       Authorization: "Bearer ${GITHUB_TOKEN}"
+#     approvalMode: always_require
+#     toolApprovals:
+#       list_repos: never_require
+#
+# Then reference servers in agent definitions:
+# agents.list[].mcpServers: ["filesystem", "github"]
+
+# Sandbox configuration
 sandbox:
   enabled: false
   safeBins:
@@ -98,3 +123,10 @@ sandbox:
     - "bash"
     - "git_add"
     - "git_commit"
+  pathRestriction:
+    enabled: false
+    allowedPaths: []      # If set, only these directories are accessible
+    deniedPaths:          # These directories are always blocked
+      - "/etc"
+      - "/root"
+      - "~/.ssh"

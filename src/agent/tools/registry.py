@@ -6,12 +6,17 @@ and can be retrieved individually or in bulk with wildcard pattern filtering.
 Supports approval_mode for destructive tool operations.
 """
 
+from __future__ import annotations
+
 import fnmatch
 import logging
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from agent_framework import FunctionTool, tool as agent_tool
+
+if TYPE_CHECKING:
+    from ..config.schema import ToolApprovalConfig
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +231,36 @@ class ToolsRegistry:
             Sorted list of tool names
         """
         return sorted(self.tools.keys())
+
+    def apply_approval_overrides(self, config: ToolApprovalConfig) -> None:
+        """
+        Apply config-level approval mode overrides to registered tools.
+
+        ``require_approval`` patterns force tools to ``always_require``.
+        ``skip_approval`` patterns force tools to ``never_require``.
+        If both match, ``require_approval`` takes precedence.
+
+        Args:
+            config: Approval override configuration.
+        """
+        if not config.require_approval and not config.skip_approval:
+            return
+
+        for name, tool in self.tools.items():
+            if not isinstance(tool, FunctionTool):
+                continue
+
+            require = any(
+                fnmatch.fnmatch(name, p) for p in config.require_approval
+            )
+            skip = any(
+                fnmatch.fnmatch(name, p) for p in config.skip_approval
+            )
+
+            if require:
+                tool.approval_mode = "always_require"
+            elif skip:
+                tool.approval_mode = "never_require"
 
     def count(self) -> int:
         """

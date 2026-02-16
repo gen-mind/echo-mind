@@ -20,10 +20,12 @@ from agent_framework.openai import OpenAIChatClient
 from pydantic import BaseModel, Field
 
 from .config.schema import AgentConfig, MoltbotConfig
+from .mcp.manager import MCPManager
 from .policy.engine import ToolPolicyEngine
 from .policy.middleware import ToolPolicyMiddleware
 from .sessions.manager import SessionManager
 from .sessions.provider import JSONLHistoryProvider
+from .tools.middleware import PathRestrictionMiddleware
 from .tools.registry import ToolsRegistry
 
 logger = logging.getLogger(__name__)
@@ -73,6 +75,7 @@ class BasicAgentWrapper:
         global_config: MoltbotConfig | None = None,
         session_manager: SessionManager | None = None,
         max_messages: int | None = None,
+        mcp_tools: list[Any] | None = None,
     ) -> None:
         """
         Initialize agent wrapper.
@@ -85,6 +88,7 @@ class BasicAgentWrapper:
             global_config: Root config for policy engine (optional)
             session_manager: Session manager for JSONL persistence (optional)
             max_messages: Max history messages to load per session (optional)
+            mcp_tools: MCP tool instances from MCPManager (optional)
 
         Raises:
             ValueError: If API key is missing
@@ -93,6 +97,7 @@ class BasicAgentWrapper:
         self.tools_registry = tools_registry
         self.global_config = global_config
         self.session_manager = session_manager
+        self._mcp_tools = mcp_tools or []
 
         # Get API credentials
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
@@ -121,6 +126,10 @@ class BasicAgentWrapper:
         # Get tools
         self._tools = self._get_tools()
 
+        # Apply approval overrides from config
+        if global_config:
+            self.tools_registry.apply_approval_overrides(global_config.approval)
+
         # Build middleware list
         middleware: list[Any] = []
         if global_config:
@@ -129,6 +138,19 @@ class BasicAgentWrapper:
             logger.info(
                 f"🔒 Policy middleware enabled for agent '{config.id}'"
             )
+
+            # Add path restriction middleware if enabled
+            path_cfg = global_config.sandbox.path_restriction
+            if path_cfg.enabled:
+                middleware.append(
+                    PathRestrictionMiddleware(
+                        allowed_paths=path_cfg.allowed_paths or None,
+                        denied_paths=path_cfg.denied_paths or None,
+                    )
+                )
+                logger.info(
+                    f"🔒 Path restriction middleware enabled for agent '{config.id}'"
+                )
         else:
             self._policy_engine = None
 
@@ -148,13 +170,16 @@ class BasicAgentWrapper:
                 max_messages,
             )
 
+        # Combine native tools + MCP tools
+        all_tools: list[Any] = list(self._tools) + list(self._mcp_tools)
+
         # Create agent
         agent_kwargs: dict[str, Any] = {
             "client": self.client,
             "id": config.id,
             "name": config.name,
             "instructions": config.instructions,
-            "tools": self._tools if self._tools else None,
+            "tools": all_tools if all_tools else None,
         }
         if middleware:
             agent_kwargs["middleware"] = middleware
@@ -164,7 +189,8 @@ class BasicAgentWrapper:
         self.agent = Agent(**agent_kwargs)
 
         logger.info(
-            f"✅ Agent '{config.name}' initialized with {len(self._tools)} tools"
+            f"✅ Agent '{config.name}' initialized with "
+            f"{len(self._tools)} native + {len(self._mcp_tools)} MCP tools"
         )
 
     def _get_tools(self) -> list[Any]:
@@ -241,10 +267,21 @@ class BasicAgentWrapper:
                 f"usage: {usage_dict})"
             )
 
+            # Extract tool calls from response if available
+            tool_calls_list: list[dict[str, Any]] = []
+            raw_tool_calls = getattr(response, "tool_calls", None)
+            if raw_tool_calls and isinstance(raw_tool_calls, (list, tuple)):
+                for tc in raw_tool_calls:
+                    tool_calls_list.append({
+                        "id": getattr(tc, "id", None),
+                        "name": getattr(tc, "name", None),
+                        "arguments": getattr(tc, "arguments", {}),
+                    })
+
             return AgentRunResponse(
                 output=output,
                 finish_reason=finish_reason,
-                tool_calls=[],  # TODO: Extract tool calls from response
+                tool_calls=tool_calls_list,
                 usage=usage_dict,
             )
 
@@ -318,6 +355,7 @@ class AgentFactory:
         global_config: MoltbotConfig | None = None,
         session_manager: SessionManager | None = None,
         max_messages: int | None = None,
+        mcp_manager: MCPManager | None = None,
     ) -> None:
         """
         Initialize factory.
@@ -328,12 +366,14 @@ class AgentFactory:
             global_config: Root config for policy engine (optional)
             session_manager: Session manager for JSONL persistence (optional)
             max_messages: Max history messages to load per session (optional)
+            mcp_manager: MCPManager for MCP server tools (optional)
         """
         self.api_key = api_key
         self.base_url = base_url
         self.global_config = global_config
         self.session_manager = session_manager
         self.max_messages = max_messages
+        self.mcp_manager = mcp_manager
         self.tools_registry = ToolsRegistry()
 
         logger.info(
@@ -361,6 +401,13 @@ class AgentFactory:
             ValueError: If configuration is invalid
         """
         try:
+            # Resolve MCP tools for this agent
+            mcp_tools: list[Any] = []
+            if self.mcp_manager and config.mcp_servers:
+                mcp_tools = self.mcp_manager.get_tools_for_agent(
+                    config.mcp_servers
+                )
+
             agent = BasicAgentWrapper(
                 config=config,
                 tools_registry=self.tools_registry,
@@ -369,6 +416,7 @@ class AgentFactory:
                 global_config=self.global_config,
                 session_manager=self.session_manager,
                 max_messages=self.max_messages,
+                mcp_tools=mcp_tools,
             )
             logger.info(f"✅ Created agent '{config.name}'")
             return agent

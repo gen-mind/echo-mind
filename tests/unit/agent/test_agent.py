@@ -16,6 +16,7 @@ from src.agent.agent import (
     BasicAgentWrapper,
 )
 from src.agent.config.schema import AgentConfig, ToolPolicy
+from src.agent.mcp.manager import MCPManager
 from src.agent.sessions.manager import SessionManager
 from src.agent.tools.registry import ToolsRegistry
 
@@ -542,6 +543,55 @@ class TestBasicAgentWrapper:
         call_kwargs = mock_agent_class.call_args.kwargs
         assert "context_providers" not in call_kwargs
 
+    @patch("src.agent.agent.OpenAIChatClient")
+    @patch("src.agent.agent.Agent")
+    def test_initialization_with_mcp_tools(
+        self, mock_agent_class, mock_client_class, mock_config, mock_tools_registry
+    ):
+        """Test that mcp_tools are combined with native tools."""
+        mock_client_class.return_value = Mock()
+        mock_agent_class.return_value = Mock()
+
+        mock_native = [Mock(name="read"), Mock(name="write")]
+        mock_tools_registry.get_all.return_value = mock_native
+
+        mock_mcp = [Mock(name="mcp_read_file"), Mock(name="mcp_list_repos")]
+
+        wrapper = BasicAgentWrapper(
+            config=mock_config,
+            tools_registry=mock_tools_registry,
+            api_key="test-key",
+            mcp_tools=mock_mcp,
+        )
+
+        # Verify Agent was called with combined tools
+        call_kwargs = mock_agent_class.call_args.kwargs
+        tools = call_kwargs["tools"]
+        assert len(tools) == 4  # 2 native + 2 MCP
+        assert tools[:2] == mock_native
+        assert tools[2:] == mock_mcp
+        assert wrapper._mcp_tools == mock_mcp
+
+    @patch("src.agent.agent.OpenAIChatClient")
+    @patch("src.agent.agent.Agent")
+    def test_initialization_without_mcp_tools(
+        self, mock_agent_class, mock_client_class, mock_config, mock_tools_registry
+    ):
+        """Test backward compat — no mcp_tools means empty list."""
+        mock_client_class.return_value = Mock()
+        mock_agent_class.return_value = Mock()
+        mock_tools_registry.get_all.return_value = [Mock(name="read")]
+
+        wrapper = BasicAgentWrapper(
+            config=mock_config,
+            tools_registry=mock_tools_registry,
+            api_key="test-key",
+        )
+
+        assert wrapper._mcp_tools == []
+        call_kwargs = mock_agent_class.call_args.kwargs
+        assert len(call_kwargs["tools"]) == 1  # only native tools
+
     @pytest.mark.asyncio
     @patch("src.agent.agent.AgentSession")
     @patch("src.agent.agent.OpenAIChatClient")
@@ -817,3 +867,79 @@ class TestAgentFactory:
         call_kwargs = mock_wrapper_class.call_args.kwargs
         assert call_kwargs["session_manager"] is None
         assert call_kwargs["max_messages"] is None
+
+    @patch("src.agent.agent.BasicAgentWrapper")
+    @patch("src.agent.agent.ToolsRegistry")
+    def test_create_agent_with_mcp_manager(
+        self, mock_registry_class, mock_wrapper_class
+    ):
+        """Test that factory resolves MCP tools for agents with mcp_servers."""
+        mock_registry_class.return_value = Mock(count=Mock(return_value=5))
+        mock_wrapper_class.return_value = Mock()
+
+        mock_mcp_manager = Mock(spec=MCPManager)
+        mock_mcp_tools = [Mock(name="read_file"), Mock(name="write_file")]
+        mock_mcp_manager.get_tools_for_agent.return_value = mock_mcp_tools
+
+        factory = AgentFactory(
+            api_key="factory-key",
+            mcp_manager=mock_mcp_manager,
+        )
+
+        config = AgentConfig(
+            id="test", name="Test", model="gpt-4o-mini",
+            mcp_servers=["filesystem"],
+        )
+        factory.create_agent(config)
+
+        # Verify mcp_manager was called with agent's server refs
+        mock_mcp_manager.get_tools_for_agent.assert_called_once_with(["filesystem"])
+
+        # Verify mcp_tools passed to wrapper
+        call_kwargs = mock_wrapper_class.call_args.kwargs
+        assert call_kwargs["mcp_tools"] == mock_mcp_tools
+
+    @patch("src.agent.agent.BasicAgentWrapper")
+    @patch("src.agent.agent.ToolsRegistry")
+    def test_create_agent_without_mcp_manager(
+        self, mock_registry_class, mock_wrapper_class
+    ):
+        """Test backward compat — no mcp_manager means empty mcp_tools."""
+        mock_registry_class.return_value = Mock(count=Mock(return_value=5))
+        mock_wrapper_class.return_value = Mock()
+
+        factory = AgentFactory(api_key="factory-key")
+
+        config = AgentConfig(
+            id="test", name="Test", model="gpt-4o-mini",
+            mcp_servers=["filesystem"],  # References exist but no manager
+        )
+        factory.create_agent(config)
+
+        # Verify empty mcp_tools passed
+        call_kwargs = mock_wrapper_class.call_args.kwargs
+        assert call_kwargs["mcp_tools"] == []
+
+    @patch("src.agent.agent.BasicAgentWrapper")
+    @patch("src.agent.agent.ToolsRegistry")
+    def test_create_agent_no_mcp_servers_skips_resolution(
+        self, mock_registry_class, mock_wrapper_class
+    ):
+        """Test that agent with no mcp_servers doesn't call mcp_manager."""
+        mock_registry_class.return_value = Mock(count=Mock(return_value=5))
+        mock_wrapper_class.return_value = Mock()
+
+        mock_mcp_manager = Mock(spec=MCPManager)
+
+        factory = AgentFactory(
+            api_key="factory-key",
+            mcp_manager=mock_mcp_manager,
+        )
+
+        config = AgentConfig(id="test", name="Test", model="gpt-4o-mini")
+        factory.create_agent(config)
+
+        # mcp_manager should NOT be called since agent has no mcp_servers
+        mock_mcp_manager.get_tools_for_agent.assert_not_called()
+        call_kwargs = mock_wrapper_class.call_args.kwargs
+        assert call_kwargs["mcp_tools"] == []

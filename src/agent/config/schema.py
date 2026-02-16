@@ -10,6 +10,74 @@ Confidence: High - Schema matches Moltbot architecture exactly
 from dataclasses import dataclass, field
 from typing import Any
 
+_VALID_MCP_TRANSPORTS = {"stdio", "http", "websocket"}
+_VALID_MCP_APPROVAL_MODES = {"always_require", "never_require"}
+
+
+@dataclass
+class MCPServerConfig:
+    """
+    Configuration for an MCP (Model Context Protocol) server.
+
+    Attributes:
+        name: Unique identifier for the server.
+        transport: Connection type ("stdio", "http", or "websocket").
+        command: Executable for stdio transport.
+        args: Command-line arguments for stdio transport.
+        url: Endpoint URL for http/websocket transport.
+        env: Environment variables passed to stdio process.
+        headers: HTTP headers for http/websocket transport.
+        allowed_tools: Whitelist of tool names (None = all tools exposed).
+        approval_mode: Default approval for all tools from this server.
+        tool_approvals: Per-tool approval overrides.
+        request_timeout: Request timeout in seconds.
+    """
+
+    name: str
+    transport: str
+    command: str | None = None
+    args: list[str] = field(default_factory=list)
+    url: str | None = None
+    env: dict[str, str] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
+    allowed_tools: list[str] | None = None
+    approval_mode: str | None = None
+    tool_approvals: dict[str, str] = field(default_factory=dict)
+    request_timeout: int | None = None
+
+    def __post_init__(self) -> None:
+        """
+        Validate MCP server config after initialization.
+
+        Raises:
+            ValueError: If name is empty, transport is invalid,
+                or required fields for transport are missing.
+        """
+        if not self.name or not self.name.strip():
+            raise ValueError("MCP server name cannot be empty")
+
+        if self.transport not in _VALID_MCP_TRANSPORTS:
+            raise ValueError(
+                f"Invalid MCP transport '{self.transport}'. "
+                f"Must be: {', '.join(sorted(_VALID_MCP_TRANSPORTS))}"
+            )
+
+        if self.transport == "stdio" and not self.command:
+            raise ValueError(
+                f"MCP server '{self.name}': stdio transport requires 'command'"
+            )
+
+        if self.transport in {"http", "websocket"} and not self.url:
+            raise ValueError(
+                f"MCP server '{self.name}': {self.transport} transport requires 'url'"
+            )
+
+        if self.approval_mode is not None and self.approval_mode not in _VALID_MCP_APPROVAL_MODES:
+            raise ValueError(
+                f"Invalid MCP approval_mode '{self.approval_mode}'. "
+                f"Must be: {', '.join(sorted(_VALID_MCP_APPROVAL_MODES))}"
+            )
+
 
 @dataclass
 class ToolPolicy:
@@ -59,6 +127,7 @@ class AgentConfig:
         instructions: System prompt for agent
         tools: Tool access policy (optional)
         dm_scope: Session isolation scope
+        mcp_servers: List of MCP server names this agent uses
     """
 
     id: str
@@ -67,6 +136,7 @@ class AgentConfig:
     instructions: str | None = None
     tools: ToolPolicy | None = None
     dm_scope: str = "per-peer"  # main, per-peer, per-channel-peer
+    mcp_servers: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """
@@ -272,6 +342,7 @@ class MoltbotConfig:
         sandbox: Sandbox configuration
         session: Session persistence configuration
         approval: Tool approval override configuration
+        mcp_servers: Global MCP server definitions
     """
 
     agents: list[AgentConfig]
@@ -280,6 +351,7 @@ class MoltbotConfig:
     sandbox: SandboxConfig
     session: SessionConfig = field(default_factory=SessionConfig)
     approval: ToolApprovalConfig = field(default_factory=ToolApprovalConfig)
+    mcp_servers: list[MCPServerConfig] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """
@@ -287,7 +359,8 @@ class MoltbotConfig:
 
         Raises:
             ValueError: If agents list is empty, IDs are duplicated,
-                or routing references invalid agent IDs.
+                routing references invalid agent IDs, MCP server names
+                are duplicated, or agents reference nonexistent MCP servers.
         """
         if not self.agents:
             raise ValueError("At least one agent must be defined")
@@ -309,6 +382,21 @@ class MoltbotConfig:
                 f"Routing references invalid agent IDs: {invalid_refs}. "
                 f"Valid IDs: {valid_agent_ids}"
             )
+
+        # Validate MCP server names are unique
+        mcp_names = [s.name for s in self.mcp_servers]
+        if len(mcp_names) != len(set(mcp_names)):
+            raise ValueError("MCP server names must be unique")
+
+        # Validate agent MCP server references
+        valid_mcp_names = set(mcp_names)
+        for agent in self.agents:
+            invalid_mcp_refs = set(agent.mcp_servers) - valid_mcp_names
+            if invalid_mcp_refs:
+                raise ValueError(
+                    f"Agent '{agent.id}' references nonexistent MCP servers: "
+                    f"{invalid_mcp_refs}. Valid servers: {valid_mcp_names}"
+                )
 
     def get_agent(self, agent_id: str) -> AgentConfig | None:
         """

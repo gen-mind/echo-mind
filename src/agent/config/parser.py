@@ -17,6 +17,7 @@ import yaml
 from .schema import (
     AgentConfig,
     IntentFallbackConfig,
+    MCPServerConfig,
     MoltbotConfig,
     PathRestrictionConfig,
     RouteBindingConfig,
@@ -137,6 +138,7 @@ class ConfigParser:
                 instructions=a.get("instructions"),
                 tools=self._parse_tool_policy(a.get("tools", {})),
                 dm_scope=a.get("dmScope", "per-peer"),
+                mcp_servers=a.get("mcpServers", []),
             )
             for a in agents_raw
         ]
@@ -200,6 +202,12 @@ class ConfigParser:
             skip_approval=approval_raw.get("skipApproval", []),
         )
 
+        # Parse MCP servers
+        mcp_servers = [
+            self._parse_mcp_server(s)
+            for s in raw.get("mcpServers", [])
+        ]
+
         return MoltbotConfig(
             agents=agents,
             routing=routing,
@@ -207,6 +215,42 @@ class ConfigParser:
             sandbox=sandbox,
             session=session,
             approval=approval,
+            mcp_servers=mcp_servers,
+        )
+
+    def _parse_mcp_server(self, raw: dict[str, Any]) -> MCPServerConfig:
+        """
+        Parse a single MCP server config from dictionary.
+
+        Args:
+            raw: Raw MCP server dictionary.
+
+        Returns:
+            Parsed MCP server config.
+
+        Raises:
+            ValueError: If required fields are missing.
+        """
+        for field in ("name", "transport"):
+            if field not in raw:
+                raise ValueError(
+                    f"MCP server config missing required field '{field}'"
+                )
+
+        tool_approvals_raw = raw.get("toolApprovals", {})
+
+        return MCPServerConfig(
+            name=raw["name"],
+            transport=raw["transport"],
+            command=raw.get("command"),
+            args=raw.get("args", []),
+            url=raw.get("url"),
+            env=raw.get("env", {}),
+            headers=raw.get("headers", {}),
+            allowed_tools=raw.get("allowedTools"),
+            approval_mode=raw.get("approvalMode"),
+            tool_approvals=tool_approvals_raw,
+            request_timeout=raw.get("requestTimeout"),
         )
 
     def _parse_tool_policy(self, raw: dict[str, Any]) -> ToolPolicy:

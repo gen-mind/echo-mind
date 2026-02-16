@@ -11,6 +11,7 @@ import pytest
 
 from agent_framework import FunctionTool
 
+from src.agent.config.schema import ToolApprovalConfig
 from src.agent.tools.registry import ToolsRegistry
 
 
@@ -159,3 +160,83 @@ class TestRegistryApprovalModes:
             assert tool.approval_mode in ("always_require", "never_require"), (
                 f"Tool '{name}' has unexpected approval_mode: {tool.approval_mode}"
             )
+
+
+class TestApplyApprovalOverrides:
+    """Tests for apply_approval_overrides method."""
+
+    def _make_registry_with_tools(self) -> ToolsRegistry:
+        """Create registry with test tools."""
+        with patch.object(ToolsRegistry, "_register_core_tools"):
+            registry = ToolsRegistry()
+
+        def safe_tool(x: str) -> str:
+            """Safe tool."""
+            return x
+
+        def danger_tool(x: str) -> str:
+            """Dangerous tool."""
+            return x
+
+        registry.register("read", safe_tool, approval_mode="never_require")
+        registry.register("write", danger_tool, approval_mode="always_require")
+        registry.register("git_push", danger_tool, approval_mode="always_require")
+        registry.register("git_log", safe_tool, approval_mode="never_require")
+        return registry
+
+    def test_empty_config_no_changes(self) -> None:
+        """Test that empty config doesn't change any approval modes."""
+        registry = self._make_registry_with_tools()
+        config = ToolApprovalConfig()
+        registry.apply_approval_overrides(config)
+
+        assert registry.get("read").approval_mode == "never_require"
+        assert registry.get("write").approval_mode == "always_require"
+
+    def test_require_approval_overrides(self) -> None:
+        """Test require_approval forces tools to always_require."""
+        registry = self._make_registry_with_tools()
+        config = ToolApprovalConfig(require_approval=["read"])
+        registry.apply_approval_overrides(config)
+
+        assert registry.get("read").approval_mode == "always_require"
+
+    def test_skip_approval_overrides(self) -> None:
+        """Test skip_approval forces tools to never_require."""
+        registry = self._make_registry_with_tools()
+        config = ToolApprovalConfig(skip_approval=["write"])
+        registry.apply_approval_overrides(config)
+
+        assert registry.get("write").approval_mode == "never_require"
+
+    def test_require_takes_precedence_over_skip(self) -> None:
+        """Test require_approval wins when both match."""
+        registry = self._make_registry_with_tools()
+        config = ToolApprovalConfig(
+            require_approval=["read"],
+            skip_approval=["read"],
+        )
+        registry.apply_approval_overrides(config)
+
+        # require takes precedence
+        assert registry.get("read").approval_mode == "always_require"
+
+    def test_wildcard_patterns(self) -> None:
+        """Test wildcard patterns in approval overrides."""
+        registry = self._make_registry_with_tools()
+        config = ToolApprovalConfig(skip_approval=["git_*"])
+        registry.apply_approval_overrides(config)
+
+        assert registry.get("git_push").approval_mode == "never_require"
+        assert registry.get("git_log").approval_mode == "never_require"
+        # Non-matching tools unchanged
+        assert registry.get("write").approval_mode == "always_require"
+
+    def test_no_match_leaves_unchanged(self) -> None:
+        """Test that non-matching patterns leave tools unchanged."""
+        registry = self._make_registry_with_tools()
+        config = ToolApprovalConfig(require_approval=["nonexistent_*"])
+        registry.apply_approval_overrides(config)
+
+        assert registry.get("read").approval_mode == "never_require"
+        assert registry.get("write").approval_mode == "always_require"
