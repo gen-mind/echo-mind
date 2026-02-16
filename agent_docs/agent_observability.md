@@ -2,6 +2,14 @@
 
 End-to-end observability for EchoMind's sandboxed agent system covering ephemeral Docker containers, MCP server mediation, and the full request lifecycle.
 
+> **Decision (2026-02-16): No OTEL Collector for now.**
+>
+> Use **direct Langfuse SDK** (`langfuse_helper.py`) + **direct Prometheus** (`prometheus_client`) for all agent and MCP gateway observability. This matches the existing codebase pattern used by API, Ingestor, and Connector services.
+>
+> **Rationale:** The OTEL Collector is only needed when ephemeral sandbox containers cannot guarantee SDK flush before termination. For in-process agents (current architecture), direct SDK is simpler and sufficient.
+>
+> **The OTEL Collector design in section 3.1+ remains valid** as a future reference for when sandbox containers are implemented. All OTEL-specific code (telemetry.py, metrics.py, middleware) should be deferred until then.
+
 ---
 
 ## 1. Existing Observability Stack Analysis
@@ -141,7 +149,9 @@ Agent sandboxes are ephemeral Docker containers that:
 
 ## 3. Instrumentation Plan
 
-### 3.1 OpenTelemetry Collector (New Component)
+### 3.1 OpenTelemetry Collector (DEFERRED — Future Feature)
+
+> **Status: DEFERRED (2026-02-16).** The design below is preserved as reference for when ephemeral sandbox containers are implemented. For now, use direct Langfuse SDK + Prometheus (see decision note at top of document).
 
 Deploy an OTEL Collector as a shared sidecar/service that receives telemetry from ephemeral containers and forwards to Langfuse + Prometheus.
 

@@ -214,15 +214,24 @@ Test cases needed:
 | **Extended thinking** | **Defer** | Phase 8+. |
 | **Azure Foundry** | **Defer** | Not relevant for current deployment. |
 | **Response object diff** | **Defer** | Future investigation. Framework normalizes; verify during integration testing. |
-| **Cost/token tracking** | **Langfuse + OpenTelemetry** | Both MCP and agent MUST send traces to OTel and Langfuse with `session_id`. No custom cost tracking — Langfuse handles pricing per model. |
+| **Cost/token tracking** | **Langfuse direct SDK** | No custom cost tracking — Langfuse handles pricing per model. |
+| **OTEL Collector** | **No** (future feature) | No collector service for now. Send traces directly to Langfuse via SDK and metrics to Prometheus, matching the existing codebase pattern. |
 
 ### Observability Requirement (Mandatory)
 
-All LLM calls — whether from the agent core or from MCP tool servers — MUST emit traces to:
-1. **OpenTelemetry** — Structured spans with `session_id`, `agent_id`, `provider`, `model` attributes
-2. **Langfuse** — LLM generation tracking with token counts, cost, latency, and `session_id` for conversation-level grouping
+**No OTEL Collector.** Follow the existing EchoMind pattern:
 
-This applies regardless of provider (OpenAI or Anthropic). Langfuse natively supports both providers' token pricing. The `session_id` links agent turns, tool calls, and MCP invocations into a single observable conversation trace.
+1. **Langfuse SDK** (direct) — LLM generation tracking with token counts, cost, latency, and `session_id` for conversation-level grouping. Use `echomind_lib.helpers.langfuse_helper` (`create_trace()`, `score_trace()`).
+2. **Prometheus** (direct) — Service metrics exposed at `/metrics`, scraped by Prometheus. Use `prometheus_client` like `src/api/middleware/metrics.py`.
+
+This matches how existing services already work:
+- API service: `langfuse_helper.create_trace()` in `chat_handler.py`
+- API service: `prometheus_client` histograms/counters in `metrics.py`
+- Ingestor/Connector: `init_langfuse()` on startup
+
+Both MCP gateway and agent service MUST send Langfuse traces with `session_id`, `agent_id`, `provider`, and `model` attributes. Langfuse natively supports both OpenAI and Anthropic token pricing.
+
+**OTEL Collector is a future feature** — useful later for ephemeral sandbox containers that can't guarantee flush before termination. For in-process agents (current architecture), direct SDK is simpler and sufficient.
 
 ---
 
