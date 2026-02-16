@@ -20,18 +20,12 @@ class SandboxSettings(BaseSettings):
         case_sensitive=False,
     )
 
-    # Feature flag
-    enabled: bool = Field(
-        default=False,
-        description="Enable sandbox container management (opt-in via SANDBOX_ENABLED=true)",
-    )
-
     # Pool management
     pool_size: int = Field(
         default=3,
-        ge=0,
+        ge=1,
         le=50,
-        description="Number of warm containers to maintain in the pool",
+        description="Minimum 1 warm container always running. Sandbox is always enabled.",
     )
     max_instances: int = Field(
         default=15,

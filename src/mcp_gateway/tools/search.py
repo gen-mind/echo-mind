@@ -55,15 +55,19 @@ def register_search_tools(
 
         Returns:
             List of matching document chunks with scores and metadata.
+
+        Raises:
+            RuntimeError: If the search service is not ready.
+            ValueError: If query is empty or score_threshold is out of range.
         """
         if readiness_check and not readiness_check():
-            return {"error": "Search service is not ready. Backend connections are being established."}
+            raise RuntimeError("Search service is not ready. Backend connections are being established.")
 
         if not query.strip():
-            return {"error": "Query cannot be empty"}
+            raise ValueError("Query cannot be empty")
         limit = max(1, min(limit, 1000))
         if score_threshold is not None and not (0.0 <= score_threshold <= 1.0):
-            return {"error": "score_threshold must be between 0.0 and 1.0"}
+            raise ValueError("score_threshold must be between 0.0 and 1.0")
 
         display_query = f"{query[:50]}..." if len(query) > 50 else query
         logger.info(f"🔍 search_documents: collection='{collection}', query='{display_query}'")
@@ -81,9 +85,12 @@ def register_search_tools(
 
         Returns:
             List of collection names and metadata.
+
+        Raises:
+            RuntimeError: If the search service is not ready.
         """
         if readiness_check and not readiness_check():
-            return {"error": "Search service is not ready. Backend connections are being established."}
+            raise RuntimeError("Search service is not ready. Backend connections are being established.")
 
         logger.info("📋 list_collections")
         return await backend.list_collections()
@@ -98,9 +105,12 @@ def register_search_tools(
 
         Returns:
             Collection statistics including vector count and status.
+
+        Raises:
+            RuntimeError: If the search service is not ready.
         """
         if readiness_check and not readiness_check():
-            return {"error": "Search service is not ready. Backend connections are being established."}
+            raise RuntimeError("Search service is not ready. Backend connections are being established.")
 
         logger.info(f"ℹ️ get_collection_info: collection='{collection}'")
         return await backend.get_collection_info(collection)
@@ -121,9 +131,12 @@ def register_search_tools(
 
         Returns:
             List of document chunks with their payloads.
+
+        Raises:
+            RuntimeError: If the search service is not ready.
         """
         if readiness_check and not readiness_check():
-            return {"error": "Search service is not ready. Backend connections are being established."}
+            raise RuntimeError("Search service is not ready. Backend connections are being established.")
 
         limit = max(1, min(limit, 1000))
         logger.info(f"📄 get_document_chunks: collection='{collection}', doc='{document_id}'")

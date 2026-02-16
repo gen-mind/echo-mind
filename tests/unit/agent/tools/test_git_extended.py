@@ -42,8 +42,8 @@ class TestGitBranchTool:
         result = git_branch(action="list")
 
         mock_run.assert_called_once_with(
-            "git branch -a",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "branch", "-a"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "main" in result
         assert "develop" in result
@@ -58,8 +58,8 @@ class TestGitBranchTool:
         result = git_branch(action="create", name="feature/new")
 
         mock_run.assert_called_once_with(
-            "git branch feature/new",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "branch", "feature/new"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert result == "(no output)"
 
@@ -73,8 +73,7 @@ class TestGitBranchTool:
         result = git_branch(action="delete", name="feature/old")
 
         cmd = mock_run.call_args[0][0]
-        assert "git branch -d feature/old" in cmd
-        assert "-D" not in cmd
+        assert cmd == ["git", "branch", "-d", "feature/old"]
         assert "Deleted" in result
 
     def test_git_branch_invalid_action(self) -> None:
@@ -126,6 +125,20 @@ class TestGitBranchTool:
         assert "❌" in result
         assert "not a git repo" in result
 
+    @patch("src.agent.tools.git_extended.subprocess.run")
+    def test_git_branch_shell_injection(self, mock_run: MagicMock) -> None:
+        """Test shell metacharacters in branch name are treated as literal."""
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="fatal: bad branch name", returncode=128,
+        )
+        git_branch = create_git_branch_tool()
+        git_branch(action="create", name="; rm -rf /")
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert cmd == ["git", "branch", "; rm -rf /"]
+        assert mock_run.call_args.kwargs["shell"] is False
+
 
 # ---------------------------------------------------------------------------
 # git_checkout
@@ -145,8 +158,8 @@ class TestGitCheckoutTool:
         result = git_checkout(target="develop")
 
         mock_run.assert_called_once_with(
-            "git checkout develop",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "checkout", "develop"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "Switched" in result
 
@@ -160,7 +173,7 @@ class TestGitCheckoutTool:
         result = git_checkout(target="feature/x", create_branch=True)
 
         cmd = mock_run.call_args[0][0]
-        assert "git checkout -b feature/x" in cmd
+        assert cmd == ["git", "checkout", "-b", "feature/x"]
         assert "new branch" in result
 
     @patch("src.agent.tools.git_extended.subprocess.run")
@@ -185,6 +198,20 @@ class TestGitCheckoutTool:
         assert "❌" in result
         assert "timed out" in result
 
+    @patch("src.agent.tools.git_extended.subprocess.run")
+    def test_git_checkout_shell_injection(self, mock_run: MagicMock) -> None:
+        """Test shell injection in target is treated as literal."""
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="error: pathspec", returncode=1,
+        )
+        git_checkout = create_git_checkout_tool()
+        git_checkout(target="$(whoami)")
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert cmd == ["git", "checkout", "$(whoami)"]
+        assert mock_run.call_args.kwargs["shell"] is False
+
 
 # ---------------------------------------------------------------------------
 # git_stash
@@ -204,8 +231,8 @@ class TestGitStashTool:
         result = git_stash(action="push")
 
         mock_run.assert_called_once_with(
-            "git stash push",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "stash", "push"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "Saved" in result
 
@@ -219,7 +246,7 @@ class TestGitStashTool:
         git_stash(action="push", message="WIP: feature")
 
         cmd = mock_run.call_args[0][0]
-        assert 'git stash push -m "WIP: feature"' in cmd
+        assert cmd == ["git", "stash", "push", "-m", "WIP: feature"]
 
     @patch("src.agent.tools.git_extended.subprocess.run")
     def test_git_stash_pop(self, mock_run: MagicMock) -> None:
@@ -231,8 +258,8 @@ class TestGitStashTool:
         result = git_stash(action="pop")
 
         mock_run.assert_called_once_with(
-            "git stash pop",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "stash", "pop"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "restored" in result
 
@@ -246,8 +273,8 @@ class TestGitStashTool:
         result = git_stash(action="list")
 
         mock_run.assert_called_once_with(
-            "git stash list",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "stash", "list"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "stash@{0}" in result
 
@@ -261,8 +288,8 @@ class TestGitStashTool:
         result = git_stash(action="drop")
 
         mock_run.assert_called_once_with(
-            "git stash drop",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "stash", "drop"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "Dropped" in result
 
@@ -284,6 +311,20 @@ class TestGitStashTool:
         assert "❌" in result
         assert "timed out" in result
 
+    @patch("src.agent.tools.git_extended.subprocess.run")
+    def test_git_stash_shell_injection_in_message(self, mock_run: MagicMock) -> None:
+        """Test shell metacharacters in stash message are safe."""
+        mock_run.return_value = MagicMock(
+            stdout="Saved\n", stderr="", returncode=0,
+        )
+        git_stash = create_git_stash_tool()
+        git_stash(action="push", message='$(rm -rf /); `evil`')
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert cmd == ["git", "stash", "push", "-m", '$(rm -rf /); `evil`']
+        assert mock_run.call_args.kwargs["shell"] is False
+
 
 # ---------------------------------------------------------------------------
 # git_push
@@ -303,8 +344,8 @@ class TestGitPushTool:
         result = git_push()
 
         mock_run.assert_called_once_with(
-            "git push origin",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "push", "origin"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "up-to-date" in result
 
@@ -318,7 +359,7 @@ class TestGitPushTool:
         git_push(branch="feature", set_upstream=True)
 
         cmd = mock_run.call_args[0][0]
-        assert "git push origin feature --set-upstream" in cmd
+        assert cmd == ["git", "push", "origin", "feature", "--set-upstream"]
 
     @patch("src.agent.tools.git_extended.subprocess.run")
     def test_git_push_force_with_lease(self, mock_run: MagicMock) -> None:
@@ -331,7 +372,7 @@ class TestGitPushTool:
 
         cmd = mock_run.call_args[0][0]
         assert "--force-with-lease" in cmd
-        assert "--force " not in cmd  # Never bare --force
+        assert "--force" not in cmd or cmd.count("--force-with-lease") == cmd.count("--force")
 
     @patch("src.agent.tools.git_extended.subprocess.run")
     def test_git_push_error(self, mock_run: MagicMock) -> None:
@@ -355,6 +396,20 @@ class TestGitPushTool:
         assert "❌" in result
         assert "timed out" in result
 
+    @patch("src.agent.tools.git_extended.subprocess.run")
+    def test_git_push_shell_injection_in_remote(self, mock_run: MagicMock) -> None:
+        """Test shell metacharacters in remote name are safe."""
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="fatal: bad remote", returncode=128,
+        )
+        git_push = create_git_push_tool()
+        git_push(remote="; rm -rf /", branch="`evil`")
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert cmd == ["git", "push", "; rm -rf /", "`evil`"]
+        assert mock_run.call_args.kwargs["shell"] is False
+
 
 # ---------------------------------------------------------------------------
 # git_pull
@@ -374,8 +429,8 @@ class TestGitPullTool:
         result = git_pull()
 
         mock_run.assert_called_once_with(
-            "git pull origin",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "pull", "origin"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "Already up to date" in result
 
@@ -389,7 +444,7 @@ class TestGitPullTool:
         git_pull(remote="upstream", branch="main")
 
         cmd = mock_run.call_args[0][0]
-        assert "git pull upstream main" in cmd
+        assert cmd == ["git", "pull", "upstream", "main"]
 
     @patch("src.agent.tools.git_extended.subprocess.run")
     def test_git_pull_error(self, mock_run: MagicMock) -> None:
@@ -413,6 +468,20 @@ class TestGitPullTool:
         assert "❌" in result
         assert "timed out" in result
 
+    @patch("src.agent.tools.git_extended.subprocess.run")
+    def test_git_pull_shell_injection(self, mock_run: MagicMock) -> None:
+        """Test shell metacharacters in branch name are safe."""
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="fatal: bad branch", returncode=128,
+        )
+        git_pull = create_git_pull_tool()
+        git_pull(remote="origin", branch="$(whoami)")
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert cmd == ["git", "pull", "origin", "$(whoami)"]
+        assert mock_run.call_args.kwargs["shell"] is False
+
 
 # ---------------------------------------------------------------------------
 # git_reset
@@ -433,8 +502,8 @@ class TestGitResetTool:
         result = git_reset(files="src/main.py")
 
         mock_run.assert_called_once_with(
-            "git reset --mixed src/main.py",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "reset", "--mixed", "src/main.py"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "Unstaged" in result
 
@@ -477,6 +546,20 @@ class TestGitResetTool:
         assert "❌" in result
         assert "timed out" in result
 
+    @patch("src.agent.tools.git_extended.subprocess.run")
+    def test_git_reset_shell_injection(self, mock_run: MagicMock) -> None:
+        """Test shell metacharacters in files arg are treated as literal."""
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="", returncode=0,
+        )
+        git_reset = create_git_reset_tool()
+        git_reset(files="; rm -rf /")
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert cmd == ["git", "reset", "--mixed", ";", "rm", "-rf", "/"]
+        assert mock_run.call_args.kwargs["shell"] is False
+
 
 # ---------------------------------------------------------------------------
 # git_clone
@@ -496,8 +579,8 @@ class TestGitCloneTool:
         result = git_clone(url="https://github.com/user/repo.git")
 
         mock_run.assert_called_once_with(
-            "git clone https://github.com/user/repo.git",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "clone", "https://github.com/user/repo.git"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "Cloning" in result
 
@@ -511,7 +594,8 @@ class TestGitCloneTool:
         git_clone(url="https://github.com/user/repo.git", depth=1)
 
         cmd = mock_run.call_args[0][0]
-        assert "--depth 1" in cmd
+        assert "--depth" in cmd
+        assert "1" in cmd
 
     @patch("src.agent.tools.git_extended.subprocess.run")
     def test_git_clone_with_directory(self, mock_run: MagicMock) -> None:
@@ -547,6 +631,20 @@ class TestGitCloneTool:
         assert "❌" in result
         assert "timed out" in result
 
+    @patch("src.agent.tools.git_extended.subprocess.run")
+    def test_git_clone_shell_injection_in_url(self, mock_run: MagicMock) -> None:
+        """Test shell metacharacters in URL are treated as literal."""
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="fatal: bad url", returncode=128,
+        )
+        git_clone = create_git_clone_tool()
+        git_clone(url="https://evil.com/$(whoami).git", directory="`rm -rf /`")
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert cmd == ["git", "clone", "https://evil.com/$(whoami).git", "`rm -rf /`"]
+        assert mock_run.call_args.kwargs["shell"] is False
+
 
 # ---------------------------------------------------------------------------
 # git_tag
@@ -566,8 +664,8 @@ class TestGitTagTool:
         result = git_tag(action="list")
 
         mock_run.assert_called_once_with(
-            "git tag -l",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "tag", "-l"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "v1.0.0" in result
         assert "v1.1.0" in result
@@ -582,8 +680,8 @@ class TestGitTagTool:
         result = git_tag(action="create", name="v2.0.0")
 
         mock_run.assert_called_once_with(
-            "git tag v2.0.0",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "tag", "v2.0.0"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert result == "(no output)"
 
@@ -597,7 +695,7 @@ class TestGitTagTool:
         git_tag(action="create", name="v2.0.0", message="Release 2.0")
 
         cmd = mock_run.call_args[0][0]
-        assert 'git tag -a v2.0.0 -m "Release 2.0"' in cmd
+        assert cmd == ["git", "tag", "-a", "v2.0.0", "-m", "Release 2.0"]
 
     @patch("src.agent.tools.git_extended.subprocess.run")
     def test_git_tag_delete(self, mock_run: MagicMock) -> None:
@@ -609,8 +707,8 @@ class TestGitTagTool:
         result = git_tag(action="delete", name="v1.0.0")
 
         mock_run.assert_called_once_with(
-            "git tag -d v1.0.0",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "tag", "-d", "v1.0.0"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "Deleted" in result
 
@@ -651,3 +749,17 @@ class TestGitTagTool:
 
         assert "❌" in result
         assert "disk error" in result
+
+    @patch("src.agent.tools.git_extended.subprocess.run")
+    def test_git_tag_shell_injection_in_name(self, mock_run: MagicMock) -> None:
+        """Test shell metacharacters in tag name are treated as literal."""
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="fatal: bad tag name", returncode=128,
+        )
+        git_tag = create_git_tag_tool()
+        git_tag(action="create", name="; rm -rf /", message='`evil`')
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert cmd == ["git", "tag", "-a", "; rm -rf /", "-m", "`evil`"]
+        assert mock_run.call_args.kwargs["shell"] is False

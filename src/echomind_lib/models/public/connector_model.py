@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   connector_model.py
-@Time    :   2026-02-16 21:00:53
+@Time    :   2026-02-16 23:16:08
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 

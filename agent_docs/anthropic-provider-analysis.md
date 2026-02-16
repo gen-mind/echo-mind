@@ -215,11 +215,10 @@ Test cases needed:
 | **Azure Foundry** | **Defer** | Not relevant for current deployment. |
 | **Response object diff** | **Defer** | Future investigation. Framework normalizes; verify during integration testing. |
 | **Cost/token tracking** | **Langfuse direct SDK** | No custom cost tracking — Langfuse handles pricing per model. |
-| **OTEL Collector** | **No** (future feature) | No collector service for now. Send traces directly to Langfuse via SDK and metrics to Prometheus, matching the existing codebase pattern. |
 
 ### Observability Requirement (Mandatory)
 
-**No OTEL Collector.** Follow the existing EchoMind pattern:
+Follow the existing EchoMind pattern:
 
 1. **Langfuse SDK** (direct) — LLM generation tracking with token counts, cost, latency, and `session_id` for conversation-level grouping. Use `echomind_lib.helpers.langfuse_helper` (`create_trace()`, `score_trace()`).
 2. **Prometheus** (direct) — Service metrics exposed at `/metrics`, scraped by Prometheus. Use `prometheus_client` like `src/api/middleware/metrics.py`.
@@ -230,8 +229,6 @@ This matches how existing services already work:
 - Ingestor/Connector: `init_langfuse()` on startup
 
 Both MCP gateway and agent service MUST send Langfuse traces with `session_id`, `agent_id`, `provider`, and `model` attributes. Langfuse natively supports both OpenAI and Anthropic token pricing.
-
-**OTEL Collector is a future feature** — useful later for ephemeral sandbox containers that can't guarantee flush before termination. For in-process agents (current architecture), direct SDK is simpler and sufficient.
 
 ---
 

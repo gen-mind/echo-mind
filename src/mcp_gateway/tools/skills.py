@@ -5,6 +5,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
+from mcp_gateway.skills.exceptions import SkillExecutionError, SkillNotFoundError, SkillTimeoutError
 from mcp_gateway.skills.executor import SkillExecutor
 from mcp_gateway.skills.registry import SkillRegistry
 
@@ -56,7 +57,7 @@ def register_skills_tools(
         logger.info(f"ℹ️ skills_get_info: name='{name}'")
         skill = registry.get_skill(name)
         if skill is None:
-            raise ValueError(f"Skill '{name}' not found")
+            raise SkillNotFoundError(f"Skill '{name}' not found")
         return {
             "name": skill.name,
             "description": skill.description,
@@ -98,9 +99,21 @@ def register_skills_tools(
         logger.info(f"🚀 skills_execute: name='{name}', args={args}")
         skill = registry.get_skill(name)
         if skill is None:
-            raise ValueError(f"Skill '{name}' not found")
+            raise SkillNotFoundError(f"Skill '{name}' not found")
 
         result = await executor.execute(skill, args)
+
+        if result.timed_out:
+            raise SkillTimeoutError(
+                f"Skill '{name}' timed out after {skill.timeout}s"
+            )
+
+        if not result.success:
+            raise SkillExecutionError(
+                f"Skill '{name}' failed (exit_code={result.exit_code}): "
+                f"{result.stderr[:200] if result.stderr else 'no output'}"
+            )
+
         return {
             "success": result.success,
             "exit_code": result.exit_code,

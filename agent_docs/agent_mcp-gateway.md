@@ -71,7 +71,7 @@
 | Schema generation | Automatic from type hints | Manual JSON Schema |
 | Middleware stack | Built-in (logging, rate limit, error handling) | Must build |
 | Server composition | `mount()`, `ProxyProvider` | Manual routing |
-| OpenTelemetry | Native instrumentation | Must integrate |
+| Observability | Native instrumentation | Must integrate |
 | Community | 70% of MCP servers use it | N/A |
 | Maintenance | Active (3.0.0rc2 released 2026-02-14) | Team burden |
 
@@ -2385,7 +2385,7 @@ echomind-mcp (MCP Gateway)
 | **Skill system design** | 9 | SKILL.md with YAML frontmatter + markdown body is clean. Progressive disclosure (list -> info -> execute) mirrors Moltbot's proven pattern. |
 | **Testability** | 8 | All backends injected, middleware composable, skills use filesystem fixtures. 48 planned tests cover all code paths. |
 | **Security posture** | 5 | Intentionally minimal for Phase 1. Network isolation only. Acceptable for development; must be hardened before production (Phase 8). |
-| **Operational readiness** | 7 | Health check, Docker Compose, structured logging all included. Missing: OTEL tracing (Phase 6), resilience retries (future). |
+| **Operational readiness** | 7 | Health check, Docker Compose, structured logging all included. Missing: Langfuse tracing (Phase 6), resilience retries (future). |
 
 **Overall: 7.6/10** -- Strong foundation for iterative development. Auth and observability are well-defined for later phases.
 

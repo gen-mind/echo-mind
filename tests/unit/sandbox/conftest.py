@@ -90,7 +90,6 @@ def mock_backend() -> MockSandboxBackend:
 def sandbox_settings() -> SandboxSettings:
     """Create test sandbox settings."""
     return SandboxSettings(
-        enabled=True,
         pool_size=2,
         max_instances=5,
         idle_timeout=300,

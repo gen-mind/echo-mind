@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from mcp_gateway.backends.connector_backend import ConnectorBackend
-from mcp_gateway.backends.search_backend import SearchBackend
 from mcp_gateway.tools.connectors import register_connector_tools
 
 
@@ -37,21 +36,15 @@ def mock_connector_backend() -> MagicMock:
     return backend
 
 
-@pytest.fixture
-def mock_search_backend() -> MagicMock:
-    """Create a mock SearchBackend."""
-    return MagicMock(spec=SearchBackend)
-
 
 @pytest.fixture
 def tool_functions(
     mock_connector_backend: MagicMock,
-    mock_search_backend: MagicMock,
 ) -> dict[str, Any]:
     """Register connector tools and capture the inner tool functions."""
     fake_mcp = FakeMCP()
     register_connector_tools(
-        fake_mcp, mock_connector_backend, mock_search_backend  # type: ignore[arg-type]
+        fake_mcp, mock_connector_backend,  # type: ignore[arg-type]
     )
     return fake_mcp.tools
 

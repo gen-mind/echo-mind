@@ -1,0 +1,4 @@
+# docker-compose-sandbox-host.yml
+# Production overrides for sandbox infrastructure.
+# Currently empty — sandbox build target has no host-specific config.
+# Reserved for future host-mode overrides (e.g., registry push, resource limits).

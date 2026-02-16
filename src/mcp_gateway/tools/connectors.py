@@ -11,7 +11,6 @@ from typing import Any
 from fastmcp import FastMCP
 
 from mcp_gateway.backends.connector_backend import ConnectorBackend
-from mcp_gateway.backends.search_backend import SearchBackend
 
 logger = logging.getLogger("echomind-mcp-gateway")
 
@@ -19,7 +18,6 @@ logger = logging.getLogger("echomind-mcp-gateway")
 def register_connector_tools(
     mcp: FastMCP,
     connector_backend: ConnectorBackend,
-    search_backend: SearchBackend,
 ) -> None:
     """
     Register connector-related MCP tools on the FastMCP server.
@@ -30,8 +28,6 @@ def register_connector_tools(
     Args:
         mcp: FastMCP server instance to register tools on.
         connector_backend: ConnectorBackend providing connector operations.
-        search_backend: SearchBackend for collection resolution (unused now,
-            reserved for future collection-name lookups).
     """
 
     @mcp.tool()
@@ -49,6 +45,9 @@ def register_connector_tools(
             List of connector summaries with id, name, type, status,
             last_sync_at, and docs_analyzed.
         """
+        # SECURITY: user_id is agent-supplied, not authenticated.
+        # Phase 8 will extract user identity from JWT token in MCP session context.
+        # Until then, this tool trusts the agent to supply the correct user_id.
         logger.info(f"📋 connectors_list: user_id={user_id}")
         return await connector_backend.list_connectors(user_id)
 
@@ -68,6 +67,9 @@ def register_connector_tools(
             state, config (sanitized), last_sync_at, docs_analyzed, scope,
             scope_id, and refresh_freq_minutes. Returns error dict if not found.
         """
+        # SECURITY: connector_id is agent-supplied, not authenticated.
+        # Phase 8 will extract user identity from JWT token in MCP session context.
+        # Until then, this tool trusts the agent to supply the correct connector_id.
         logger.info(f"ℹ️ connector_status: connector_id={connector_id}")
         result = await connector_backend.get_connector_status(connector_id)
         if result is None:
@@ -97,6 +99,9 @@ def register_connector_tools(
             List of matching document chunks with id, score, and payload.
             On error, returns a list with a single dict containing an 'error' key.
         """
+        # SECURITY: connector_id is agent-supplied, not authenticated.
+        # Phase 8 will extract user identity from JWT token in MCP session context.
+        # Until then, this tool trusts the agent to supply the correct connector_id.
         logger.info(
             f"🔍 connector_search: connector_id={connector_id}, "
             f"query='{query[:50]}', collection='{collection}', limit={limit}"
@@ -131,6 +136,9 @@ def register_connector_tools(
             Dict with connector_id, status, NATS subject, and chunking_session.
             On error, returns a dict with an 'error' key.
         """
+        # SECURITY: user_id is agent-supplied, not authenticated.
+        # Phase 8 will extract user identity from JWT token in MCP session context.
+        # Until then, this tool trusts the agent to supply the correct user_id.
         logger.info(f"🔄 connector_sync: connector_id={connector_id}, user_id={user_id}")
         try:
             return await connector_backend.trigger_sync(

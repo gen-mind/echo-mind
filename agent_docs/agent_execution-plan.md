@@ -8,13 +8,13 @@
 
 ## Executive Summary
 
-This plan transforms EchoMind's agent system from an in-process library into a **production-grade sandboxed agent platform**. Agents run in ephemeral Docker containers with a custom MCP server as the single gateway for skills, data connectors, and API keys. The 30 native Python tools are replaced with Moltbot-style bash skills (38 portable from Moltbot + 4 EchoMind-native). Full observability is provided via direct Langfuse SDK + Prometheus + Grafana (no OTEL Collector — all internal, no internet needed for log shipping).
+This plan transforms EchoMind's agent system from an in-process library into a **production-grade sandboxed agent platform**. Agents run in ephemeral Docker containers with a custom MCP server as the single gateway for skills, data connectors, and API keys. The 30 native Python tools are replaced with Moltbot-style bash skills (38 portable from Moltbot + 4 EchoMind-native). Full observability is provided via direct Langfuse SDK + Prometheus + Grafana (all internal, no internet needed for log shipping).
 
 ### Key Numbers
 
 | Metric | Value |
 |--------|-------|
-| New services | 2 (sandbox, MCP gateway) — OTEL Collector deferred, use direct Langfuse SDK + Prometheus |
+| New services | 2 (sandbox, MCP gateway) |
 | New DB tables | 2 (sandbox_sessions, sandbox_events) |
 | Code to delete | ~1,100 LOC (29 of 30 native tools) |
 | Code to write | ~3,000-4,000 LOC (across all phases) |
@@ -64,7 +64,7 @@ This plan transforms EchoMind's agent system from an in-process library into a *
 | Tool model | Bash skills (SKILL.md) | 73% of tools are already shell wrappers |
 | MCP framework | FastMCP 3.x | Built-in auth, middleware, transport, schema |
 | Container pool | Warm pool (pre-created) | ~50ms vs ~1.5s cold start |
-| Observability | Langfuse SDK (direct) + Prometheus (direct) | No OTEL Collector — follow existing codebase pattern (`langfuse_helper.py` + `prometheus_client`). Collector deferred to future (needed only for ephemeral sandbox containers). |
+| Observability | Langfuse SDK (direct) + Prometheus (direct) | Follow existing codebase pattern (`langfuse_helper.py` + `prometheus_client`). |
 | Internet access | Direct from sandbox | Agent needs web search and web crawling. Observability (Langfuse, Prometheus) is internal — no internet required for log shipping. |
 | DB access | Blocked (via MCP only) | Zero-trust enforcement at MCP boundary |
 
@@ -638,12 +638,12 @@ Sandbox CANNOT reach:
 
 ## Phase 6: Observability (Week 9)
 
-> 📄 Deep dive: [agent_observability.md](agent_observability.md) — Langfuse tracing, Prometheus metrics, Grafana dashboards, OTEL Collector (deferred)
+> 📄 Deep dive: [agent_observability.md](agent_observability.md) — Langfuse tracing, Prometheus metrics, Grafana dashboards
 > 📄 See also: [anthropic-provider-analysis.md](anthropic-provider-analysis.md) — Provider-specific observability (Langfuse supports both OpenAI + Anthropic natively)
 
 **Goal**: End-to-end tracing, metrics, cost tracking, dashboards.
 
-> **Decision (2026-02-16):** No OTEL Collector. Use direct Langfuse SDK + Prometheus, matching the existing EchoMind pattern (`langfuse_helper.py`, `prometheus_client`). OTEL Collector is a future feature — only needed when ephemeral sandbox containers cannot guarantee flush before termination.
+> **Decision (2026-02-16):** Use direct Langfuse SDK + Prometheus, matching the existing EchoMind pattern (`langfuse_helper.py`, `prometheus_client`).
 
 ### Deliverables
 
@@ -673,10 +673,6 @@ Sandbox CANNOT reach:
    - Agent Runs Overview (rate, duration, errors, top tools)
    - MCP Server Health (connections, call rate, latency, denied calls)
    - Agent Cost Analysis (daily cost, by model, by user, projection)
-
-### Future: OTEL Collector
-
-When ephemeral sandbox containers are implemented (Phase 4), revisit the OTEL Collector decision. Sandboxes can't guarantee Langfuse SDK flush before termination — the collector acts as a reliable buffer. See `agent_observability.md` section 3.1 for the deferred collector design.
 
 6. **Alerting rules**:
    - Agent error rate > 10%
@@ -868,7 +864,7 @@ Current server (8 CPU, 32GB RAM) can support ~4 concurrent agent sessions. A 32-
 
 4. **Chat integration after sandbox** — Requires both sandbox and MCP to be working. This is integration work, not new architecture.
 
-5. **Observability late** — Can be added incrementally without blocking other work. Uses direct Langfuse SDK + Prometheus (no OTEL Collector needed until sandbox phase).
+5. **Observability late** — Can be added incrementally without blocking other work. Uses direct Langfuse SDK + Prometheus.
 
 6. **Skills migration last** — Deleting native tools is a cleanup step. The new skill-based approach must be proven before removing the old one.
 
@@ -898,7 +894,7 @@ Current server (8 CPU, 32GB RAM) can support ~4 concurrent agent sessions. A 32-
 | [agent_sandbox-containers.md](agent_sandbox-containers.md) | Container architecture, lifecycle, security, warm pool | Phase 4 |
 | [agent_mcp-gateway.md](agent_mcp-gateway.md) | MCP server design, FastMCP, zero-trust model | Phase 1, 2, 8 |
 | [agent_skills-migration.md](agent_skills-migration.md) | Tool migration analysis, Moltbot skill format | Phase 3, 7 |
-| [agent_observability.md](agent_observability.md) | Langfuse, Prometheus, Grafana dashboards (OTEL Collector deferred) | Phase 6 |
+| [agent_observability.md](agent_observability.md) | Langfuse, Prometheus, Grafana dashboards | Phase 6 |
 | [agent_infrastructure.md](agent_infrastructure.md) | NATS streams, Docker Compose, cluster.sh changes | Phase 4, 5 |
 | [agent_chat-integration.md](agent_chat-integration.md) | WebSocket chat flow, sandbox message relay | Phase 5 |
 | [agent-chat-integration-analysis.md](agent-chat-integration-analysis.md) | Analysis of current chat handler for agent integration | Phase 5 |

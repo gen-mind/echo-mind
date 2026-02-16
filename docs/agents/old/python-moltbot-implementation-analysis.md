@@ -381,7 +381,7 @@ profiles:
 **Phase 4: Production Hardening (4-6 weeks)**
 1. Error handling and retry logic
 2. Rate limiting per channel
-3. Monitoring and observability (OpenTelemetry)
+3. Monitoring and observability (Langfuse + Prometheus)
 4. Performance optimization
 5. Security audit
 6. Load testing

@@ -41,8 +41,8 @@ class TestGitLogTool:
         result = git_log()
 
         mock_run.assert_called_once_with(
-            "git log --oneline -10",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "log", "--oneline", "-10"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
         assert "abc123" in result
 
@@ -55,7 +55,8 @@ class TestGitLogTool:
         git_log = create_git_log_tool()
         git_log(args="--author=alice -5")
 
-        assert "git log --author=alice -5" in mock_run.call_args[0][0]
+        cmd = mock_run.call_args[0][0]
+        assert cmd == ["git", "log", "--author=alice", "-5"]
 
     @patch("src.agent.tools.git.subprocess.run")
     def test_with_cwd(self, mock_run):
@@ -110,6 +111,48 @@ class TestGitLogTool:
         assert "❌" in result
         assert "no git" in result
 
+    @patch("src.agent.tools.git.subprocess.run")
+    def test_shell_injection_semicolon(self, mock_run):
+        """Test shell metacharacters in args are treated as literal strings."""
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="fatal: bad arg", returncode=128,
+        )
+        git_log = create_git_log_tool()
+        git_log(args="; rm -rf /")
+
+        cmd = mock_run.call_args[0][0]
+        # The semicolon and rm must be literal list elements, not shell-interpreted
+        assert isinstance(cmd, list)
+        assert cmd[0] == "git"
+        assert mock_run.call_args.kwargs["shell"] is False
+
+    @patch("src.agent.tools.git.subprocess.run")
+    def test_shell_injection_subshell(self, mock_run):
+        """Test $() subshell injection is treated as literal."""
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="", returncode=128,
+        )
+        git_log = create_git_log_tool()
+        git_log(args="$(whoami)")
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert "$(whoami)" in cmd
+        assert mock_run.call_args.kwargs["shell"] is False
+
+    @patch("src.agent.tools.git.subprocess.run")
+    def test_shell_injection_backticks(self, mock_run):
+        """Test backtick injection is treated as literal."""
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="", returncode=128,
+        )
+        git_log = create_git_log_tool()
+        git_log(args="`cat /etc/passwd`")
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert mock_run.call_args.kwargs["shell"] is False
+
 
 # ---------------------------------------------------------------------------
 # git_diff
@@ -127,7 +170,7 @@ class TestGitDiffTool:
         git_diff = create_git_diff_tool()
         result = git_diff()
 
-        assert "git diff " in mock_run.call_args[0][0]
+        assert mock_run.call_args[0][0] == ["git", "diff"]
         assert result == "diff content"
 
     @patch("src.agent.tools.git.subprocess.run")
@@ -139,7 +182,8 @@ class TestGitDiffTool:
         git_diff = create_git_diff_tool()
         git_diff(args="--staged")
 
-        assert "--staged" in mock_run.call_args[0][0]
+        cmd = mock_run.call_args[0][0]
+        assert "--staged" in cmd
 
     @patch("src.agent.tools.git.subprocess.run")
     def test_no_changes(self, mock_run):
@@ -216,6 +260,20 @@ class TestGitDiffTool:
         assert "❌" in result
         assert "unexpected" in result
 
+    @patch("src.agent.tools.git.subprocess.run")
+    def test_shell_injection_pipe(self, mock_run):
+        """Test pipe injection is treated as literal argument."""
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="", returncode=128,
+        )
+        git_diff = create_git_diff_tool()
+        git_diff(args="| cat /etc/passwd")
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert "|" in cmd
+        assert mock_run.call_args.kwargs["shell"] is False
+
 
 # ---------------------------------------------------------------------------
 # git_status
@@ -235,8 +293,8 @@ class TestGitStatusTool:
 
         assert "On branch main" in result
         mock_run.assert_called_once_with(
-            "git status",
-            shell=True, capture_output=True, text=True, timeout=30, cwd=None,
+            ["git", "status"],
+            shell=False, capture_output=True, text=True, timeout=30, cwd=None,
         )
 
     @patch("src.agent.tools.git.subprocess.run")
@@ -330,6 +388,25 @@ class TestGitAddTool:
         assert mock_run.call_args_list[1].kwargs["cwd"] == "/tmp/repo"
 
     @patch("src.agent.tools.git.subprocess.run")
+    def test_add_uses_list_args(self, mock_run):
+        """Test git add uses list args with shell=False."""
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="", returncode=0),
+            MagicMock(stdout="", stderr="", returncode=0),
+        ]
+        git_add = create_git_add_tool()
+        git_add("src/main.py src/util.py")
+
+        cmd = mock_run.call_args_list[0][0][0]
+        assert isinstance(cmd, list)
+        assert cmd == ["git", "add", "src/main.py", "src/util.py"]
+        assert mock_run.call_args_list[0].kwargs["shell"] is False
+        # Status command also uses list
+        status_cmd = mock_run.call_args_list[1][0][0]
+        assert isinstance(status_cmd, list)
+        assert status_cmd == ["git", "status", "--short"]
+
+    @patch("src.agent.tools.git.subprocess.run")
     def test_add_error(self, mock_run):
         """Test git add failure."""
         mock_run.return_value = MagicMock(
@@ -360,6 +437,21 @@ class TestGitAddTool:
 
         assert "❌" in result
         assert "disk full" in result
+
+    @patch("src.agent.tools.git.subprocess.run")
+    def test_shell_injection_in_files(self, mock_run):
+        """Test shell metacharacters in file args are treated as literals."""
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="pathspec error", returncode=128),
+        ]
+        git_add = create_git_add_tool()
+        git_add("; rm -rf /")
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        # The semicolon should be a literal arg, not shell-interpreted
+        assert cmd == ["git", "add", ";", "rm", "-rf", "/"]
+        assert mock_run.call_args.kwargs["shell"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +487,7 @@ class TestGitCommitTool:
 
     @patch("src.agent.tools.git.subprocess.run")
     def test_appends_co_author(self, mock_run):
-        """Test Co-Authored-By is included in command."""
+        """Test Co-Authored-By is included in the -m argument."""
         mock_run.return_value = MagicMock(
             stdout="committed", stderr="", returncode=0,
         )
@@ -403,7 +495,23 @@ class TestGitCommitTool:
         git_commit("Add feature")
 
         cmd = mock_run.call_args[0][0]
-        assert "Co-Authored-By: EchoMind Agent" in cmd
+        assert isinstance(cmd, list)
+        assert cmd[0:3] == ["git", "commit", "-m"]
+        assert "Co-Authored-By: EchoMind Agent" in cmd[3]
+
+    @patch("src.agent.tools.git.subprocess.run")
+    def test_commit_uses_list_args(self, mock_run):
+        """Test commit uses list args with shell=False — no shell heredoc."""
+        mock_run.return_value = MagicMock(
+            stdout="committed", stderr="", returncode=0,
+        )
+        git_commit = create_git_commit_tool()
+        git_commit("Fix: important bug")
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert cmd[0:3] == ["git", "commit", "-m"]
+        assert mock_run.call_args.kwargs["shell"] is False
 
     def test_empty_message(self):
         """Test empty commit message returns error without calling subprocess."""
@@ -483,3 +591,20 @@ class TestGitCommitTool:
 
         assert "❌" in result
         assert "unexpected" in result
+
+    @patch("src.agent.tools.git.subprocess.run")
+    def test_shell_injection_in_message(self, mock_run):
+        """Test shell metacharacters in commit message are safe with shell=False."""
+        mock_run.return_value = MagicMock(
+            stdout="committed", stderr="", returncode=0,
+        )
+        git_commit = create_git_commit_tool()
+        git_commit('$(rm -rf /); `evil`; echo "pwned"')
+
+        cmd = mock_run.call_args[0][0]
+        assert isinstance(cmd, list)
+        assert mock_run.call_args.kwargs["shell"] is False
+        # The message is passed as a single list element to -m
+        message_arg = cmd[3]
+        assert "$(rm -rf /)" in message_arg
+        assert "`evil`" in message_arg

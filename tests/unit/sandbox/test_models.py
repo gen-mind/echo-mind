@@ -31,11 +31,11 @@ class TestSandboxState:
         assert not SandboxState.WARM.can_transition_to(SandboxState.DRAINING)
 
     def test_valid_transitions_assigned(self) -> None:
-        """Test ASSIGNED can transition to ACTIVE or DESTROYED."""
+        """Test ASSIGNED can transition to ACTIVE, DRAINING, or DESTROYED."""
         assert SandboxState.ASSIGNED.can_transition_to(SandboxState.ACTIVE)
+        assert SandboxState.ASSIGNED.can_transition_to(SandboxState.DRAINING)
         assert SandboxState.ASSIGNED.can_transition_to(SandboxState.DESTROYED)
         assert not SandboxState.ASSIGNED.can_transition_to(SandboxState.WARM)
-        assert not SandboxState.ASSIGNED.can_transition_to(SandboxState.DRAINING)
 
     def test_valid_transitions_active(self) -> None:
         """Test ACTIVE can transition to DRAINING or DESTROYED."""

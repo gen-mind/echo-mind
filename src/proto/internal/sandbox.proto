@@ -27,6 +27,7 @@ enum SandboxEventType {
   SANDBOX_EVENT_TYPE_TOOL_CALL = 5;     // Tool invocation
   SANDBOX_EVENT_TYPE_DRAINING = 6;      // Graceful shutdown started
   SANDBOX_EVENT_TYPE_DESTROYED = 7;     // Container removed
+  SANDBOX_EVENT_TYPE_ERROR = 8;         // Error occurred
 }
 
 // Sandbox session record
@@ -34,7 +35,7 @@ message SandboxSession {
   string id = 1;                                     // UUID primary key
   string session_id = 2;                             // Unique session identifier
   int32 user_id = 3;                                 // FK to users table
-  int32 chat_session_id = 4;                         // FK to chat_sessions table
+  optional int32 chat_session_id = 4;                  // FK to chat_sessions table
   string container_id = 5;                           // Docker container ID
   string container_name = 6;                         // Docker container name
   SandboxStatus status = 7;                          // Current lifecycle status

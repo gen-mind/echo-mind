@@ -122,7 +122,7 @@ class ConnectorBackend:
             connectors = await connector_crud.get_by_user(session, user_id)
             result = [_connector_to_summary(c) for c in connectors]
 
-        logger.info("📋 Listed %d connectors for user %d", len(result), user_id)
+        logger.info(f"📋 Listed {len(result)} connectors for user {user_id}")
         return result
 
     async def get_connector_status(self, connector_id: int) -> dict[str, Any] | None:
@@ -146,7 +146,7 @@ class ConnectorBackend:
         async with self._clients.session_factory() as session:
             connector = await connector_crud.get_by_id_active(session, connector_id)
             if connector is None:
-                logger.warning("⚠️ Connector %d not found", connector_id)
+                logger.warning(f"⚠️ Connector {connector_id} not found")
                 return None
 
             last_sync = connector.last_sync_at
@@ -168,7 +168,7 @@ class ConnectorBackend:
                 "refresh_freq_minutes": connector.refresh_freq_minutes,
             }
 
-        logger.info("ℹ️ Retrieved status for connector %d", connector_id)
+        logger.info(f"ℹ️ Retrieved status for connector {connector_id}")
         return result
 
     async def search_connector_documents(
@@ -219,12 +219,7 @@ class ConnectorBackend:
             limit=limit,
             filter_=query_filter,
         )
-        logger.info(
-            "🔍 Connector %d search returned %d results for query '%s'",
-            connector_id,
-            len(results),
-            query[:50],
-        )
+        logger.info(f"🔍 Connector {connector_id} search returned {len(results)} results for query '{query[:50]}'")
         return results
 
     async def trigger_sync(
@@ -317,12 +312,7 @@ class ConnectorBackend:
             subject = f"connector.sync.{connector.type}"
             await self._clients.nats.publish(subject, request.SerializeToString())
 
-        logger.info(
-            "📤 Triggered sync for connector %d to %s (session: %s)",
-            connector_id,
-            subject,
-            chunking_session,
-        )
+        logger.info(f"📤 Triggered sync for connector {connector_id} to {subject} (session: {chunking_session})")
         return {
             "connector_id": connector_id,
             "status": "sync_requested",

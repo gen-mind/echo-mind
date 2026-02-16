@@ -70,12 +70,7 @@ class EmbedderClient:
                 ],
             )
             self._stub = EmbedServiceStub(self._channel)
-            logger.info(
-                "🔗 Connected to Embedder at %s:%d (model: %s)",
-                self._host,
-                self._port,
-                self._model_name or "server-default",
-            )
+            logger.info(f"🔗 Connected to Embedder at {self._host}:{self._port} (model: {self._model_name or 'server-default'})")
 
     async def embed_query(self, query: str) -> list[float]:
         """

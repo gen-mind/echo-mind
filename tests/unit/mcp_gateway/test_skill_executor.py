@@ -179,24 +179,25 @@ class TestSkillExecutorArgs:
         assert "ok" in result.stdout
 
 
-class TestSkillExecutorPassthrough:
-    """Tests for passthrough command detection."""
+class TestSkillExecutorQuoting:
+    """Tests for argument shell-quoting (passthrough removed for security)."""
 
     @pytest.mark.asyncio
-    async def test_passthrough_command_no_quoting(self) -> None:
-        """Passthrough commands don't shell-quote the arg."""
+    async def test_all_args_are_shell_quoted(self) -> None:
+        """All arguments are shell-quoted, preventing command injection."""
         executor = SkillExecutor()
         skill = _make_skill(
             command="${command}",
             args=[SkillArgument(name="command", description="Full command", required=True)],
         )
+        # The entire value is treated as a single quoted token, not a command
         result = await executor.execute(skill, args={"command": "echo hello world"})
-        assert result.success is True
-        assert "hello world" in result.stdout
+        # The quoted string is treated as a single command name, so it fails
+        assert result.success is False
 
     @pytest.mark.asyncio
     async def test_structured_command_quotes_args(self) -> None:
-        """Structured commands shell-quote arguments."""
+        """Structured commands shell-quote arguments preventing injection."""
         executor = SkillExecutor()
         skill = _make_skill(
             command="echo ${input}",

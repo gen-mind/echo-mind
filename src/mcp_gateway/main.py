@@ -38,6 +38,7 @@ from echomind_lib.db.qdrant import QdrantDB
 from echomind_lib.helpers.readiness_probe import HealthServer
 
 from mcp_gateway.backends.api_key_manager import ApiKeyManager
+from mcp_gateway.backends.api_proxy_backend import ApiProxyBackend
 from mcp_gateway.backends.client_holder import ClientHolder
 from mcp_gateway.backends.connector_backend import ConnectorBackend
 from mcp_gateway.backends.embedder_client import EmbedderClient
@@ -45,6 +46,7 @@ from mcp_gateway.backends.nats_backend import NatsBackend
 from mcp_gateway.backends.search_backend import SearchBackend
 from mcp_gateway.config import get_settings
 from mcp_gateway.middleware.audit_logger import AuditLoggingMiddleware
+from mcp_gateway.middleware.error_handler import ErrorHandlingMiddleware
 from mcp_gateway.skills.executor import SkillExecutor
 from mcp_gateway.skills.registry import SkillRegistry
 from mcp_gateway.tools.api_proxy import register_api_proxy_tools
@@ -284,16 +286,18 @@ class MCPGateway:
         # Create backends with shared client holder
         search_backend = SearchBackend(clients=self._clients)
         connector_backend = ConnectorBackend(clients=self._clients)
+        api_proxy_backend = ApiProxyBackend(api_key_manager)
 
-        # Create FastMCP server with audit middleware
+        # Create FastMCP server with error handling + audit middleware
         mcp = FastMCP("echomind-mcp-gateway")
+        mcp.add_middleware(ErrorHandlingMiddleware())
         mcp.add_middleware(AuditLoggingMiddleware())
 
         # Register all tools
-        register_search_tools(mcp, search_backend)
+        register_search_tools(mcp, search_backend, readiness_check=self._is_ready)
         register_skills_tools(mcp, skill_registry, skill_executor)
-        register_connector_tools(mcp, connector_backend, search_backend)
-        register_api_proxy_tools(mcp, api_key_manager)
+        register_connector_tools(mcp, connector_backend)
+        register_api_proxy_tools(mcp, api_proxy_backend)
 
         logger.info("🔧 MCP tools registered")
 

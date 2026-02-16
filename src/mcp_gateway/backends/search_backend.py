@@ -97,7 +97,15 @@ class SearchBackend:
         if self._clients.qdrant is None:
             raise RuntimeError("Qdrant must be connected to list collections")
 
-        collections = await self._clients.qdrant._client.get_collections()
+        try:
+            # NOTE: QdrantDB does not expose a public list_collections method.
+            # Accessing _client directly until the shared library is extended.
+            collections = await self._clients.qdrant._client.get_collections()
+        except AttributeError as e:
+            raise RuntimeError(
+                "QdrantDB internal API changed: _client.get_collections() "
+                "is no longer available"
+            ) from e
         result: list[dict[str, Any]] = []
         for c in collections.collections:
             result.append({"name": c.name})
@@ -156,20 +164,28 @@ class SearchBackend:
         if self._clients.qdrant is None:
             raise RuntimeError("Qdrant must be connected to get document chunks")
 
-        results = await self._clients.qdrant._client.scroll(
-            collection_name=collection_name,
-            scroll_filter=Filter(
-                must=[
-                    FieldCondition(
-                        key="document_id",
-                        match=MatchValue(value=document_id),
-                    )
-                ]
-            ),
-            limit=limit,
-            with_payload=True,
-            with_vectors=False,
-        )
+        try:
+            # NOTE: QdrantDB does not expose a public scroll method.
+            # Accessing _client directly until the shared library is extended.
+            results = await self._clients.qdrant._client.scroll(
+                collection_name=collection_name,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="document_id",
+                            match=MatchValue(value=document_id),
+                        )
+                    ]
+                ),
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+        except AttributeError as e:
+            raise RuntimeError(
+                "QdrantDB internal API changed: _client.scroll() "
+                "is no longer available"
+            ) from e
         points, _ = results
         chunks: list[dict[str, Any]] = [
             {"id": str(p.id), "payload": p.payload}

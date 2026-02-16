@@ -22,7 +22,7 @@ from fastmcp.tools.tool import ToolResult
 logger = logging.getLogger("echomind-mcp-audit")
 
 _SENSITIVE_SUBSTRINGS: frozenset[str] = frozenset(
-    {"token", "secret", "password", "api_key", "apikey", "credential", "auth"}
+    {"token", "secret", "password", "api_key", "apikey", "credential", "authorization", "oauth"}
 )
 
 _REDACTED: str = "[REDACTED]"

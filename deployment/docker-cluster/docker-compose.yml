@@ -371,10 +371,13 @@ services:
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_BASE_URL=http://langfuse-web:3000
       - API_RAGAS_SAMPLE_RATE=${RAGAS_SAMPLE_RATE:-0.1}
-      # Sandbox management (opt-in, disabled by default)
-      - SANDBOX_ENABLED=${SANDBOX_ENABLED:-false}
+      # Sandbox management (always enabled)
       - SANDBOX_POOL_SIZE=${SANDBOX_POOL_SIZE:-3}
+      - SANDBOX_MAX_INSTANCES=${SANDBOX_MAX_INSTANCES:-15}
       - SANDBOX_IMAGE=${SANDBOX_IMAGE:-gsantopaolo/echomind-agent-sandbox:0.1.0-beta.1}
+      - SANDBOX_CPU_LIMIT=${SANDBOX_CPU_LIMIT:-2.0}
+      - SANDBOX_MEMORY_LIMIT=${SANDBOX_MEMORY_LIMIT:-2g}
+      - SANDBOX_SESSION_TIMEOUT=${SANDBOX_SESSION_TIMEOUT:-3600}
       - SANDBOX_NATS_URL=nats://nats:4222
       - SANDBOX_MCP_URL=http://mcp-gateway:8100
     volumes:

@@ -71,10 +71,6 @@ def upgrade() -> None:
         ON sandbox_sessions (container_id)
         WHERE container_id IS NOT NULL;
     """)
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_sandbox_sessions_session_id
-        ON sandbox_sessions (session_id);
-    """)
 
     # Indexes for sandbox_events
     op.execute("""

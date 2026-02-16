@@ -55,7 +55,7 @@ services:
       - "traefik.enable=false"
 
   # ============================================
-  # Langfuse Web - UI + API + OTLP endpoint
+  # Langfuse Web - UI + API
   # ============================================
   langfuse-web:
     image: langfuse/langfuse:3

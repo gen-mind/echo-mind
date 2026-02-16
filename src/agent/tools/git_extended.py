@@ -5,6 +5,7 @@ Provides additional git operations beyond the core git tools.
 All tools follow FAANG principal engineer quality standards.
 """
 
+import shlex
 import subprocess
 from collections.abc import Callable
 from typing import Annotated
@@ -54,15 +55,15 @@ def create_git_branch_tool() -> Callable[..., str]:
 
         try:
             if action == "list":
-                cmd = "git branch -a"
+                cmd = ["git", "branch", "-a"]
             elif action == "create":
-                cmd = f"git branch {name}"
+                cmd = ["git", "branch", name]
             else:  # delete
-                cmd = f"git branch -d {name}"
+                cmd = ["git", "branch", "-d", name]
 
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -114,13 +115,13 @@ def create_git_checkout_tool() -> Callable[..., str]:
         """
         try:
             if create_branch:
-                cmd = f"git checkout -b {target}"
+                cmd = ["git", "checkout", "-b", target]
             else:
-                cmd = f"git checkout {target}"
+                cmd = ["git", "checkout", target]
 
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -176,17 +177,17 @@ def create_git_stash_tool() -> Callable[..., str]:
 
         try:
             if action == "push":
-                cmd = f'git stash push -m "{message}"' if message else "git stash push"
+                cmd = ["git", "stash", "push", "-m", message] if message else ["git", "stash", "push"]
             elif action == "pop":
-                cmd = "git stash pop"
+                cmd = ["git", "stash", "pop"]
             elif action == "list":
-                cmd = "git stash list"
+                cmd = ["git", "stash", "list"]
             else:  # drop
-                cmd = "git stash drop"
+                cmd = ["git", "stash", "drop"]
 
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -247,17 +248,17 @@ def create_git_push_tool() -> Callable[..., str]:
             Push result or error message.
         """
         try:
-            cmd = f"git push {remote}"
+            cmd = ["git", "push", remote]
             if branch:
-                cmd += f" {branch}"
+                cmd.append(branch)
             if set_upstream:
-                cmd += " --set-upstream"
+                cmd.append("--set-upstream")
             if force_with_lease:
-                cmd += " --force-with-lease"
+                cmd.append("--force-with-lease")
 
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -309,13 +310,13 @@ def create_git_pull_tool() -> Callable[..., str]:
             Pull result or error message.
         """
         try:
-            cmd = f"git pull {remote}"
+            cmd = ["git", "pull", remote]
             if branch:
-                cmd += f" {branch}"
+                cmd.append(branch)
 
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -372,11 +373,11 @@ def create_git_reset_tool() -> Callable[..., str]:
             return "❌ Error: Only --mixed reset is allowed for safety. Use git checkout to discard changes."
 
         try:
-            cmd = f"git reset --mixed {files}"
+            cmd = ["git", "reset", "--mixed"] + shlex.split(files)
 
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -429,15 +430,15 @@ def create_git_clone_tool() -> Callable[..., str]:
             Clone result or error message.
         """
         try:
-            cmd = f"git clone {url}"
+            cmd = ["git", "clone", url]
             if directory:
-                cmd += f" {directory}"
+                cmd.append(directory)
             if depth:
-                cmd += f" --depth {depth}"
+                cmd.extend(["--depth", str(depth)])
 
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -500,18 +501,18 @@ def create_git_tag_tool() -> Callable[..., str]:
 
         try:
             if action == "list":
-                cmd = "git tag -l"
+                cmd = ["git", "tag", "-l"]
             elif action == "create":
                 if message:
-                    cmd = f'git tag -a {name} -m "{message}"'
+                    cmd = ["git", "tag", "-a", name, "-m", message]
                 else:
-                    cmd = f"git tag {name}"
+                    cmd = ["git", "tag", name]
             else:  # delete
-                cmd = f"git tag -d {name}"
+                cmd = ["git", "tag", "-d", name]
 
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,

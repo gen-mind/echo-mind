@@ -14,7 +14,6 @@ class TestSandboxSettings:
     def test_default_values(self) -> None:
         """Test default settings values."""
         settings = SandboxSettings()
-        assert settings.enabled is False
         assert settings.pool_size == 3
         assert settings.max_instances == 15
         assert settings.idle_timeout == 300
@@ -27,7 +26,6 @@ class TestSandboxSettings:
     def test_env_prefix(self) -> None:
         """Test that SANDBOX_ prefix is applied to env vars."""
         env = {
-            "SANDBOX_ENABLED": "true",
             "SANDBOX_POOL_SIZE": "5",
             "SANDBOX_MAX_INSTANCES": "20",
             "SANDBOX_IDLE_TIMEOUT": "600",
@@ -42,7 +40,6 @@ class TestSandboxSettings:
         }
         with patch.dict(os.environ, env, clear=False):
             settings = SandboxSettings()
-            assert settings.enabled is True
             assert settings.pool_size == 5
             assert settings.max_instances == 20
             assert settings.idle_timeout == 600
@@ -56,12 +53,12 @@ class TestSandboxSettings:
             assert settings.mcp_url == "http://custom:8100"
 
     def test_pool_size_validation(self) -> None:
-        """Test pool_size bounds validation."""
-        settings = SandboxSettings(pool_size=0)
-        assert settings.pool_size == 0
+        """Test pool_size bounds validation (minimum 1)."""
+        settings = SandboxSettings(pool_size=1)
+        assert settings.pool_size == 1
 
         with pytest.raises(Exception):
-            SandboxSettings(pool_size=-1)
+            SandboxSettings(pool_size=0)
 
         with pytest.raises(Exception):
             SandboxSettings(pool_size=51)

@@ -102,7 +102,7 @@ Before scaling to multiple users, we need visibility into agent behavior: what t
 
 ### Key Design Decisions
 
-1. **OpenTelemetry tracing** — Each agent run creates a trace span. Tool calls are child spans. This integrates with EchoMind's existing Grafana/Prometheus stack.
+1. **Langfuse tracing** — Each agent run creates a trace. Tool calls are child spans. This integrates with EchoMind's existing Grafana/Prometheus stack.
 2. **Token cost tracking** — Track prompt/completion tokens per request. Store in PostgreSQL for billing/analytics. Expose via API.
 3. **PostgreSQL session storage** — Migrate from JSONL files to a `agent_sessions` table. Enables querying, expiration, and multi-instance deployment.
 4. **Rate limiting** — Per-user rate limits on agent runs (configurable). Prevents abuse and controls LLM costs.
@@ -114,7 +114,7 @@ Before scaling to multiple users, we need visibility into agent behavior: what t
 | File | Purpose |
 |------|---------|
 | `src/agent/observability/__init__.py` | Package init |
-| `src/agent/observability/tracer.py` | OpenTelemetry span management for agent runs |
+| `src/agent/observability/tracer.py` | Langfuse span management for agent runs |
 | `src/agent/observability/metrics.py` | Prometheus metrics: request count, latency, token usage |
 | `src/agent/observability/cost.py` | Token cost calculator (per-model pricing table) |
 | `src/agent/sessions/pg_manager.py` | PostgreSQL-backed session manager (replaces JSONL) |
@@ -137,7 +137,7 @@ Before scaling to multiple users, we need visibility into agent behavior: what t
 | `src/agent/agent.py` | Inject tracer, emit spans around LLM calls and tool execution |
 | `src/agent/config/schema.py` | Add observability config (tracing enabled, cost tracking, rate limits) |
 | `src/api/routes/agents.py` | Add usage/cost endpoints, apply rate limiting |
-| `docker-compose.yml` | Add OTEL collector sidecar config |
+| `docker-compose.yml` | Add observability config |
 
 ### Estimated Tests: 50-60
 

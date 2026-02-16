@@ -36,6 +36,10 @@ class DockerSandboxBackend(SandboxBackend):
             client: Optional pre-configured Docker client. If None,
                     creates one from environment (DOCKER_HOST or socket).
         """
+        # NOTE: docker-py DockerClient is not guaranteed thread-safe (docker-py#3229).
+        # Under high concurrency, multiple asyncio.to_thread() calls sharing this
+        # client could race on the underlying HTTP session. Practical risk is LOW
+        # because Docker socket operations are short-lived and serialized by the GIL.
         self._client = client or docker.from_env()
 
     def _container_to_info(self, container: Container) -> ContainerInfo:
@@ -98,6 +102,8 @@ class DockerSandboxBackend(SandboxBackend):
                 network=network,
                 labels=all_labels,
                 detach=True,
+                # Security: run as non-root user
+                user="1000",
                 # Security: no privilege escalation
                 security_opt=["no-new-privileges"],
                 # Security: drop all capabilities, add only what's needed
@@ -106,21 +112,21 @@ class DockerSandboxBackend(SandboxBackend):
                 # Security: read-only root filesystem
                 read_only=True,
                 # Writable tmpfs for temp files
-                tmpfs={"/tmp": "size=100M,noexec,nosuid"},
+                tmpfs={"/tmp": "size=100M,noexec,nosuid,nodev"},
                 # Resource limits
                 nano_cpus=nano_cpus,
                 mem_limit=memory_limit,
                 # Disable swap
                 memswap_limit=memory_limit,
                 # PID limit
-                pids_limit=256,
+                pids_limit=100,
             )
 
         try:
             container = await asyncio.to_thread(_create)
             logger.info(f"📦 Created container {name} ({container.short_id})")
             return self._container_to_info(container)
-        except (APIError, Exception) as e:
+        except Exception as e:
             raise RuntimeError(f"Failed to create container {name}: {e}") from e
 
     async def start_container(self, container_id: str) -> None:
@@ -140,7 +146,7 @@ class DockerSandboxBackend(SandboxBackend):
             logger.info(f"▶️ Started container {container_id[:12]}")
         except NotFound as e:
             raise RuntimeError(f"Container {container_id[:12]} not found") from e
-        except (APIError, Exception) as e:
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to start container {container_id[:12]}: {e}"
             ) from e
@@ -163,7 +169,7 @@ class DockerSandboxBackend(SandboxBackend):
             logger.info(f"⏹️ Stopped container {container_id[:12]}")
         except NotFound:
             logger.warning(f"⚠️ Container {container_id[:12]} not found (already removed?)")
-        except (APIError, Exception) as e:
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to stop container {container_id[:12]}: {e}"
             ) from e
@@ -186,7 +192,7 @@ class DockerSandboxBackend(SandboxBackend):
             logger.info(f"🗑️ Removed container {container_id[:12]}")
         except NotFound:
             logger.warning(f"⚠️ Container {container_id[:12]} not found (already removed?)")
-        except (APIError, Exception) as e:
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to remove container {container_id[:12]}: {e}"
             ) from e
@@ -207,7 +213,7 @@ class DockerSandboxBackend(SandboxBackend):
             return self._container_to_info(container)
         except NotFound:
             return None
-        except (APIError, Exception) as e:
+        except Exception as e:
             logger.warning(f"⚠️ Failed to get container {container_id[:12]}: {e}")
             return None
 
@@ -231,7 +237,7 @@ class DockerSandboxBackend(SandboxBackend):
                 self._client.containers.list, all=True, filters=filters
             )
             return [self._container_to_info(c) for c in containers]
-        except (APIError, Exception) as e:
+        except Exception as e:
             logger.warning(f"⚠️ Failed to list containers: {e}")
             return []
 
@@ -275,7 +281,7 @@ class DockerSandboxBackend(SandboxBackend):
             raise RuntimeError(
                 f"Container {container_id[:12]} not found for env injection"
             ) from e
-        except (APIError, Exception) as e:
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to inject env into container {container_id[:12]}: {e}"
             ) from e

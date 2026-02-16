@@ -605,7 +605,7 @@ This overlay follows the same pattern as `docker-compose-observability.yml` -- g
 
 ```yaml
 # docker-compose-sandbox.yml
-# Sandbox infrastructure: MCP Gateway + OTEL Collector
+# Sandbox infrastructure: MCP Gateway
 # Gated by ENABLE_SANDBOX=true in .env (via --profile sandbox)
 # Sandbox containers themselves are NOT in this file -- they are
 # created dynamically by the API service via Docker SDK.
@@ -613,7 +613,7 @@ This overlay follows the same pattern as `docker-compose-observability.yml` -- g
 networks:
   sandbox:
     driver: bridge
-    # Sandbox containers can reach NATS, MCP, OTEL, and the internet.
+    # Sandbox containers can reach NATS, MCP, and the internet.
     # They CANNOT reach backend-only services (postgres, qdrant, minio, redis, embedder).
 
 services:
@@ -649,9 +649,6 @@ services:
       - MCP_GATEWAY_HOST=0.0.0.0
       - MCP_GATEWAY_PORT=8100
       - MCP_GATEWAY_LOG_LEVEL=${MCP_GATEWAY_LOG_LEVEL:-INFO}
-      # OTEL (optional)
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_COLLECTOR_ENDPOINT:-http://otel-collector:4317}
-      - OTEL_SERVICE_NAME=echomind-mcp-gateway
     volumes:
       - ${CONFIG_PATH}/agents/skills:/app/skills:ro
     healthcheck:
@@ -677,41 +674,6 @@ services:
         condition: service_healthy
       migration:
         condition: service_completed_successfully
-    restart: unless-stopped
-    networks:
-      - backend
-      - sandbox
-    labels:
-      - "traefik.enable=false"
-
-  # ============================================
-  # OTEL Collector - Telemetry Aggregator
-  # ============================================
-  # Receives OTLP from ephemeral sandbox containers and fans out to
-  # Langfuse (traces) and Prometheus (metrics). Required because
-  # ephemeral containers may be destroyed before flushing telemetry.
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.120.0
-    container_name: observability-otel-collector
-    hostname: otel-collector
-    profiles: ["sandbox"]
-    volumes:
-      - ${CONFIG_PATH}/observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
-    command: ["--config=/etc/otelcol-contrib/config.yaml"]
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
-      interval: 15s
-      timeout: 5s
-      start_period: 10s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
     restart: unless-stopped
     networks:
       - backend
@@ -745,7 +707,6 @@ services:
       - API_SANDBOX_NATS_NETWORK=${COMPOSE_PROJECT_NAME:-deployment}_backend
       - API_SANDBOX_MCP_URL=http://mcp-gateway:8100
       - API_SANDBOX_NATS_URL=nats://nats:4222
-      - API_SANDBOX_OTEL_ENDPOINT=http://otel-collector:4317
       - API_SANDBOX_POOL_SIZE=${SANDBOX_POOL_SIZE:-3}
       - API_SANDBOX_MAX_CONTAINERS=${SANDBOX_MAX_CONTAINERS:-10}
       - API_SANDBOX_CPU_LIMIT=${SANDBOX_CPU_LIMIT:-2.0}
@@ -759,7 +720,7 @@ networks:
 ```
 
 **Key design decisions:**
-- MCP gateway and OTEL Collector are Docker Compose services (managed by compose, always running when sandbox is enabled).
+- MCP gateway is a Docker Compose service (managed by compose, always running when sandbox is enabled).
 - Sandbox containers are NOT compose services. They are created/destroyed dynamically by the API service using the Docker SDK for Python (`docker` package). This enables per-session isolation and warm pool management.
 - The API service needs Docker socket access (`/var/run/docker.sock`) to manage sandbox containers. This is mounted read-only.
 - The `sandbox` network is a separate Docker bridge network. Sandbox containers are attached to this network plus the `backend` network (for NATS access). They cannot reach postgres, qdrant, minio, or redis directly because those services are only on `backend` -- but the MCP gateway, which IS on both networks, acts as the secure proxy.
@@ -934,20 +895,19 @@ nats consumer ls SANDBOX
 |   postgres, qdrant, minio, nats, redis, api, embedder, orchestrator,|
 |   connector, ingestor, guardian, projector, traefik, authentik-*,    |
 |   adminer, nui, loki, alloy, prometheus, nats-exporter,             |
-|   postgres-exporter, otel-collector, mcp-gateway                     |
+|   postgres-exporter, mcp-gateway                                     |
 +=================================+===================================+
                                   |
                      mcp-gateway + nats bridge
                                   |
 +=================================+===================================+
 |                        SANDBOX network                               |
-|   mcp-gateway, otel-collector, nats*, sandbox-0, sandbox-1, ...     |
+|   mcp-gateway, nats*, sandbox-0, sandbox-1, ...                     |
 +=====================================================================+
 
 * NATS is on the backend network. Sandbox containers reach NATS because
   they are attached to BOTH the sandbox network AND the backend network
-  by the Docker SDK when created. MCP gateway and OTEL collector are
-  also on both networks.
+  by the Docker SDK when created. MCP gateway is also on both networks.
 ```
 
 #### Network Membership Table
@@ -964,7 +924,6 @@ nats consumer ls SANDBOX
 | nats | - | Y | - | Message bus (reachable via backend) |
 | embedder | - | Y | - | ML inference (BLOCKED from sandbox) |
 | mcp-gateway | - | Y | Y | Bridge between sandbox and backend |
-| otel-collector | - | Y | Y | Receives telemetry from sandboxes |
 | sandbox-N | - | Y | Y | Created by Docker SDK, attached to both networks |
 
 #### Why Sandboxes Join Backend Network
@@ -993,7 +952,6 @@ container = client.containers.create(
         "SANDBOX_SESSION_ID": session_id,
         "SANDBOX_NATS_URL": "nats://nats:4222",
         "SANDBOX_MCP_URL": "http://mcp-gateway:8100",
-        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
     },
     # Resource limits
     nano_cpus=int(2.0 * 1e9),       # 2 CPU cores
@@ -1084,7 +1042,6 @@ In `create_directories()`:
 if [ -n "$SANDBOX_PROFILE" ]; then
     mkdir -p "$PROJECT_ROOT/data/sandbox"
     mkdir -p "$PROJECT_ROOT/config/mcp-gateway"
-    mkdir -p "$PROJECT_ROOT/config/observability/otel-collector"
 fi
 ```
 
@@ -1097,7 +1054,7 @@ if echo "$ALL_CONTAINERS" | grep -q "^sandbox-\|^echomind-mcp"; then
     echo -e "${MAGENTA}---${NC}"
     echo -e "${MAGENTA}Sandbox Services${NC}"
     echo -e "${MAGENTA}---${NC}"
-    echo "$ALL_CONTAINERS" | grep "^echomind-mcp\|^observability-otel" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}'
+    echo "$ALL_CONTAINERS" | grep "^echomind-mcp" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}'
     echo ""
     # Dynamic sandbox containers (created by Docker SDK, not compose)
     SANDBOX_CONTAINERS=$(docker ps --filter "name=sandbox-" --format "{{.Names}}\t{{.Status}}" 2>/dev/null)
@@ -1119,12 +1076,11 @@ In `start_cluster()`, after existing URL display blocks:
 if [ -n "$SANDBOX_PROFILE" ]; then
     log_info "Sandbox Services:"
     echo -e "  ${GREEN}MCP Gateway:${NC}     Internal (echomind-mcp-gateway:8100)"
-    echo -e "  ${GREEN}OTEL Collector:${NC}  Internal (otel-collector:4317)"
     echo ""
 fi
 ```
 
-**Note:** No new top-level commands like `sandbox-start` or `sandbox-stop` are needed. Sandbox infrastructure (MCP gateway, OTEL collector) starts/stops with the cluster. Dynamic sandbox containers are managed by the API service's SandboxManager, which creates/destroys them via Docker SDK based on session lifecycle.
+**Note:** No new top-level commands like `sandbox-start` or `sandbox-stop` are needed. Sandbox infrastructure (MCP gateway) starts/stops with the cluster. Dynamic sandbox containers are managed by the API service's SandboxManager, which creates/destroys them via Docker SDK based on session lifecycle.
 
 ---
 
@@ -1138,7 +1094,7 @@ Add the following section to `deployment/docker-cluster/.env.example`:
 # =============================================================================
 # SANDBOX CONFIGURATION
 # =============================================================================
-# Set to true to enable the sandbox infrastructure (MCP gateway, OTEL collector).
+# Set to true to enable the sandbox infrastructure (MCP gateway).
 # When enabled, the API service can create ephemeral sandbox containers.
 ENABLE_SANDBOX=false
 
@@ -1162,9 +1118,6 @@ SANDBOX_IDLE_TIMEOUT=300
 MCP_GATEWAY_VERSION=0.1.0-beta.1
 MCP_GATEWAY_LOG_LEVEL=INFO
 
-# --- OTEL Collector Settings ---
-# Endpoint where sandbox containers send telemetry
-OTEL_COLLECTOR_ENDPOINT=http://otel-collector:4317
 ```
 
 #### Variable Reference Table
@@ -1181,7 +1134,6 @@ OTEL_COLLECTOR_ENDPOINT=http://otel-collector:4317
 | `SANDBOX_IDLE_TIMEOUT` | API | `300` | Seconds before idle destroy |
 | `MCP_GATEWAY_VERSION` | compose | `0.1.0-beta.1` | MCP gateway image tag |
 | `MCP_GATEWAY_LOG_LEVEL` | mcp-gateway | `INFO` | Log verbosity |
-| `OTEL_COLLECTOR_ENDPOINT` | sandbox env | `http://otel-collector:4317` | OTLP receiver endpoint |
 
 ---
 
@@ -1265,9 +1217,6 @@ pydantic==2.10.4
 pydantic-settings==2.7.1
 uvicorn==0.34.0
 httpx==0.28.1
-opentelemetry-api==1.29.0
-opentelemetry-sdk==1.29.0
-opentelemetry-exporter-otlp==1.29.0
 ```
 
 ---
@@ -1378,11 +1327,6 @@ nats-py[nkeys]==2.10.0
 # HTTP server (health check)
 uvicorn==0.34.0
 fastapi==0.115.6
-
-# OpenTelemetry (traces shipped to OTEL Collector)
-opentelemetry-api==1.29.0
-opentelemetry-sdk==1.29.0
-opentelemetry-exporter-otlp==1.29.0
 
 # Utilities
 pydantic==2.10.4
@@ -1573,11 +1517,10 @@ The order follows dependency chains: config files first, then compose files, the
 | # | File | Action | Purpose | Depends On |
 |---|------|--------|---------|------------|
 | 1 | `config/mcp-gateway/mcp-gateway.env` | CREATE | Default env vars for MCP gateway service | - |
-| 2 | `config/observability/otel-collector/config.yaml` | CREATE | OTEL Collector receiver/exporter config | - |
 | 3 | `config/agents/skills/` | CREATE (dir) | Skills directory (SKILL.md files go here) | - |
 | 4 | `deployment/docker-cluster/docker-compose-sandbox.yml` | CREATE | Sandbox overlay compose file | #1, #2 |
 | 5 | `deployment/docker-cluster/docker-compose-sandbox-host.yml` | CREATE | Production overrides for sandbox | #4 |
-| 6 | `deployment/docker-cluster/.env.example` | MODIFY | Add SANDBOX/MCP/OTEL variables | - |
+| 6 | `deployment/docker-cluster/.env.example` | MODIFY | Add SANDBOX/MCP variables | - |
 | 7 | `deployment/docker-cluster/cluster.sh` | MODIFY | Add sandbox stack detection + compose flags | #4, #5 |
 
 **Phase 4B: Dockerfiles and Dependencies**
@@ -1865,78 +1808,15 @@ def test_sandbox_container_has_resource_limits():
 
 ---
 
-### 12k. OTEL Collector Configuration
-
-File: `config/observability/otel-collector/config.yaml`
-
-```yaml
-# OpenTelemetry Collector configuration for EchoMind sandbox telemetry.
-# Receives OTLP from ephemeral sandbox containers and fans out to
-# Langfuse (traces via OTLP/HTTP) and Prometheus (metrics via scrape).
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
-
-processors:
-  batch:
-    timeout: 5s
-    send_batch_size: 512
-    send_batch_max_size: 1024
-  memory_limiter:
-    check_interval: 5s
-    limit_mib: 400
-    spike_limit_mib: 100
-
-exporters:
-  # Prometheus metrics endpoint (scraped by existing Prometheus)
-  prometheus:
-    endpoint: 0.0.0.0:8889
-    namespace: echomind_sandbox
-  # OTLP/HTTP to Langfuse (when available)
-  otlphttp/langfuse:
-    endpoint: ${LANGFUSE_OTLP_ENDPOINT:-http://langfuse-web:3000/api/public/otel}
-    headers:
-      Authorization: "Basic ${LANGFUSE_OTLP_AUTH:-}"
-  # Debug logging (development only)
-  debug:
-    verbosity: basic
-
-extensions:
-  health_check:
-    endpoint: 0.0.0.0:13133
-
-service:
-  extensions: [health_check]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [otlphttp/langfuse]
-    metrics:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [prometheus]
-```
-
-[Source: OpenTelemetry Collector Configuration -- https://opentelemetry.io/docs/collector/configuration/ -- 2025]
-[Source: Install the Collector with Docker -- https://opentelemetry.io/docs/collector/install/docker/ -- 2025]
-
----
-
-### 12l. Evaluation Scorecard
+### 12k. Evaluation Scorecard
 
 | Criterion | Score (1-10) | Rationale |
 |-----------|:---:|-----------|
 | **Follows existing patterns** | 9 | Compose overlay, profile gating, `.env` variables, multi-stage Dockerfile, Alembic migration -- all match established EchoMind conventions exactly. |
 | **Security isolation** | 7 | Non-root user, capability drop, read-only FS, resource limits. Network-level isolation is partial (sandbox joins backend for NATS access). Full iptables enforcement deferred to Phase 8. |
-| **Operational simplicity** | 8 | Single `ENABLE_SANDBOX=true` toggle. MCP and OTEL managed by compose. Dynamic sandboxes managed by API. No new top-level commands needed. |
+| **Operational simplicity** | 8 | Single `ENABLE_SANDBOX=true` toggle. MCP managed by compose. Dynamic sandboxes managed by API. No new top-level commands needed. |
 | **Scalability** | 8 | Warm pool with configurable size. Per-container resource limits. NATS memory stream with bounded retention. Tested up to 10 concurrent sandboxes on demo server specs. |
-| **Observability** | 8 | OTEL Collector bridges ephemeral container gap. Traces to Langfuse, metrics to Prometheus. Audit trail in both NATS (SANDBOX_AUDIT stream) and PostgreSQL (sandbox_events table). |
+| **Observability** | 8 | Direct Langfuse SDK for traces, Prometheus for metrics. Audit trail in both NATS (SANDBOX_AUDIT stream) and PostgreSQL (sandbox_events table). |
 | **Implementation completeness** | 9 | Every file listed with purpose, content, and verification steps. Copy-pasteable YAML, Dockerfiles, migration SQL, and test code. |
 | **Reversibility** | 9 | All changes are additive. Setting `ENABLE_SANDBOX=false` disables the entire sandbox stack. Migration has clean downgrade. No existing services modified (except cluster.sh and API gaining optional sandbox manager). |
 
@@ -1955,7 +1835,4 @@ service:
 - [NATS JetStream Streams -- NATS Docs -- 2025](https://docs.nats.io/nats-concepts/jetstream/streams)
 - [NATS JetStream Consumers -- NATS Docs -- 2025](https://docs.nats.io/nats-concepts/jetstream/consumers)
 - [NATS JetStream Model Deep Dive -- NATS Docs -- 2025](https://docs.nats.io/using-nats/developer/develop_jetstream/model_deep_dive)
-- [OpenTelemetry Collector Configuration -- OTEL Docs -- 2025](https://opentelemetry.io/docs/collector/configuration/)
-- [Install the Collector with Docker -- OTEL Docs -- 2025](https://opentelemetry.io/docs/collector/install/docker/)
-- [Collector Configuration Best Practices -- OTEL Docs -- 2025](https://opentelemetry.io/docs/security/config-best-practices/)
 - [Docker Compose Container Resource Limits -- OneUptime -- 2026](https://oneuptime.com/blog/post/2026-01-30-docker-container-resource-limits/view)

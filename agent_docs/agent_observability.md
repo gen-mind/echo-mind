@@ -2,13 +2,7 @@
 
 End-to-end observability for EchoMind's sandboxed agent system covering ephemeral Docker containers, MCP server mediation, and the full request lifecycle.
 
-> **Decision (2026-02-16): No OTEL Collector for now.**
->
-> Use **direct Langfuse SDK** (`langfuse_helper.py`) + **direct Prometheus** (`prometheus_client`) for all agent and MCP gateway observability. This matches the existing codebase pattern used by API, Ingestor, and Connector services.
->
-> **Rationale:** The OTEL Collector is only needed when ephemeral sandbox containers cannot guarantee SDK flush before termination. For in-process agents (current architecture), direct SDK is simpler and sufficient.
->
-> **The OTEL Collector design in section 3.1+ remains valid** as a future reference for when sandbox containers are implemented. All OTEL-specific code (telemetry.py, metrics.py, middleware) should be deferred until then.
+> **Decision (2026-02-16):** Use **direct Langfuse SDK** (`langfuse_helper.py`) + **direct Prometheus** (`prometheus_client`) for all agent and MCP gateway observability. This matches the existing codebase pattern used by API, Ingestor, and Connector services.
 
 ---
 
@@ -33,7 +27,7 @@ All gated behind `--profile observability` (`ENABLE_OBSERVABILITY=true`).
 
 | Component | Image | Role |
 |-----------|-------|------|
-| langfuse-web | `langfuse/langfuse:3` | UI + API + OTLP endpoint |
+| langfuse-web | `langfuse/langfuse:3` | UI + API |
 | langfuse-worker | `langfuse/langfuse-worker:3` | Async event processing |
 | langfuse-clickhouse | `clickhouse/clickhouse-server:24.12` | OLAP trace storage |
 
@@ -44,7 +38,7 @@ Gated behind `--profile langfuse` (`ENABLE_LANGFUSE=true`).
 - Public key env: `LANGFUSE_PUBLIC_KEY` (default: `pk-echomind-dev`)
 - Secret key env: `LANGFUSE_SECRET_KEY` (default: `sk-echomind-dev`)
 - Internal URL: `http://langfuse-web:3000`
-- OTLP endpoint: `http://langfuse-web:3000/api/public/otel/v1/traces`
+- Trace endpoint: `http://langfuse-web:3000/api/public/traces`
 - S3 event upload via shared MinIO (bucket: `langfuse`)
 
 ### 1.3 Current Langfuse Integration
@@ -79,7 +73,7 @@ Prometheus metrics already exposed at `/metrics`:
 
 **File: `config/observability/prometheus/prometheus.yml`**
 
-Key observation: `--web.enable-otlp-receiver` is already enabled on Prometheus, meaning it can accept OTLP metrics directly. Currently scraping:
+Currently scraping:
 - Infrastructure: traefik, nats, qdrant, minio, loki, alloy, cadvisor, node-exporter, postgres
 - EchoMind: `echomind-api` at `api:8000/metrics` (10s interval)
 - Embedder scrape is commented out (placeholder)
@@ -149,22 +143,22 @@ Agent sandboxes are ephemeral Docker containers that:
 
 ## 3. Instrumentation Plan
 
-### 3.1 OpenTelemetry Collector (DEFERRED — Future Feature)
+### 3.1 Telemetry Collection (DEFERRED — Future Feature)
 
 > **Status: DEFERRED (2026-02-16).** The design below is preserved as reference for when ephemeral sandbox containers are implemented. For now, use direct Langfuse SDK + Prometheus (see decision note at top of document).
 
-Deploy an OTEL Collector as a shared sidecar/service that receives telemetry from ephemeral containers and forwards to Langfuse + Prometheus.
+Deploy a telemetry collector as a shared sidecar/service that receives telemetry from ephemeral containers and forwards to Langfuse + Prometheus.
 
 **Docker Compose addition (`docker-compose-observability.yml`):**
 
 ```yaml
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.118.0
-    container_name: observability-otel-collector
+  telemetry-collector:
+    image: telemetry/observability-collector-contrib:0.118.0
+    container_name: observability-telemetry-collector
     profiles: ["observability"]
     volumes:
-      - ${CONFIG_PATH}/observability/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
-    command: ["--config=/etc/otelcol/config.yaml"]
+      - ${CONFIG_PATH}/observability/telemetry-collector/config.yaml:/etc/telemetrycol/config.yaml:ro
+    command: ["--config=/etc/telemetrycol/config.yaml"]
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
       interval: 15s
@@ -175,11 +169,11 @@ Deploy an OTEL Collector as a shared sidecar/service that receives telemetry fro
       - backend
 ```
 
-**Collector config (`config/observability/otel-collector/config.yaml`):**
+**Collector config (`config/observability/telemetry-collector/config.yaml`):**
 
 ```yaml
 receivers:
-  otlp:
+  trace:
     protocols:
       http:
         endpoint: 0.0.0.0:4318
@@ -200,16 +194,16 @@ processors:
         action: upsert
 
 exporters:
-  # Traces -> Langfuse OTLP endpoint
-  otlphttp/langfuse:
-    endpoint: http://langfuse-web:3000/api/public/otel
+  # Traces -> Langfuse trace endpoint
+  tracehttp/langfuse:
+    endpoint: http://langfuse-web:3000/api/public/telemetry
     headers:
-      Authorization: "Basic ${LANGFUSE_OTEL_AUTH}"
+      Authorization: "Basic ${LANGFUSE_Telemetry_AUTH}"
     compression: gzip
 
-  # Metrics -> Prometheus OTLP receiver
-  otlphttp/prometheus:
-    endpoint: http://prometheus:9090/api/v1/otlp
+  # Metrics -> Prometheus trace receiver
+  tracehttp/prometheus:
+    endpoint: http://prometheus:9090/api/v1/trace
     tls:
       insecure: true
 
@@ -225,33 +219,33 @@ service:
   extensions: [health_check]
   pipelines:
     traces:
-      receivers: [otlp]
+      receivers: [trace]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp/langfuse]
+      exporters: [tracehttp/langfuse]
     metrics:
-      receivers: [otlp]
+      receivers: [trace]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp/prometheus]
+      exporters: [tracehttp/prometheus]
 ```
 
-### 3.2 Why OTEL Collector (Not Direct Export)
+### 3.2 Why Telemetry Collector (Not Direct Export)
 
 1. **Ephemeral containers** cannot guarantee flush before termination; the collector acts as a reliable buffer
-2. **Fan-out**: Single OTLP intake, multiple backends (Langfuse for traces, Prometheus for metrics)
+2. **Fan-out**: Single trace intake, multiple backends (Langfuse for traces, Prometheus for metrics)
 3. **Enrichment**: Resource processor adds `service.namespace=echomind` uniformly
 4. **Decoupling**: Agent code exports to one endpoint; backend routing is config-only
 5. **Batching**: Reduces network calls from ephemeral containers
 
 ### 3.3 Prometheus Scrape Addition
 
-Add OTEL Collector self-monitoring to `prometheus.yml`:
+Add Telemetry Collector self-monitoring to `prometheus.yml`:
 
 ```yaml
-  - job_name: "otel-collector"
+  - job_name: "telemetry-collector"
     static_configs:
-      - targets: ["otel-collector:8888"]
+      - targets: ["telemetry-collector:8888"]
         labels:
-          service: "otel-collector"
+          service: "telemetry-collector"
 ```
 
 ---
@@ -274,7 +268,7 @@ Add OTEL Collector self-monitoring to `prometheus.yml`:
 [MCP Server] -- receives trace context via tool call metadata
     | Creates child spans under same trace_id
     v
-[OTEL Collector] -- receives all spans, forwards to Langfuse
+[Telemetry Collector] -- receives all spans, forwards to Langfuse
 ```
 
 ### 4.2 Context Propagation Mechanism
@@ -287,8 +281,8 @@ When the API spawns the agent container:
 
 ```python
 # In API service (container spawner)
-from opentelemetry import trace
-from opentelemetry.context import get_current
+from observability import trace
+from observability.context import get_current
 
 span = trace.get_current_span()
 ctx = span.get_span_context()
@@ -297,8 +291,8 @@ traceparent = f"00-{format(ctx.trace_id, '032x')}-{format(ctx.span_id, '016x')}-
 # Pass to Docker container as env var
 container_env = {
     "TRACEPARENT": traceparent,
-    "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4318",
-    "OTEL_SERVICE_NAME": "echomind-agent-sandbox",
+    "Telemetry_EXPORTER_trace_ENDPOINT": "http://telemetry-collector:4318",
+    "Telemetry_SERVICE_NAME": "echomind-agent-sandbox",
     "AGENT_RUN_ID": run_id,
     "AGENT_USER_ID": user_id,
     "AGENT_SESSION_ID": session_id,
@@ -319,14 +313,14 @@ await nc.publish(subject, payload, headers=headers)
 ```python
 # In agent sandbox entry point
 import os
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from observability import trace
+from observability.sdk.trace import TracerProvider
+from observability.sdk.trace.export import BatchSpanProcessor
+from observability.exporter.trace.proto.http.trace_exporter import traceSpanExporter
+from observability.trace.propagation import TraceContextTextMapPropagator
 
 def init_agent_telemetry() -> trace.Tracer:
-    """Initialize OTEL tracing in agent sandbox with parent context."""
+    """Initialize Telemetry tracing in agent sandbox with parent context."""
     provider = TracerProvider(
         resource=Resource.create({
             "service.name": "echomind-agent-sandbox",
@@ -336,8 +330,8 @@ def init_agent_telemetry() -> trace.Tracer:
         })
     )
 
-    exporter = OTLPSpanExporter(
-        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318") + "/v1/traces",
+    exporter = traceSpanExporter(
+        endpoint=os.getenv("Telemetry_EXPORTER_trace_ENDPOINT", "http://telemetry-collector:4318") + "/v1/traces",
     )
     provider.add_span_processor(BatchSpanProcessor(
         exporter,
@@ -377,7 +371,7 @@ This MUST be called in a `finally` block or `atexit` handler.
 
 ### 5.1 Span Hierarchy (Per Agent Run)
 
-Following OpenTelemetry GenAI Semantic Conventions:
+Following Observability GenAI Semantic Conventions:
 
 ```
 invoke_agent {agent_name}                    [gen_ai.operation.name=invoke_agent]
@@ -465,7 +459,7 @@ The agent framework already uses middleware for tool policy and path restriction
 # src/agent/observability/middleware.py
 
 class ObservabilityMiddleware(ChatMiddleware):
-    """Records OTEL spans for each LLM call in the agent loop."""
+    """Records Telemetry spans for each LLM call in the agent loop."""
 
     def __init__(self, tracer: trace.Tracer) -> None:
         self.tracer = tracer
@@ -492,7 +486,7 @@ class ObservabilityMiddleware(ChatMiddleware):
 
 
 class ToolObservabilityMiddleware(FunctionMiddleware):
-    """Records OTEL spans for each tool invocation."""
+    """Records Telemetry spans for each tool invocation."""
 
     def __init__(self, tracer: trace.Tracer) -> None:
         self.tracer = tracer
@@ -530,7 +524,7 @@ class ToolObservabilityMiddleware(FunctionMiddleware):
 
 ### 5.4 Langfuse Attribute Mapping
 
-Using the OTEL-to-Langfuse attribute mapping, set these on the root span:
+Using the Telemetry-to-Langfuse attribute mapping, set these on the root span:
 
 ```python
 root_span.set_attribute("langfuse.trace.name", f"agent-run:{agent_config.id}")
@@ -539,7 +533,7 @@ root_span.set_attribute("langfuse.session.id", session_id)
 root_span.set_attribute("langfuse.trace.tags", json.dumps(["agent", agent_config.id]))
 ```
 
-This ensures Langfuse correctly maps the OTEL trace to its data model with proper user/session correlation.
+This ensures Langfuse correctly maps the Telemetry trace to its data model with proper user/session correlation.
 
 ---
 
@@ -559,7 +553,7 @@ async def traced_mcp_call(
     arguments: dict,
     tracer: trace.Tracer,
 ) -> Any:
-    """Execute MCP tool call with OTEL tracing."""
+    """Execute MCP tool call with Telemetry tracing."""
     with tracer.start_as_current_span(
         f"mcp_call {server_name}/{tool_name}",
         attributes={
@@ -587,15 +581,15 @@ async def traced_mcp_call(
 
 ### 6.2 MCP Audit Log
 
-Every MCP tool call generates a structured audit log entry written to the agent's JSONL session file and also emitted as an OTEL event:
+Every MCP tool call generates a structured audit log entry written to the agent's JSONL session file and also emitted as an Telemetry event:
 
 ```python
 @dataclass
 class MCPAuditEntry:
     """Audit log entry for MCP tool calls."""
     timestamp: str          # ISO 8601
-    trace_id: str           # OTEL trace ID
-    span_id: str            # OTEL span ID
+    trace_id: str           # Telemetry trace ID
+    span_id: str            # Telemetry span ID
     user_id: str            # Requesting user
     agent_id: str           # Agent that made the call
     mcp_server: str         # MCP server name
@@ -606,7 +600,7 @@ class MCPAuditEntry:
     error_message: str | None
 ```
 
-Emit as OTEL event on the MCP span:
+Emit as Telemetry event on the MCP span:
 
 ```python
 span.add_event(
@@ -734,11 +728,11 @@ Langfuse will display cost per trace, per user, per session in its UI.
 | Path | Source | Target | Protocol |
 |------|--------|--------|----------|
 | RAG Chat (existing) | API service | Langfuse directly | Langfuse Python SDK |
-| Agent Runs (new) | Agent sandbox | OTEL Collector -> Langfuse | OTLP/HTTP |
+| Agent Runs (new) | Agent sandbox | Telemetry Collector -> Langfuse | trace/HTTP |
 
-The RAG chat path continues using the existing `langfuse_helper.py` SDK integration. Agent runs use OTEL because:
+The RAG chat path continues using the existing `langfuse_helper.py` SDK integration. Agent runs use Telemetry because:
 - Ephemeral containers benefit from the collector's buffering
-- OTEL provides vendor-neutral instrumentation
+- Telemetry provides vendor-neutral instrumentation
 - The collector handles auth (base64 key encoding) centrally
 
 ### 8.2 Langfuse Trace Structure for Agent Runs
@@ -771,9 +765,9 @@ Trace: "agent-run:coder" (user_id, session_id, tags=["agent", "coder"])
   Score: "tool_calls" = 3
 ```
 
-### 8.3 OTEL-to-Langfuse Mapping Rules
+### 8.3 Telemetry-to-Langfuse Mapping Rules
 
-| OTEL Attribute | Langfuse Field |
+| Telemetry Attribute | Langfuse Field |
 |----------------|---------------|
 | `langfuse.trace.name` | Trace name |
 | `langfuse.user.id` | User ID |
@@ -785,21 +779,21 @@ Trace: "agent-run:coder" (user_id, session_id, tags=["agent", "coder"])
 | Span with `model` attribute | Becomes "generation" observation |
 | Span without `model` attribute | Becomes "span" observation |
 
-### 8.4 OTEL Collector Auth Configuration
+### 8.4 Telemetry Collector Auth Configuration
 
 The collector needs the Langfuse API keys encoded as Basic Auth:
 
 ```bash
 # In .env
-LANGFUSE_OTEL_AUTH=$(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64)
+LANGFUSE_Telemetry_AUTH=$(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64)
 ```
 
 Pass to collector via environment:
 
 ```yaml
-  otel-collector:
+  telemetry-collector:
     environment:
-      - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH}
+      - LANGFUSE_Telemetry_AUTH=${LANGFUSE_Telemetry_AUTH}
 ```
 
 ---
@@ -825,7 +819,7 @@ Every agent run carries these correlation IDs across all boundaries:
 
 | ID | Source | Propagated Via |
 |----|--------|---------------|
-| `trace_id` | OTEL (W3C Trace Context) | `TRACEPARENT` env var |
+| `trace_id` | Telemetry (W3C Trace Context) | `TRACEPARENT` env var |
 | `agent_run_id` | API generates UUID | Container env var |
 | `user_id` | JWT token claim | Container env var |
 | `session_id` | Chat session or routing key | Container env var |
@@ -839,7 +833,7 @@ Alloy already collects Docker container logs. Add trace context to log messages:
 import logging
 
 class TraceContextFilter(logging.Filter):
-    """Inject OTEL trace/span IDs into log records."""
+    """Inject Telemetry trace/span IDs into log records."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         span = trace.get_current_span()
@@ -1002,9 +996,9 @@ echomind_agent_session_messages = Histogram(
 
 For **ephemeral agent containers**, metrics cannot be scraped by Prometheus. Instead:
 
-1. Use OTEL SDK's `PeriodicExportingMetricReader` to push metrics via OTLP
-2. OTEL Collector receives and forwards to Prometheus via `otlphttp/prometheus` exporter
-3. Prometheus ingests via its OTLP receiver (`--web.enable-otlp-receiver`, already enabled)
+1. Use Telemetry SDK's `PeriodicExportingMetricReader` to push metrics via trace
+2. Telemetry Collector receives and forwards to Prometheus via `tracehttp/prometheus` exporter
+3. Prometheus ingests via its trace receiver (`--web.enable-trace-receiver`, already enabled)
 
 For **long-lived services** (API, MCP servers), continue using `prometheus_client` library with pull-based `/metrics` endpoint.
 
@@ -1012,22 +1006,22 @@ For **long-lived services** (API, MCP servers), continue using `prometheus_clien
 
 ## 12. Implementation Phases
 
-### Phase 1: OTEL Collector + Basic Agent Tracing
+### Phase 1: Telemetry Collector + Basic Agent Tracing
 
-1. Deploy OTEL Collector in `docker-compose-observability.yml`
-2. Add `config/observability/otel-collector/config.yaml`
+1. Deploy Telemetry Collector in `docker-compose-observability.yml`
+2. Add `config/observability/telemetry-collector/config.yaml`
 3. Create `src/agent/observability/__init__.py` with `init_agent_telemetry()`
 4. Add `ObservabilityMiddleware` (ChatMiddleware) for LLM call spans
 5. Add `ToolObservabilityMiddleware` (FunctionMiddleware) for tool call spans
 6. Wire into `BasicAgentWrapper.__init__()` middleware chain
-7. Pass `TRACEPARENT` + `OTEL_EXPORTER_OTLP_ENDPOINT` to sandbox containers
+7. Pass `TRACEPARENT` + `Telemetry_EXPORTER_trace_ENDPOINT` to sandbox containers
 8. Verify traces appear in Langfuse
 
 ### Phase 2: MCP Observability + Audit Log
 
 1. Add MCP call tracing wrapper in `MCPManager`
 2. Add MCP audit log entries to session JSONL
-3. Add MCP Prometheus metrics (via OTLP push)
+3. Add MCP Prometheus metrics (via trace push)
 4. Create `mcp-servers.json` Grafana dashboard
 
 ### Phase 3: Cost Tracking + Per-User Aggregation
@@ -1092,25 +1086,25 @@ groups:
 ### Agent Sandbox Container
 
 ```
-opentelemetry-api==1.39.1
-opentelemetry-sdk==1.39.1
-opentelemetry-exporter-otlp-proto-http==1.39.1
-opentelemetry-semantic-conventions==0.50b0
+observability-api==1.39.1
+observability-sdk==1.39.1
+observability-exporter-trace-proto-http==1.39.1
+observability-semantic-conventions==0.50b0
 ```
 
 ### MCP Gateway
 
 ```
-opentelemetry-api==1.39.1
-opentelemetry-sdk==1.39.1
+observability-api==1.39.1
+observability-sdk==1.39.1
 prometheus-client==0.21.1
 ```
 
 ### API Service (Optional Enhancement)
 
 ```
-opentelemetry-api==1.39.1
-opentelemetry-sdk==1.39.1
+observability-api==1.39.1
+observability-sdk==1.39.1
 ```
 
 No changes needed to the existing `langfuse` SDK dependency or `prometheus-client` in the API service.
@@ -1119,17 +1113,17 @@ No changes needed to the existing `langfuse` SDK dependency or `prometheus-clien
 
 ## 14. Environment Variables
 
-### OTEL Collector
+### Telemetry Collector
 
 ```bash
-LANGFUSE_OTEL_AUTH=<base64 of pk:sk>
+LANGFUSE_Telemetry_AUTH=<base64 of pk:sk>
 ```
 
 ### Agent Sandbox Containers
 
 ```bash
-OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
-OTEL_SERVICE_NAME=echomind-agent-sandbox
+Telemetry_EXPORTER_trace_ENDPOINT=http://telemetry-collector:4318
+Telemetry_SERVICE_NAME=echomind-agent-sandbox
 TRACEPARENT=00-{trace_id}-{parent_span_id}-01
 AGENT_RUN_ID=<uuid>
 AGENT_USER_ID=<user_id>
@@ -1144,22 +1138,22 @@ This section provides a file-by-file implementation plan with complete configura
 
 ---
 
-### 15.1 OTEL Collector Service — Complete Implementation
+### 15.1 Telemetry Collector Service — Complete Implementation
 
-#### 15.1.1 Config File: `config/observability/otel-collector/config.yaml`
+#### 15.1.1 Config File: `config/observability/telemetry-collector/config.yaml`
 
-This is the complete, production-ready OTEL Collector configuration. It receives telemetry from ephemeral agent sandbox containers via OTLP (both gRPC and HTTP), processes it through batching and memory limiting, and fans out to Langfuse (traces) and Prometheus (metrics).
+This is the complete, production-ready Telemetry Collector configuration. It receives telemetry from ephemeral agent sandbox containers via trace (both gRPC and HTTP), processes it through batching and memory limiting, and fans out to Langfuse (traces) and Prometheus (metrics).
 
 ```yaml
 # ============================================
-# OpenTelemetry Collector Configuration
+# Observability Collector Configuration
 # EchoMind Agent Observability
 # ============================================
 # Receives telemetry from ephemeral agent sandbox containers
 # and fans out to Langfuse (traces) and Prometheus (metrics).
 
 receivers:
-  otlp:
+  trace:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
@@ -1205,13 +1199,13 @@ processors:
         - 'attributes["http.target"] == "/health"'
 
 exporters:
-  # Traces -> Langfuse OTLP endpoint
-  # Langfuse v3 accepts OTLP traces at /api/public/otel/v1/traces
+  # Traces -> Langfuse trace endpoint
+  # Langfuse v3 accepts trace traces at /api/public/telemetry/v1/traces
   # Auth: Basic base64(public_key:secret_key)
-  otlphttp/langfuse:
-    endpoint: http://langfuse-web:3000/api/public/otel
+  tracehttp/langfuse:
+    endpoint: http://langfuse-web:3000/api/public/telemetry
     headers:
-      Authorization: "Basic ${env:LANGFUSE_OTEL_AUTH}"
+      Authorization: "Basic ${env:LANGFUSE_Telemetry_AUTH}"
     compression: gzip
     retry_on_failure:
       enabled: true
@@ -1223,14 +1217,14 @@ exporters:
       num_consumers: 4
       queue_size: 256
 
-  # Metrics -> Prometheus OTLP receiver
-  # Prometheus v3.5.1 has --web.enable-otlp-receiver enabled
-  otlphttp/prometheus:
-    endpoint: http://prometheus:9090/api/v1/otlp
+  # Metrics -> Prometheus trace receiver
+  # Prometheus v3.5.1 has --web.enable-trace-receiver enabled
+  tracehttp/prometheus:
+    endpoint: http://prometheus:9090/api/v1/trace
     tls:
       insecure: true
 
-  # Debug exporter for development (set OTEL_DEBUG=true)
+  # Debug exporter for development (set Telemetry_DEBUG=true)
   debug:
     verbosity: basic
     sampling_initial: 5
@@ -1255,21 +1249,21 @@ service:
 
   pipelines:
     traces:
-      receivers: [otlp]
+      receivers: [trace]
       processors: [memory_limiter, filter/health, resource, resource/environment, batch]
-      exporters: [otlphttp/langfuse]
+      exporters: [tracehttp/langfuse]
 
     metrics:
-      receivers: [otlp]
+      receivers: [trace]
       processors: [memory_limiter, resource, resource/environment, batch]
-      exporters: [otlphttp/prometheus]
+      exporters: [tracehttp/prometheus]
 ```
 
 **Key design decisions:**
-- `memory_limiter` is first in the processor chain to prevent OOM during traffic spikes (e.g., 8 concurrent sandboxes flushing at shutdown) [Source: OpenTelemetry Collector Configuration Best Practices -- Feb 2026](https://opentelemetry.io/docs/security/config-best-practices/)
+- `memory_limiter` is first in the processor chain to prevent OOM during traffic spikes (e.g., 8 concurrent sandboxes flushing at shutdown) [Source: Observability Collector Configuration Best Practices -- Feb 2026](https://observability.io/docs/security/config-best-practices/)
 - `filter/health` removes health check spans that would pollute Langfuse traces
 - `sending_queue` with 256 entries buffers Langfuse exports during transient failures
-- `zpages` extension provides debugging at `http://otel-collector:55679/tracez`
+- `zpages` extension provides debugging at `http://telemetry-collector:55679/tracez`
 - Self-metrics exposed at `:8888` for Prometheus to scrape the collector itself
 
 #### 15.1.2 Docker Compose Service Definition
@@ -1278,19 +1272,19 @@ Add to `deployment/docker-cluster/docker-compose-observability.yml`, before the 
 
 ```yaml
   # ============================================
-  # OTEL COLLECTOR (Agent Telemetry Gateway)
-  # Receives OTLP from ephemeral sandbox containers,
+  # Telemetry COLLECTOR (Agent Telemetry Gateway)
+  # Receives trace from ephemeral sandbox containers,
   # fans out to Langfuse (traces) + Prometheus (metrics)
   # ============================================
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.118.0
-    container_name: observability-otel-collector
+  telemetry-collector:
+    image: telemetry/observability-collector-contrib:0.118.0
+    container_name: observability-telemetry-collector
     profiles: ["observability"]
     volumes:
-      - ${CONFIG_PATH}/observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
-    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+      - ${CONFIG_PATH}/observability/telemetry-collector/config.yaml:/etc/telemetrycol-contrib/config.yaml:ro
+    command: ["--config=/etc/telemetrycol-contrib/config.yaml"]
     environment:
-      - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
+      - LANGFUSE_Telemetry_AUTH=${LANGFUSE_Telemetry_AUTH:-}
       - DEPLOYMENT_ENVIRONMENT=${DEPLOYMENT_ENVIRONMENT:-development}
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/health"]
@@ -1318,19 +1312,19 @@ Add to `deployment/docker-cluster/docker-compose-observability.yml`, before the 
 - `backend`: Connects to Langfuse (`langfuse-web:3000`) and Prometheus (`prometheus:9090`)
 - `sandbox`: Receives telemetry from ephemeral agent containers
 
-**Note:** The `sandbox` network is defined in `docker-compose-sandbox.yml` (Phase 4 deliverable). During Phase 6 (observability), the OTEL collector is added to both networks.
+**Note:** The `sandbox` network is defined in `docker-compose-sandbox.yml` (Phase 4 deliverable). During Phase 6 (observability), the Telemetry collector is added to both networks.
 
 #### 15.1.3 Prometheus Scrape Addition
 
 Add this job to `config/observability/prometheus/prometheus.yml` under the EchoMind Services section:
 
 ```yaml
-  # --- OTEL Collector self-monitoring ---
-  - job_name: "otel-collector"
+  # --- Telemetry Collector self-monitoring ---
+  - job_name: "telemetry-collector"
     static_configs:
-      - targets: ["otel-collector:8888"]
+      - targets: ["telemetry-collector:8888"]
         labels:
-          service: "otel-collector"
+          service: "telemetry-collector"
 ```
 
 #### 15.1.4 Environment Variable Generation
@@ -1338,17 +1332,17 @@ Add this job to `config/observability/prometheus/prometheus.yml` under the EchoM
 Add to `.env.example` (template) and document in deployment config:
 
 ```bash
-# OTEL Collector — Langfuse auth (base64 of public_key:secret_key)
+# Telemetry Collector — Langfuse auth (base64 of public_key:secret_key)
 # Generate: echo -n "pk-echomind-dev:sk-echomind-dev" | base64
-LANGFUSE_OTEL_AUTH=cGstZWNob21pbmQtZGV2OnNrLWVjaG9taW5kLWRldg==
+LANGFUSE_Telemetry_AUTH=cGstZWNob21pbmQtZGV2OnNrLWVjaG9taW5kLWRldg==
 DEPLOYMENT_ENVIRONMENT=development
 ```
 
-The `LANGFUSE_OTEL_AUTH` value must be regenerated whenever Langfuse API keys change. For production, this should be computed in `cluster.sh` startup:
+The `LANGFUSE_Telemetry_AUTH` value must be regenerated whenever Langfuse API keys change. For production, this should be computed in `cluster.sh` startup:
 
 ```bash
 # In cluster.sh, after loading .env
-export LANGFUSE_OTEL_AUTH=$(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64)
+export LANGFUSE_Telemetry_AUTH=$(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64)
 ```
 
 ---
@@ -1361,11 +1355,11 @@ export LANGFUSE_OTEL_AUTH=$(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KE
 """
 Agent observability package.
 
-Provides OpenTelemetry instrumentation for agent sandbox containers:
+Provides Observability instrumentation for agent sandbox containers:
 - Trace initialization with parent context propagation
 - ChatMiddleware for LLM call spans
 - FunctionMiddleware for tool call spans
-- Metrics collection via OTEL SDK
+- Metrics collection via Telemetry SDK
 - Graceful shutdown with telemetry flush
 """
 
@@ -1385,14 +1379,14 @@ __all__ = [
 
 #### 15.2.2 Module: `src/agent/observability/telemetry.py`
 
-This module handles OTEL trace provider initialization and W3C Trace Context propagation from the parent API service.
+This module handles Telemetry trace provider initialization and W3C Trace Context propagation from the parent API service.
 
 ```python
 """
-OpenTelemetry telemetry initialization for agent sandbox containers.
+Observability telemetry initialization for agent sandbox containers.
 
 Handles:
-- TracerProvider setup with OTLP HTTP exporter
+- TracerProvider setup with trace HTTP exporter
 - W3C Trace Context propagation from TRACEPARENT env var
 - Resource attributes for agent identification
 - Graceful shutdown with telemetry flush
@@ -1409,12 +1403,12 @@ import logging
 import os
 from typing import Any
 
-from opentelemetry import context, trace
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from observability import context, trace
+from observability.sdk.resources import Resource
+from observability.sdk.trace import TracerProvider
+from observability.sdk.trace.export import BatchSpanProcessor
+from observability.exporter.trace.proto.http.trace_exporter import traceSpanExporter
+from observability.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 logger = logging.getLogger(__name__)
 
@@ -1425,11 +1419,11 @@ _parent_context: context.Context | None = None
 
 def init_agent_telemetry() -> tuple[trace.Tracer, context.Context | None]:
     """
-    Initialize OpenTelemetry tracing in an agent sandbox container.
+    Initialize Observability tracing in an agent sandbox container.
 
     Reads configuration from environment variables:
-    - OTEL_EXPORTER_OTLP_ENDPOINT: Collector endpoint (default: http://otel-collector:4318)
-    - OTEL_SERVICE_NAME: Service name (default: echomind-agent-sandbox)
+    - Telemetry_EXPORTER_trace_ENDPOINT: Collector endpoint (default: http://telemetry-collector:4318)
+    - Telemetry_SERVICE_NAME: Service name (default: echomind-agent-sandbox)
     - TRACEPARENT: W3C Trace Context from parent API request
     - AGENT_RUN_ID: Unique identifier for this agent run
     - AGENT_USER_ID: User who initiated the agent run
@@ -1440,14 +1434,14 @@ def init_agent_telemetry() -> tuple[trace.Tracer, context.Context | None]:
         TRACEPARENT was provided.
 
     Raises:
-        RuntimeError: If OTEL SDK packages are not installed.
+        RuntimeError: If Telemetry SDK packages are not installed.
     """
     global _provider, _parent_context
 
     endpoint = os.getenv(
-        "OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318"
+        "Telemetry_EXPORTER_trace_ENDPOINT", "http://telemetry-collector:4318"
     )
-    service_name = os.getenv("OTEL_SERVICE_NAME", "echomind-agent-sandbox")
+    service_name = os.getenv("Telemetry_SERVICE_NAME", "echomind-agent-sandbox")
 
     resource = Resource.create(
         {
@@ -1461,7 +1455,7 @@ def init_agent_telemetry() -> tuple[trace.Tracer, context.Context | None]:
 
     _provider = TracerProvider(resource=resource)
 
-    exporter = OTLPSpanExporter(
+    exporter = traceSpanExporter(
         endpoint=f"{endpoint}/v1/traces",
     )
     _provider.add_span_processor(
@@ -1486,7 +1480,7 @@ def init_agent_telemetry() -> tuple[trace.Tracer, context.Context | None]:
         logger.info("🔗 No parent trace context (standalone agent run)")
 
     tracer = trace.get_tracer("echomind.agent", "0.1.0")
-    logger.info(f"📡 OTEL telemetry initialized (endpoint: {endpoint})")
+    logger.info(f"📡 Telemetry telemetry initialized (endpoint: {endpoint})")
 
     return tracer, _parent_context
 
@@ -1530,9 +1524,9 @@ def shutdown_telemetry() -> None:
     try:
         _provider.force_flush(timeout_millis=10_000)
         _provider.shutdown()
-        logger.info("📡 OTEL telemetry flushed and shut down")
+        logger.info("📡 Telemetry telemetry flushed and shut down")
     except Exception as e:
-        logger.warning(f"⚠️ OTEL shutdown error (spans may be lost): {e}")
+        logger.warning(f"⚠️ Telemetry shutdown error (spans may be lost): {e}")
     finally:
         _provider = None
 ```
@@ -1546,8 +1540,8 @@ Two middleware classes that integrate into the existing `BasicAgentWrapper` midd
 Observability middleware for agent instrumentation.
 
 Provides two middleware classes:
-- ObservabilityMiddleware (ChatMiddleware): Records OTEL spans for each LLM call
-- ToolObservabilityMiddleware (FunctionMiddleware): Records OTEL spans for each tool call
+- ObservabilityMiddleware (ChatMiddleware): Records Telemetry spans for each LLM call
+- ToolObservabilityMiddleware (FunctionMiddleware): Records Telemetry spans for each tool call
 
 These integrate into the agent_framework middleware chain alongside
 ToolPolicyMiddleware and PathRestrictionMiddleware.
@@ -1567,24 +1561,24 @@ from agent_framework import (
     FunctionInvocationContext,
     FunctionMiddleware,
 )
-from opentelemetry import context, trace
-from opentelemetry.trace import StatusCode
+from observability import context, trace
+from observability.trace import StatusCode
 
 logger = logging.getLogger(__name__)
 
 
 class ObservabilityMiddleware(ChatMiddleware):
     """
-    Records OTEL spans for each LLM call in the agent loop.
+    Records Telemetry spans for each LLM call in the agent loop.
 
-    Creates a span following OpenTelemetry GenAI semantic conventions
+    Creates a span following Observability GenAI semantic conventions
     for every chat completion request. Captures model, temperature,
     token usage, and finish reason.
 
     Span name format: "chat {model}" (per GenAI semconv).
 
     Args:
-        tracer: OpenTelemetry tracer instance.
+        tracer: Observability tracer instance.
         parent_context: Optional parent context for trace propagation.
     """
 
@@ -1597,7 +1591,7 @@ class ObservabilityMiddleware(ChatMiddleware):
         Initialize observability middleware.
 
         Args:
-            tracer: OpenTelemetry tracer instance from init_agent_telemetry().
+            tracer: Observability tracer instance from init_agent_telemetry().
             parent_context: Parent context from TRACEPARENT propagation.
         """
         self.tracer = tracer
@@ -1606,7 +1600,7 @@ class ObservabilityMiddleware(ChatMiddleware):
 
     async def process(self, context_: ChatContext, call_next: Any) -> None:
         """
-        Wrap each LLM call with an OTEL span.
+        Wrap each LLM call with an Telemetry span.
 
         Captures:
         - gen_ai.operation.name: "chat"
@@ -1676,16 +1670,16 @@ class ObservabilityMiddleware(ChatMiddleware):
 
 class ToolObservabilityMiddleware(FunctionMiddleware):
     """
-    Records OTEL spans for each tool invocation.
+    Records Telemetry spans for each tool invocation.
 
-    Creates a span following OpenTelemetry GenAI semantic conventions
+    Creates a span following Observability GenAI semantic conventions
     for every tool call. Captures tool name, duration, result size,
     and source (native vs MCP).
 
     Span name format: "execute_tool {tool_name}" (per GenAI semconv).
 
     Args:
-        tracer: OpenTelemetry tracer instance.
+        tracer: Observability tracer instance.
     """
 
     def __init__(self, tracer: trace.Tracer) -> None:
@@ -1693,7 +1687,7 @@ class ToolObservabilityMiddleware(FunctionMiddleware):
         Initialize tool observability middleware.
 
         Args:
-            tracer: OpenTelemetry tracer instance from init_agent_telemetry().
+            tracer: Observability tracer instance from init_agent_telemetry().
         """
         self.tracer = tracer
 
@@ -1703,7 +1697,7 @@ class ToolObservabilityMiddleware(FunctionMiddleware):
         call_next: Callable[[], Awaitable[None]],
     ) -> None:
         """
-        Wrap each tool call with an OTEL span.
+        Wrap each tool call with an Telemetry span.
 
         Captures:
         - gen_ai.operation.name: "execute_tool"
@@ -1766,15 +1760,15 @@ class ToolObservabilityMiddleware(FunctionMiddleware):
 
 #### 15.2.4 Module: `src/agent/observability/metrics.py`
 
-OTEL SDK metrics for push-based export from ephemeral containers.
+Telemetry SDK metrics for push-based export from ephemeral containers.
 
 ```python
 """
-Agent metrics collection via OpenTelemetry SDK.
+Agent metrics collection via Observability SDK.
 
 Ephemeral sandbox containers cannot be scraped by Prometheus, so metrics
-are pushed via OTLP to the OTEL Collector, which forwards them to
-Prometheus via its OTLP receiver.
+are pushed via trace to the Telemetry Collector, which forwards them to
+Prometheus via its trace receiver.
 
 For long-lived services (API, MCP gateway), use prometheus_client with
 pull-based /metrics endpoint instead.
@@ -1785,11 +1779,11 @@ from __future__ import annotations
 import logging
 import os
 
-from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.resources import Resource
+from observability import metrics
+from observability.sdk.metrics import MeterProvider
+from observability.sdk.metrics.export import PeriodicExportingMetricReader
+from observability.exporter.trace.proto.http.metric_exporter import traceMetricExporter
+from observability.sdk.resources import Resource
 
 logger = logging.getLogger(__name__)
 
@@ -1802,7 +1796,7 @@ class AgentMetrics:
     Container for agent observability metrics.
 
     All metrics use the `echomind.agent` meter name and are exported
-    via OTLP to the OTEL Collector.
+    via trace to the Telemetry Collector.
 
     Attributes:
         run_duration: Histogram of agent run durations in seconds.
@@ -1818,7 +1812,7 @@ class AgentMetrics:
         Initialize agent metrics instruments.
 
         Args:
-            meter: OpenTelemetry Meter instance.
+            meter: Observability Meter instance.
         """
         self.run_duration = meter.create_histogram(
             name="echomind.agent.run.duration",
@@ -1859,10 +1853,10 @@ class AgentMetrics:
 
 def init_agent_metrics() -> AgentMetrics:
     """
-    Initialize OTEL metrics with OTLP push exporter.
+    Initialize Telemetry metrics with trace push exporter.
 
-    Reads OTEL_EXPORTER_OTLP_ENDPOINT from environment.
-    Metrics are exported every 10 seconds to the OTEL Collector.
+    Reads Telemetry_EXPORTER_trace_ENDPOINT from environment.
+    Metrics are exported every 10 seconds to the Telemetry Collector.
 
     Returns:
         AgentMetrics instance with all metric instruments.
@@ -1870,10 +1864,10 @@ def init_agent_metrics() -> AgentMetrics:
     global _meter_provider
 
     endpoint = os.getenv(
-        "OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318"
+        "Telemetry_EXPORTER_trace_ENDPOINT", "http://telemetry-collector:4318"
     )
 
-    exporter = OTLPMetricExporter(
+    exporter = traceMetricExporter(
         endpoint=f"{endpoint}/v1/metrics",
     )
     reader = PeriodicExportingMetricReader(
@@ -1883,7 +1877,7 @@ def init_agent_metrics() -> AgentMetrics:
 
     resource = Resource.create(
         {
-            "service.name": os.getenv("OTEL_SERVICE_NAME", "echomind-agent-sandbox"),
+            "service.name": os.getenv("Telemetry_SERVICE_NAME", "echomind-agent-sandbox"),
             "agent.run.id": os.getenv("AGENT_RUN_ID", ""),
         }
     )
@@ -1895,7 +1889,7 @@ def init_agent_metrics() -> AgentMetrics:
     metrics.set_meter_provider(_meter_provider)
 
     meter = metrics.get_meter("echomind.agent", "0.1.0")
-    logger.info("📊 OTEL metrics initialized")
+    logger.info("📊 Telemetry metrics initialized")
 
     return AgentMetrics(meter)
 
@@ -1912,9 +1906,9 @@ def shutdown_metrics() -> None:
         try:
             _meter_provider.force_flush(timeout_millis=10_000)
             _meter_provider.shutdown()
-            logger.info("📊 OTEL metrics flushed and shut down")
+            logger.info("📊 Telemetry metrics flushed and shut down")
         except Exception as e:
-            logger.warning(f"⚠️ OTEL metrics shutdown error: {e}")
+            logger.warning(f"⚠️ Telemetry metrics shutdown error: {e}")
         finally:
             _meter_provider = None
 ```
@@ -1927,7 +1921,7 @@ Log correlation filter for injecting trace context into structured logs.
 """
 Trace context correlation for agent logs.
 
-Injects OTEL trace_id and span_id into Python log records so that
+Injects Telemetry trace_id and span_id into Python log records so that
 Alloy (log collector) can correlate logs with traces in Grafana.
 
 Usage:
@@ -1942,12 +1936,12 @@ from __future__ import annotations
 
 import logging
 
-from opentelemetry import trace
+from observability import trace
 
 
 class TraceContextFilter(logging.Filter):
     """
-    Inject OTEL trace/span IDs into log records.
+    Inject Telemetry trace/span IDs into log records.
 
     Enables Grafana Loki -> trace correlation: clicking a log line
     opens the corresponding trace in Langfuse or Tempo.
@@ -1993,7 +1987,7 @@ When the API service creates a sandbox container, it must inject the trace conte
 
 ```python
 # In SandboxManager.assign() or _create_container()
-from opentelemetry import trace
+from observability import trace
 
 def _build_container_env(
     self,
@@ -2005,7 +1999,7 @@ def _build_container_env(
     """
     Build environment variables for a sandbox container.
 
-    Includes OTEL trace context propagation via TRACEPARENT.
+    Includes Telemetry trace context propagation via TRACEPARENT.
 
     Args:
         run_id: Unique agent run identifier.
@@ -2020,8 +2014,8 @@ def _build_container_env(
         "AGENT_RUN_ID": run_id,
         "AGENT_USER_ID": user_id,
         "AGENT_SESSION_ID": session_id,
-        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4318",
-        "OTEL_SERVICE_NAME": "echomind-agent-sandbox",
+        "Telemetry_EXPORTER_trace_ENDPOINT": "http://telemetry-collector:4318",
+        "Telemetry_SERVICE_NAME": "echomind-agent-sandbox",
     }
 
     # Propagate W3C Trace Context
@@ -2044,8 +2038,8 @@ Modify `src/agent/agent.py` `__init__` to wire observability middleware into the
 ```python
 # In BasicAgentWrapper.__init__(), after existing middleware setup:
 
-# Observability middleware (optional, enabled when OTEL endpoint is set)
-if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+# Observability middleware (optional, enabled when Telemetry endpoint is set)
+if os.getenv("Telemetry_EXPORTER_trace_ENDPOINT"):
     from .observability import (
         init_agent_telemetry,
         ObservabilityMiddleware,
@@ -2070,9 +2064,9 @@ root_span.set_attribute("langfuse.session.id", session_id)
 root_span.set_attribute("langfuse.trace.tags", json.dumps(["agent", agent_config.id]))
 ```
 
-These attributes map to Langfuse fields via the OTEL-to-Langfuse property mapping [Source: Langfuse OpenTelemetry Integration -- 2025](https://langfuse.com/integrations/native/opentelemetry):
+These attributes map to Langfuse fields via the Telemetry-to-Langfuse property mapping [Source: Langfuse Observability Integration -- 2025](https://langfuse.com/integrations/native/observability):
 
-| OTEL Attribute | Langfuse Field | Notes |
+| Telemetry Attribute | Langfuse Field | Notes |
 |----------------|---------------|-------|
 | `langfuse.trace.name` | Trace name | Displayed in trace list |
 | `langfuse.user.id` | User ID | Enables per-user filtering |
@@ -2089,15 +2083,15 @@ These attributes map to Langfuse fields via the OTEL-to-Langfuse property mappin
 
 #### 15.3.1 FastMCP Middleware for Tracing
 
-The MCP gateway is a long-lived service, so it uses `prometheus_client` for pull-based metrics (at `/metrics`) and OTEL spans for traces.
+The MCP gateway is a long-lived service, so it uses `prometheus_client` for pull-based metrics (at `/metrics`) and Telemetry spans for traces.
 
 Add to `src/mcp_gateway/middleware/tracing.py`:
 
 ```python
 """
-OTEL tracing middleware for FastMCP server.
+Telemetry tracing middleware for FastMCP server.
 
-Wraps every MCP tool call with an OTEL span, capturing:
+Wraps every MCP tool call with an Telemetry span, capturing:
 - Tool name and server context
 - Input/output sizes
 - Duration and success/failure status
@@ -2114,8 +2108,8 @@ import logging
 import time
 from typing import Any
 
-from opentelemetry import trace
-from opentelemetry.trace import StatusCode
+from observability import trace
+from observability.trace import StatusCode
 
 logger = logging.getLogger(__name__)
 
@@ -2128,7 +2122,7 @@ def get_tracer() -> trace.Tracer:
     Get or create the MCP gateway tracer.
 
     Returns:
-        OpenTelemetry tracer for MCP gateway instrumentation.
+        Observability tracer for MCP gateway instrumentation.
     """
     global _tracer
     if _tracer is None:
@@ -2142,7 +2136,7 @@ async def tracing_middleware(
     call_next: Any,
 ) -> Any:
     """
-    FastMCP middleware that wraps tool calls with OTEL spans.
+    FastMCP middleware that wraps tool calls with Telemetry spans.
 
     Creates a span for each MCP tool invocation with GenAI semantic
     convention attributes. Propagates trace context from the incoming
@@ -2209,7 +2203,7 @@ Add to `src/mcp_gateway/middleware/metrics.py` (pull-based for long-lived servic
 Prometheus metrics for MCP gateway.
 
 Exposed at /metrics for Prometheus scrape. These are pull-based metrics
-for the long-lived MCP gateway service (not pushed via OTLP like sandbox metrics).
+for the long-lived MCP gateway service (not pushed via trace like sandbox metrics).
 """
 
 from __future__ import annotations
@@ -2254,9 +2248,9 @@ mcp_skill_executions_total = Counter(
 
 ### 15.4 Complete Metrics Definition
 
-#### 15.4.1 Sandbox Container Metrics (OTLP Push)
+#### 15.4.1 Sandbox Container Metrics (trace Push)
 
-These metrics are emitted by ephemeral containers via the OTEL SDK and pushed to the OTEL Collector, which forwards them to Prometheus.
+These metrics are emitted by ephemeral containers via the Telemetry SDK and pushed to the Telemetry Collector, which forwards them to Prometheus.
 
 | Metric Name | Type | Labels | Description |
 |-------------|------|--------|-------------|
@@ -2400,9 +2394,9 @@ panels:
     unit: "currencyUSD"
     description: "Estimated cost in last 24 hours"
 
-  - title: "OTEL Collector Health"
+  - title: "Telemetry Collector Health"
     type: stat
-    query: 'up{job="otel-collector"}'
+    query: 'up{job="telemetry-collector"}'
     description: "Collector scrape target status"
 ```
 
@@ -2573,15 +2567,15 @@ groups:
             The MCP gateway has been down for 2 minutes.
             All agent tool calls will fail.
 
-      # --- OTEL Collector Down ---
-      - alert: OTELCollectorDown
-        expr: up{job="otel-collector"} == 0
+      # --- Telemetry Collector Down ---
+      - alert: TelemetryCollectorDown
+        expr: up{job="telemetry-collector"} == 0
         for: 2m
         labels:
           severity: warning
           team: echomind
         annotations:
-          summary: "OTEL Collector is unreachable"
+          summary: "Telemetry Collector is unreachable"
           description: |
             Agent telemetry is not being collected.
             Traces and metrics from sandbox containers will be lost.
@@ -2717,15 +2711,15 @@ receivers:
 
 | File | Purpose | Key Classes/Functions |
 |------|---------|----------------------|
-| `config/observability/otel-collector/config.yaml` | OTEL Collector configuration | receivers, processors, exporters, pipelines |
+| `config/observability/telemetry-collector/config.yaml` | Telemetry Collector configuration | receivers, processors, exporters, pipelines |
 | `config/observability/prometheus/rules/agent-alerts.yml` | Prometheus alerting rules | 7 alert rules |
 | `config/observability/alertmanager/alertmanager.yml` | Alertmanager routing config | routes, receivers |
 | `src/agent/observability/__init__.py` | Package exports | Re-exports all public symbols |
-| `src/agent/observability/telemetry.py` | OTEL trace provider init | `init_agent_telemetry()`, `shutdown_telemetry()`, `get_provider()` |
+| `src/agent/observability/telemetry.py` | Telemetry trace provider init | `init_agent_telemetry()`, `shutdown_telemetry()`, `get_provider()` |
 | `src/agent/observability/middleware.py` | Agent middleware | `ObservabilityMiddleware`, `ToolObservabilityMiddleware` |
-| `src/agent/observability/metrics.py` | OTEL metrics for sandboxes | `AgentMetrics`, `init_agent_metrics()`, `shutdown_metrics()` |
+| `src/agent/observability/metrics.py` | Telemetry metrics for sandboxes | `AgentMetrics`, `init_agent_metrics()`, `shutdown_metrics()` |
 | `src/agent/observability/context.py` | Log-trace correlation | `TraceContextFilter`, `LOG_FORMAT` |
-| `src/mcp_gateway/middleware/tracing.py` | MCP OTEL tracing | `tracing_middleware()`, `get_tracer()` |
+| `src/mcp_gateway/middleware/tracing.py` | MCP Telemetry tracing | `tracing_middleware()`, `get_tracer()` |
 | `src/mcp_gateway/middleware/metrics.py` | MCP Prometheus metrics | 5 metric instruments |
 | `config/observability/grafana/dashboards/agent-runs.json` | Agent overview dashboard | 8 panels |
 | `config/observability/grafana/dashboards/sandbox-health.json` | Sandbox health dashboard | 6 panels |
@@ -2740,39 +2734,39 @@ receivers:
 
 | File | Changes |
 |------|---------|
-| `deployment/docker-cluster/docker-compose-observability.yml` | Add `otel-collector` service, update Prometheus volumes for rules dir |
-| `config/observability/prometheus/prometheus.yml` | Add `rule_files`, `alerting` section, `otel-collector` scrape job |
+| `deployment/docker-cluster/docker-compose-observability.yml` | Add `telemetry-collector` service, update Prometheus volumes for rules dir |
+| `config/observability/prometheus/prometheus.yml` | Add `rule_files`, `alerting` section, `telemetry-collector` scrape job |
 | `src/agent/agent.py` | Import and wire `ObservabilityMiddleware` + `ToolObservabilityMiddleware` |
 | `src/api/middleware/metrics.py` | Add agent/sandbox Prometheus metrics (6 new instruments) |
-| `.env.example` | Add `LANGFUSE_OTEL_AUTH`, `DEPLOYMENT_ENVIRONMENT` |
+| `.env.example` | Add `LANGFUSE_Telemetry_AUTH`, `DEPLOYMENT_ENVIRONMENT` |
 
 #### 15.7.3 Dependencies (Pinned Versions)
 
 **Agent sandbox container** (`src/sandbox/requirements.txt`):
 
 ```
-opentelemetry-api==1.39.1
-opentelemetry-sdk==1.39.1
-opentelemetry-exporter-otlp-proto-http==1.39.1
-opentelemetry-semantic-conventions==0.50b0
+observability-api==1.39.1
+observability-sdk==1.39.1
+observability-exporter-trace-proto-http==1.39.1
+observability-semantic-conventions==0.50b0
 ```
 
 **MCP gateway** (`src/mcp_gateway/requirements.txt` -- add to existing):
 
 ```
-opentelemetry-api==1.39.1
-opentelemetry-sdk==1.39.1
+observability-api==1.39.1
+observability-sdk==1.39.1
 prometheus-client==0.21.1
 ```
 
 **API service** (`src/api/requirements.txt` -- already has prometheus-client, add):
 
 ```
-opentelemetry-api==1.39.1
-opentelemetry-sdk==1.39.1
+observability-api==1.39.1
+observability-sdk==1.39.1
 ```
 
-[Source: opentelemetry-sdk v1.39.1 on PyPI -- Dec 2025](https://pypi.org/project/opentelemetry-sdk/)
+[Source: observability-sdk v1.39.1 on PyPI -- Dec 2025](https://pypi.org/project/observability-sdk/)
 
 ---
 
@@ -2785,8 +2779,8 @@ opentelemetry-sdk==1.39.1
 
 # Test cases:
 # 1. test_init_agent_telemetry_creates_provider
-#    - Mock OTEL SDK, verify TracerProvider created with correct resource attrs
-#    - Verify BatchSpanProcessor configured with OTLPSpanExporter
+#    - Mock Telemetry SDK, verify TracerProvider created with correct resource attrs
+#    - Verify BatchSpanProcessor configured with traceSpanExporter
 #
 # 2. test_init_agent_telemetry_with_traceparent
 #    - Set TRACEPARENT env var, verify parent context extracted correctly
@@ -2923,18 +2917,18 @@ opentelemetry-sdk==1.39.1
 #    - Call get_tracer twice, verify same instance returned
 ```
 
-#### 15.8.6 OTEL Collector Config Validation
+#### 15.8.6 Telemetry Collector Config Validation
 
 The collector config can be validated without deploying:
 
 ```bash
 # Pull collector image and validate config
 docker run --rm \
-  -v $(pwd)/config/observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro \
-  -e LANGFUSE_OTEL_AUTH=dGVzdDp0ZXN0 \
+  -v $(pwd)/config/observability/telemetry-collector/config.yaml:/etc/telemetrycol-contrib/config.yaml:ro \
+  -e LANGFUSE_Telemetry_AUTH=dGVzdDp0ZXN0 \
   -e DEPLOYMENT_ENVIRONMENT=test \
-  otel/opentelemetry-collector-contrib:0.118.0 \
-  validate --config=/etc/otelcol-contrib/config.yaml
+  telemetry/observability-collector-contrib:0.118.0 \
+  validate --config=/etc/telemetrycol-contrib/config.yaml
 ```
 
 ---
@@ -2989,8 +2983,8 @@ The implementation follows the phases defined in sections 12.1-12.5 of this docu
 
 | Step | Task | Depends On | Est. Hours |
 |------|------|------------|------------|
-| 6.1 | Create `config/observability/otel-collector/config.yaml` | -- | 1h |
-| 6.2 | Add OTEL Collector to `docker-compose-observability.yml` | 6.1 | 1h |
+| 6.1 | Create `config/observability/telemetry-collector/config.yaml` | -- | 1h |
+| 6.2 | Add Telemetry Collector to `docker-compose-observability.yml` | 6.1 | 1h |
 | 6.3 | Add Prometheus scrape job + rules file | 6.2 | 1h |
 | 6.4 | Create `src/agent/observability/telemetry.py` | -- | 2h |
 | 6.5 | Create `src/agent/observability/middleware.py` | 6.4 | 3h |
@@ -3013,22 +3007,21 @@ The implementation follows the phases defined in sections 12.1-12.5 of this docu
 
 | Source | Date | URL |
 |--------|------|-----|
-| OpenTelemetry Collector Configuration | Feb 2026 | [opentelemetry.io/docs/collector/configuration](https://opentelemetry.io/docs/collector/configuration/) |
-| Collector Configuration Best Practices | Feb 2026 | [opentelemetry.io/docs/security/config-best-practices](https://opentelemetry.io/docs/security/config-best-practices/) |
-| OpenTelemetry Collector Architecture | Feb 2026 | [opentelemetry.io/docs/collector/architecture](https://opentelemetry.io/docs/collector/architecture/) |
-| opentelemetry-sdk v1.39.1 (PyPI) | Dec 2025 | [pypi.org/project/opentelemetry-sdk](https://pypi.org/project/opentelemetry-sdk/) |
-| opentelemetry-api v1.39.1 (PyPI) | Dec 2025 | [pypi.org/project/opentelemetry-api](https://pypi.org/project/opentelemetry-api/) |
-| OpenTelemetry Python SDK | Feb 2026 | [opentelemetry.io/docs/languages/python](https://opentelemetry.io/docs/languages/python/) |
-| Langfuse OpenTelemetry Integration | 2025 | [langfuse.com/integrations/native/opentelemetry](https://langfuse.com/integrations/native/opentelemetry) |
-| Langfuse OTEL-based Python SDK v3 | May 2025 | [langfuse.com/changelog/2025-05-23-otel-based-python-sdk](https://langfuse.com/changelog/2025-05-23-otel-based-python-sdk) |
-| Langfuse Existing OTEL Setup Guide | 2025 | [langfuse.com/faq/all/existing-otel-setup](https://langfuse.com/faq/all/existing-otel-setup) |
+| Observability Collector Configuration | Feb 2026 | [observability.io/docs/collector/configuration](https://observability.io/docs/collector/configuration/) |
+| Collector Configuration Best Practices | Feb 2026 | [observability.io/docs/security/config-best-practices](https://observability.io/docs/security/config-best-practices/) |
+| Observability Collector Architecture | Feb 2026 | [observability.io/docs/collector/architecture](https://observability.io/docs/collector/architecture/) |
+| observability-sdk v1.39.1 (PyPI) | Dec 2025 | [pypi.org/project/observability-sdk](https://pypi.org/project/observability-sdk/) |
+| observability-api v1.39.1 (PyPI) | Dec 2025 | [pypi.org/project/observability-api](https://pypi.org/project/observability-api/) |
+| Observability Python SDK | Feb 2026 | [observability.io/docs/languages/python](https://observability.io/docs/languages/python/) |
+| Langfuse Observability Integration | 2025 | [langfuse.com/integrations/native/observability](https://langfuse.com/integrations/native/observability) |
+| Langfuse Telemetry-based Python SDK v3 | May 2025 | [langfuse.com/changelog/2025-05-23-telemetry-based-python-sdk](https://langfuse.com/changelog/2025-05-23-telemetry-based-python-sdk) |
+| Langfuse Existing Telemetry Setup Guide | 2025 | [langfuse.com/faq/all/existing-telemetry-setup](https://langfuse.com/faq/all/existing-telemetry-setup) |
 | W3C Trace Context Specification | 2024 | [w3.org/TR/trace-context](https://www.w3.org/TR/trace-context/) |
 | W3C Trace Context Level 2 | 2024 | [w3.org/TR/trace-context-2](https://www.w3.org/TR/trace-context-2/) |
-| OTEL Collector Contrib Releases | Feb 2026 | [github.com/open-telemetry/opentelemetry-collector-contrib/releases](https://github.com/open-telemetry/opentelemetry-collector-contrib/releases) |
 | Prometheus Alertmanager Docker Setup | Feb 2026 | [oneuptime.com/blog/post/2026-02-08-how-to-set-up-docker-container-alerting-with-alertmanager](https://oneuptime.com/blog/post/2026-02-08-how-to-set-up-docker-container-alerting-with-alertmanager/view) |
-| OpenTelemetry GenAI Agent Span Semantic Conventions | 2025 | [opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/) |
-| AI Agent Observability (OpenTelemetry Blog) | 2025 | [opentelemetry.io/blog/2025/ai-agent-observability](https://opentelemetry.io/blog/2025/ai-agent-observability/) |
-| Langfuse OpenTelemetry Tracing Support | Feb 2025 | [langfuse.com/changelog/2025-02-14-opentelemetry-tracing](https://langfuse.com/changelog/2025-02-14-opentelemetry-tracing) |
+| Observability GenAI Agent Span Semantic Conventions | 2025 | [observability.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans](https://observability.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/) |
+| AI Agent Observability (Observability Blog) | 2025 | [observability.io/blog/2025/ai-agent-observability](https://observability.io/blog/2025/ai-agent-observability/) |
+| Langfuse Observability Tracing Support | Feb 2025 | [langfuse.com/changelog/2025-02-14-observability-tracing](https://langfuse.com/changelog/2025-02-14-observability-tracing) |
 | OpenLLMetry -- Open-source GenAI Observability | 2025 | [github.com/traceloop/openllmetry](https://github.com/traceloop/openllmetry) |
 
 ---
@@ -3037,13 +3030,13 @@ The implementation follows the phases defined in sections 12.1-12.5 of this docu
 
 | Criterion | Score (1-10) | Notes |
 |-----------|:---:|-------|
-| **Trace Context Propagation** | 9 | W3C TRACEPARENT via env var is simple and reliable; covers API -> sandbox -> MCP. Loses context only if OTEL_EXPORTER_OTLP_ENDPOINT is unreachable. |
-| **Ephemeral Container Telemetry** | 8 | OTEL Collector buffers and fans out; BatchSpanProcessor + force_flush(10s) at shutdown covers most cases. Risk: container killed (SIGKILL) before flush completes. |
+| **Trace Context Propagation** | 9 | W3C TRACEPARENT via env var is simple and reliable; covers API -> sandbox -> MCP. Loses context only if Telemetry_EXPORTER_trace_ENDPOINT is unreachable. |
+| **Ephemeral Container Telemetry** | 8 | Telemetry Collector buffers and fans out; BatchSpanProcessor + force_flush(10s) at shutdown covers most cases. Risk: container killed (SIGKILL) before flush completes. |
 | **Cost Tracking Accuracy** | 7 | Model pricing is hardcoded and must be updated manually. Does not account for cached tokens, prompt caching, or provider-specific pricing tiers. Good enough for budgeting, not billing. |
 | **Dashboard Actionability** | 8 | Three dashboards cover the main operational concerns (health, cost, sandbox). PromQL queries are straightforward. Missing: drill-down from Grafana to specific Langfuse trace. |
 | **Alerting Coverage** | 8 | Seven alert rules cover error rate, latency, pool exhaustion, cost, and MCP health. Alertmanager routing is optional/configurable. Missing: per-user cost alerts (would create cardinality issues). |
-| **Integration Complexity** | 7 | 17 new files, 5 modified files. OTEL SDK adds ~4 dependencies per service. Middleware integration is clean (insert at position 0 in chain). Risk: OTEL SDK version drift across services. |
-| **Testability** | 9 | All components are unit-testable with mocked OTEL SDK. Collector config can be validated offline via Docker. Integration test requires running collector + Langfuse. |
+| **Integration Complexity** | 7 | 17 new files, 5 modified files. Telemetry SDK adds ~4 dependencies per service. Middleware integration is clean (insert at position 0 in chain). Risk: Telemetry SDK version drift across services. |
+| **Testability** | 9 | All components are unit-testable with mocked Telemetry SDK. Collector config can be validated offline via Docker. Integration test requires running collector + Langfuse. |
 
 **Overall: 8.0/10** -- Production-ready design with clear implementation path. Main gaps are cost tracking precision and SIGKILL-induced span loss (mitigated by collector buffering).
 
@@ -3051,18 +3044,18 @@ The implementation follows the phases defined in sections 12.1-12.5 of this docu
 
 ## References
 
-- [OpenTelemetry GenAI Agent Span Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/)
-- [OpenTelemetry GenAI Client Span Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/)
-- [AI Agent Observability - Evolving Standards and Best Practices (OpenTelemetry Blog)](https://opentelemetry.io/blog/2025/ai-agent-observability/)
-- [Langfuse OpenTelemetry Integration](https://langfuse.com/integrations/native/opentelemetry)
-- [Langfuse OpenTelemetry Tracing Support (Feb 2025)](https://langfuse.com/changelog/2025-02-14-opentelemetry-tracing)
-- [Langfuse OTEL-based Python SDK v3 (May 2025)](https://langfuse.com/changelog/2025-05-23-otel-based-python-sdk)
+- [Observability GenAI Agent Span Semantic Conventions](https://observability.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/)
+- [Observability GenAI Client Span Semantic Conventions](https://observability.io/docs/specs/semconv/gen-ai/gen-ai-spans/)
+- [AI Agent Observability - Evolving Standards and Best Practices (Observability Blog)](https://observability.io/blog/2025/ai-agent-observability/)
+- [Langfuse Observability Integration](https://langfuse.com/integrations/native/observability)
+- [Langfuse Observability Tracing Support (Feb 2025)](https://langfuse.com/changelog/2025-02-14-observability-tracing)
+- [Langfuse Telemetry-based Python SDK v3 (May 2025)](https://langfuse.com/changelog/2025-05-23-telemetry-based-python-sdk)
 - [OpenLLMetry - Open-source GenAI Observability](https://github.com/traceloop/openllmetry)
-- [AI Agents Observability with OpenTelemetry (VictoriaMetrics)](https://victoriametrics.com/blog/ai-agents-observability/)
+- [AI Agents Observability with Observability (VictoriaMetrics)](https://victoriametrics.com/blog/ai-agents-observability/)
 - [Agent Observability: Can the Old Playbook Handle the New Game? (Greptime)](https://www.greptime.com/blogs/2025-12-11-agent-observability)
-- [OpenTelemetry Collector Configuration](https://opentelemetry.io/docs/collector/configuration/)
-- [OpenTelemetry Collector Configuration Best Practices](https://opentelemetry.io/docs/security/config-best-practices/)
+- [Observability Collector Configuration](https://observability.io/docs/collector/configuration/)
+- [Observability Collector Configuration Best Practices](https://observability.io/docs/security/config-best-practices/)
 - [W3C Trace Context Specification](https://www.w3.org/TR/trace-context/)
-- [opentelemetry-sdk v1.39.1 (PyPI)](https://pypi.org/project/opentelemetry-sdk/)
+- [observability-sdk v1.39.1 (PyPI)](https://pypi.org/project/observability-sdk/)
 - [Prometheus Alertmanager Docker Setup](https://oneuptime.com/blog/post/2026-02-08-how-to-set-up-docker-container-alerting-with-alertmanager/view)
-- [Langfuse Existing OTEL Setup Guide](https://langfuse.com/faq/all/existing-otel-setup)
+- [Langfuse Existing Telemetry Setup Guide](https://langfuse.com/faq/all/existing-telemetry-setup)

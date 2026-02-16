@@ -64,7 +64,7 @@ class NatsBackend:
         async with self._lock:
             await self._publisher.init()
             self._connected = True
-            logger.info("📡 Connected to NATS at %s", self._url)
+            logger.info(f"📡 Connected to NATS at {self._url}")
 
     async def publish(self, subject: str, payload: bytes) -> None:
         """
@@ -82,7 +82,7 @@ class NatsBackend:
                 raise RuntimeError("NATS backend not connected. Call connect() first.")
 
             await self._publisher.publish(subject, payload)
-            logger.debug("📤 Published %d bytes to '%s'", len(payload), subject)
+            logger.debug(f"📤 Published {len(payload)} bytes to '{subject}'")
 
     async def close(self) -> None:
         """Close the NATS connection and release resources."""

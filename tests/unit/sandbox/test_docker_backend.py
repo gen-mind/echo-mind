@@ -60,7 +60,8 @@ class TestDockerSandboxBackendCreate:
         assert call_kwargs["security_opt"] == ["no-new-privileges"]
         assert call_kwargs["cap_drop"] == ["ALL"]
         assert call_kwargs["cap_add"] == ["NET_RAW"]
-        assert call_kwargs["pids_limit"] == 256
+        assert call_kwargs["pids_limit"] == 100
+        assert call_kwargs["tmpfs"] == {"/tmp": "size=100M,noexec,nosuid,nodev"}
         assert call_kwargs["nano_cpus"] == 2_000_000_000
         assert call_kwargs["mem_limit"] == "2g"
 

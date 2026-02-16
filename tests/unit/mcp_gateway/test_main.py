@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mcp_gateway.main import MCPGateway
+from mcp_gateway.main import MCPGateway, _mask_db_url
 
 
 class TestMCPGatewayInit:
@@ -249,11 +249,15 @@ class TestMCPGatewayStart:
         mock_embedder.health_check.return_value = True
         mock_embedder_cls.return_value = mock_embedder
 
-        # DB engine mock
-        mock_engine = AsyncMock()
+        # DB engine mock — create_async_engine returns a sync object
+        # with .connect() returning an async context manager
+        mock_engine = MagicMock()
         mock_conn = AsyncMock()
-        mock_engine.connect.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_engine.connect.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_conn
+        mock_ctx.__aexit__.return_value = False
+        mock_engine.connect.return_value = mock_ctx
+        mock_engine.dispose = AsyncMock()
         mock_engine_cls.return_value = mock_engine
 
         # NATS mock
@@ -326,11 +330,15 @@ class TestMCPGatewayStart:
         mock_embedder.health_check.return_value = False
         mock_embedder_cls.return_value = mock_embedder
 
-        # DB engine mock
-        mock_engine = AsyncMock()
+        # DB engine mock — create_async_engine returns a sync object
+        # with .connect() returning an async context manager
+        mock_engine = MagicMock()
         mock_conn = AsyncMock()
-        mock_engine.connect.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_engine.connect.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_conn
+        mock_ctx.__aexit__.return_value = False
+        mock_engine.connect.return_value = mock_ctx
+        mock_engine.dispose = AsyncMock()
         mock_engine_cls.return_value = mock_engine
 
         # NATS mock
@@ -586,3 +594,147 @@ class TestMCPGatewayRetry:
         assert gateway._qdrant_connected is True
         # Sleep called 3 times (once per iteration: 2 failures + 1 success)
         assert mock_sleep.await_count == 3
+
+    @pytest.mark.asyncio
+    @patch("mcp_gateway.main.create_async_engine")
+    async def test_retry_db_succeeds(
+        self, mock_engine_cls: MagicMock
+    ) -> None:
+        """DB retry task succeeds on reconnection."""
+        mock_engine = MagicMock()
+        mock_conn = AsyncMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_conn
+        mock_ctx.__aexit__.return_value = False
+        mock_engine.connect.return_value = mock_ctx
+        mock_engine.dispose = AsyncMock()
+        mock_engine_cls.return_value = mock_engine
+
+        gateway = MCPGateway()
+        mock_health = MagicMock()
+        gateway._health_server = mock_health
+        gateway._qdrant_connected = True
+        gateway._embedder_connected = True
+        gateway._nats_connected = True
+        gateway._db_connected = False
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            await gateway._retry_db_connection()
+
+        assert gateway._db_connected is True
+        mock_health.set_ready.assert_called_with(True)
+
+    @pytest.mark.asyncio
+    @patch("mcp_gateway.main.create_async_engine")
+    async def test_retry_db_continues_on_failure(
+        self, mock_engine_cls: MagicMock
+    ) -> None:
+        """DB retry continues when reconnection fails, then succeeds."""
+        # First call raises, second succeeds
+        mock_engine_fail = MagicMock()
+        mock_engine_fail.connect.side_effect = Exception("DB down")
+        mock_engine_fail.dispose = AsyncMock()
+
+        mock_engine_ok = MagicMock()
+        mock_conn = AsyncMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_conn
+        mock_ctx.__aexit__.return_value = False
+        mock_engine_ok.connect.return_value = mock_ctx
+        mock_engine_ok.dispose = AsyncMock()
+
+        mock_engine_cls.side_effect = [mock_engine_fail, mock_engine_ok]
+
+        gateway = MCPGateway()
+        mock_health = MagicMock()
+        gateway._health_server = mock_health
+        gateway._db_connected = False
+
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await gateway._retry_db_connection()
+
+        assert gateway._db_connected is True
+        assert mock_sleep.await_count == 2
+
+    @pytest.mark.asyncio
+    @patch("mcp_gateway.main.NatsBackend")
+    async def test_retry_nats_succeeds(
+        self, mock_nats_cls: MagicMock
+    ) -> None:
+        """NATS retry task succeeds on reconnection."""
+        mock_nats = AsyncMock()
+        mock_nats_cls.return_value = mock_nats
+
+        gateway = MCPGateway()
+        mock_health = MagicMock()
+        gateway._health_server = mock_health
+        gateway._qdrant_connected = True
+        gateway._embedder_connected = True
+        gateway._db_connected = True
+        gateway._nats_connected = False
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            await gateway._retry_nats_connection()
+
+        assert gateway._nats_connected is True
+        mock_health.set_ready.assert_called_with(True)
+
+    @pytest.mark.asyncio
+    @patch("mcp_gateway.main.NatsBackend")
+    async def test_retry_nats_continues_on_failure(
+        self, mock_nats_cls: MagicMock
+    ) -> None:
+        """NATS retry continues when reconnection fails, then succeeds."""
+        mock_nats = AsyncMock()
+        # Fail once, then succeed
+        mock_nats.connect.side_effect = [
+            Exception("NATS unreachable"),
+            None,
+        ]
+        mock_nats_cls.return_value = mock_nats
+
+        gateway = MCPGateway()
+        mock_health = MagicMock()
+        gateway._health_server = mock_health
+        gateway._nats_connected = False
+
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await gateway._retry_nats_connection()
+
+        assert gateway._nats_connected is True
+        assert mock_sleep.await_count == 2
+
+
+class TestMaskDbUrl:
+    """Tests for _mask_db_url utility function."""
+
+    def test_empty_url(self) -> None:
+        """Empty URL returns '<not configured>'."""
+        assert _mask_db_url("") == "<not configured>"
+
+    def test_valid_url_with_password(self) -> None:
+        """URL with credentials masks them."""
+        url = "postgresql+asyncpg://user:secret@db.example.com:5432/echomind"
+        result = _mask_db_url(url)
+        assert result == "db.example.com:5432/echomind"
+        assert "secret" not in result
+        assert "user" not in result
+
+    def test_valid_url_without_port(self) -> None:
+        """URL without port defaults to 5432."""
+        url = "postgresql+asyncpg://user:pass@db.example.com/mydb"
+        result = _mask_db_url(url)
+        assert result == "db.example.com:5432/mydb"
+
+    def test_invalid_url(self) -> None:
+        """Invalid URL returns '<invalid url>'."""
+        # An extremely malformed URL that urllib can't parse meaningfully
+        # Note: urllib.parse is very tolerant, so we patch to force an exception
+        with patch("urllib.parse.urlparse", side_effect=ValueError("bad")):
+            assert _mask_db_url("not://valid") == "<invalid url>"
+
+    def test_url_without_path(self) -> None:
+        """URL without a database path shows 'unknown'."""
+        url = "postgresql+asyncpg://user:pass@localhost:5432/"
+        result = _mask_db_url(url)
+        assert result == "localhost:5432/unknown"

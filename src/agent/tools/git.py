@@ -7,6 +7,7 @@ All tools follow FAANG principal engineer quality standards.
 Confidence: High - Tools match Moltbot implementations
 """
 
+import shlex
 import subprocess
 from collections.abc import Callable
 from typing import Annotated
@@ -41,10 +42,10 @@ def create_git_log_tool() -> Callable[..., str]:
             Git log output or error message
         """
         try:
-            cmd = f"git log {args}"
+            cmd = ["git", "log"] + shlex.split(args)
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -91,10 +92,10 @@ def create_git_diff_tool() -> Callable[..., str]:
             Git diff output or error message
         """
         try:
-            cmd = f"git diff {args}"
+            cmd = ["git", "diff"] + shlex.split(args)
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -147,10 +148,10 @@ def create_git_status_tool() -> Callable[..., str]:
             Git status output or error message
         """
         try:
-            cmd = "git status"
+            cmd = ["git", "status"]
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -195,10 +196,10 @@ def create_git_add_tool() -> Callable[..., str]:
             Success message or error
         """
         try:
-            cmd = f"git add {files}"
+            cmd = ["git", "add"] + shlex.split(files)
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -207,10 +208,10 @@ def create_git_add_tool() -> Callable[..., str]:
 
             if result.returncode == 0:
                 # Run git status to show what was staged
-                status_cmd = "git status --short"
+                status_cmd = ["git", "status", "--short"]
                 status_result = subprocess.run(
                     status_cmd,
-                    shell=True,
+                    shell=False,
                     capture_output=True,
                     text=True,
                     timeout=10,
@@ -256,17 +257,13 @@ def create_git_commit_tool() -> Callable[..., str]:
             if not message.strip():
                 return "❌ Error: Commit message cannot be empty"
 
-            # Use heredoc for proper message formatting
-            cmd = f"""git commit -m "$(cat <<'EOF'
-{message}
+            # Build full message with co-author trailer
+            full_message = f"{message}\n\nCo-Authored-By: EchoMind Agent <agent@echomind.ai>"
 
-Co-Authored-By: EchoMind Agent <agent@echomind.ai>
-EOF
-)"
-"""
+            cmd = ["git", "commit", "-m", full_message]
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30,

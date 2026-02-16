@@ -1,0 +1,22 @@
+# EchoMind Sandbox Agent Dependencies
+# Versions pinned to match echomind_lib/pyproject.toml where applicable
+
+# Message queue
+nats-py==2.12.0
+
+# Configuration
+pydantic==2.12.5
+pydantic-settings==2.12.0
+
+# HTTP client (for MCP gateway communication)
+httpx==0.28.1
+
+# Agent framework (Semantic Kernel)
+# NOTE: Pin to stable release when Phase 5 integrates SK
+semantic-kernel>=1.0.0
+
+# LLM client
+openai>=1.0.0
+
+# Shared library (copied into image via Dockerfile)
+# echomind_lib -- installed from local copy

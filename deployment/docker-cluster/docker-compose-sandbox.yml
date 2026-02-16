@@ -1,0 +1,27 @@
+# docker-compose-sandbox.yml
+# Sandbox infrastructure overlay: sandbox image build target.
+# Always included — sandbox is core infrastructure.
+#
+# NOTE: Core sandbox infrastructure (sandbox network, MCP gateway, NATS on
+# sandbox network, API Docker socket mount) is already in the base compose
+# files. This overlay adds the sandbox image build target.
+#
+# Sandbox containers themselves are NOT managed by Docker Compose — they are
+# created dynamically by the API's SandboxManager via Docker SDK.
+#
+services:
+  # ============================================
+  # Sandbox Image - Build target only
+  # ============================================
+  # This service is NEVER started by docker-compose up. It exists solely
+  # so that `docker compose build sandbox` pre-builds the sandbox image.
+  # The API's SandboxManager creates containers from this image via Docker SDK.
+  sandbox:
+    image: gsantopaolo/echomind-agent-sandbox:${SANDBOX_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: sandbox/Dockerfile
+    profiles:
+      - build-only
+    labels:
+      - "traefik.enable=false"

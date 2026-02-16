@@ -19,6 +19,11 @@ logger = logging.getLogger("echomind-mcp-gateway")
 # Base environment variables always included in subprocess env
 _BASE_ENV_KEYS = ("PATH", "HOME", "LANG")
 
+# Environment variable name patterns that must never be passed to subprocesses
+_SENSITIVE_PATTERNS = frozenset(
+    {"KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL", "DATABASE_URL"}
+)
+
 
 @dataclass
 class ExecutionResult:
@@ -92,19 +97,11 @@ class SkillExecutor:
             elif arg_def.default is not None:
                 full_args[arg_def.name] = arg_def.default
 
-        # Determine if this is a passthrough skill (command is just "${argname}")
-        is_passthrough = self._is_passthrough_command(skill.command, full_args)
-
-        # Interpolate arguments into command
+        # Interpolate arguments into command with shell-safe quoting
         command = skill.command
         for key, value in full_args.items():
-            if is_passthrough:
-                # Passthrough: use raw value (the arg IS the entire command)
-                command = command.replace(f"${{{key}}}", str(value))
-            else:
-                # Structured command: use shell-safe quoting
-                safe_value = shlex.quote(str(value))
-                command = command.replace(f"${{{key}}}", safe_value)
+            safe_value = shlex.quote(str(value))
+            command = command.replace(f"${{{key}}}", safe_value)
 
         timeout = skill.timeout or self._default_timeout
         safe_env = self._build_safe_env(skill.command)
@@ -172,29 +169,6 @@ class SkillExecutor:
                 stderr=str(e),
             )
 
-    def _is_passthrough_command(
-        self,
-        command: str,
-        args: dict[str, str],
-    ) -> bool:
-        """
-        Check if a command is a passthrough (the entire command is a single placeholder).
-
-        A passthrough skill has exactly one arg and the command template
-        is literally ``${argname}`` with no surrounding text.
-
-        Args:
-            command: The raw command template string.
-            args: Resolved argument dict.
-
-        Returns:
-            True if the command is a passthrough pattern.
-        """
-        if len(args) != 1:
-            return False
-        arg_name = next(iter(args))
-        return command.strip() == f"${{{arg_name}}}"
-
     def _build_safe_env(self, command: str) -> dict[str, str]:
         """
         Build a restricted environment dict for subprocess execution.
@@ -221,6 +195,10 @@ class SkillExecutor:
         # Match $UPPER_CASE_VAR patterns (env vars are conventionally uppercase)
         for match in re.finditer(r'\$([A-Z_][A-Z0-9_]*)', command):
             var_name = match.group(1)
+            # Skip sensitive env vars to prevent secret leakage
+            if any(pattern in var_name for pattern in _SENSITIVE_PATTERNS):
+                logger.debug(f"🔒 Skipping sensitive env var: {var_name}")
+                continue
             value = os.environ.get(var_name)
             if value is not None:
                 env[var_name] = value

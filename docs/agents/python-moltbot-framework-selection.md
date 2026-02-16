@@ -113,7 +113,7 @@ This hybrid approach delivers **70% of Moltbot's functionality** in **3 months**
 │  Microsoft Agent Framework (Framework, 0 custom LOC)    │
 │  - Multi-agent orchestration (5 patterns)               │
 │  - Event-loop execution (AutoGen heritage)              │
-│  - OpenTelemetry instrumentation                        │
+│  - Native observability instrumentation                  │
 │  - Thread-based state + continuation tokens             │
 └────────────────┬────────────────────────────────────────┘
                  │
@@ -238,7 +238,7 @@ This hybrid approach delivers **70% of Moltbot's functionality** in **3 months**
 | **Production Ready** | ✅ Yes (Oct 2025 release, AutoGen+SK merger) [14] | ✅ Yes (v0.2.72, Feb 2026) | Both production-ready, Microsoft has AutoGen's 2+ years of testing |
 | **State Management** | ✅ Thread-based + continuation tokens [15] | ✅✅ Checkpointers (Redis <1ms) [16] | LangGraph stronger here, but Microsoft sufficient for Moltbot needs |
 | **Offline Capability** | ✅✅ Native Ollama connector [17] | ✅ Via LangChain Ollama | Both support offline, Microsoft has native integration |
-| **Observability** | ✅✅ OpenTelemetry built-in [18] | ✅ LangSmith (0% overhead) [19] | Both excellent, Microsoft has automatic tracing |
+| **Observability** | ✅✅ Built-in tracing [18] | ✅ LangSmith (0% overhead) [19] | Both excellent, Microsoft has automatic tracing |
 | **GitHub Stars** | 10.5k (merged repos) | 28.3k | LangGraph more popular, but Microsoft is newer (Oct 2025) |
 | **License** | ✅ MIT | ✅ MIT | Both commercial-friendly |
 | **Learning Curve** | ⚠️ Medium | ⚠️ Hard (graph concepts) | Microsoft simpler for Moltbot's linear patterns |

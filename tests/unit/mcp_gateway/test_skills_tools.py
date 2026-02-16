@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from mcp_gateway.skills.exceptions import SkillExecutionError, SkillNotFoundError, SkillTimeoutError
 from mcp_gateway.skills.executor import ExecutionResult
 from mcp_gateway.skills.registry import SkillArgument, SkillDefinition
 from mcp_gateway.tools.skills import register_skills_tools
@@ -161,10 +162,10 @@ class TestSkillsGetInfoTool:
     async def test_raises_when_not_found(
         self, tool_functions: dict[str, Any], mock_registry: MagicMock
     ) -> None:
-        """Verify ValueError is raised when skill not found."""
+        """Verify SkillNotFoundError is raised when skill not found."""
         mock_registry.get_skill.return_value = None
 
-        with pytest.raises(ValueError, match="nonexistent"):
+        with pytest.raises(SkillNotFoundError, match="nonexistent"):
             await tool_functions["skills_get_info"](name="nonexistent")
 
     @pytest.mark.asyncio
@@ -234,22 +235,22 @@ class TestSkillsExecuteTool:
         mock_registry: MagicMock,
         mock_executor: MagicMock,
     ) -> None:
-        """Verify ValueError raised when skill does not exist."""
+        """Verify SkillNotFoundError raised when skill does not exist."""
         mock_registry.get_skill.return_value = None
 
-        with pytest.raises(ValueError, match="missing"):
+        with pytest.raises(SkillNotFoundError, match="missing"):
             await tool_functions["skills_execute"](name="missing")
 
         mock_executor.execute.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_handles_failed_execution(
+    async def test_raises_on_failed_execution(
         self,
         tool_functions: dict[str, Any],
         mock_registry: MagicMock,
         mock_executor: MagicMock,
     ) -> None:
-        """Verify failed execution result is returned correctly."""
+        """Verify SkillExecutionError raised when execution fails."""
         skill = _make_skill()
         mock_registry.get_skill.return_value = skill
         mock_executor.execute.return_value = ExecutionResult(
@@ -260,20 +261,17 @@ class TestSkillsExecuteTool:
             timed_out=False,
         )
 
-        result = await tool_functions["skills_execute"](name="test-skill")
-
-        assert result["success"] is False
-        assert result["exit_code"] == 1
-        assert result["stderr"] == "command not found"
+        with pytest.raises(SkillExecutionError, match="command not found"):
+            await tool_functions["skills_execute"](name="test-skill")
 
     @pytest.mark.asyncio
-    async def test_handles_timeout(
+    async def test_raises_on_timeout(
         self,
         tool_functions: dict[str, Any],
         mock_registry: MagicMock,
         mock_executor: MagicMock,
     ) -> None:
-        """Verify timed out execution result is returned correctly."""
+        """Verify SkillTimeoutError raised when execution times out."""
         skill = _make_skill()
         mock_registry.get_skill.return_value = skill
         mock_executor.execute.return_value = ExecutionResult(
@@ -284,10 +282,8 @@ class TestSkillsExecuteTool:
             timed_out=True,
         )
 
-        result = await tool_functions["skills_execute"](name="test-skill")
-
-        assert result["timed_out"] is True
-        assert result["success"] is False
+        with pytest.raises(SkillTimeoutError, match="timed out"):
+            await tool_functions["skills_execute"](name="test-skill")
 
     @pytest.mark.asyncio
     async def test_passes_none_args_when_omitted(

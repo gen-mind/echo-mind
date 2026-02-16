@@ -188,94 +188,94 @@ class TestGetDocumentChunksTool:
         )
 
 
+def _make_tool_functions(
+    backend: AsyncMock,
+    readiness_check: Any = None,
+) -> dict[str, Any]:
+    """Helper to register tools and capture the inner functions.
+
+    Args:
+        backend: Mock SearchBackend.
+        readiness_check: Optional readiness callback.
+
+    Returns:
+        Dict mapping tool name to the async callable.
+    """
+    captured: dict[str, Any] = {}
+
+    class FakeMCP:
+        """Fake FastMCP that captures tool registrations."""
+
+        def tool(self) -> Any:
+            """Return decorator that captures the function."""
+            def decorator(fn: Any) -> Any:
+                captured[fn.__name__] = fn
+                return fn
+            return decorator
+
+    register_search_tools(FakeMCP(), backend, readiness_check=readiness_check)  # type: ignore[arg-type]
+    return captured
+
+
 class TestSearchDocumentsValidation:
     """Tests for input validation in search_documents."""
 
     @pytest.mark.asyncio
-    async def test_empty_query_returns_error(self, mock_backend: AsyncMock) -> None:
-        """Empty query returns error dict."""
-        captured: dict[str, Any] = {}
-
-        class FakeMCP:
-            """Fake FastMCP that captures tool registrations."""
-
-            def tool(self) -> Any:
-                """Return decorator that captures the function."""
-                def decorator(fn: Any) -> Any:
-                    captured[fn.__name__] = fn
-                    return fn
-                return decorator
-
-        register_search_tools(FakeMCP(), mock_backend)  # type: ignore[arg-type]
-        result = await captured["search_documents"](collection="col", query="   ")
-        assert "error" in result
-        assert "empty" in result["error"].lower()
+    async def test_empty_query_raises_value_error(self, mock_backend: AsyncMock) -> None:
+        """Empty query raises ValueError."""
+        tools = _make_tool_functions(mock_backend)
+        with pytest.raises(ValueError, match="(?i)empty"):
+            await tools["search_documents"](collection="col", query="   ")
 
     @pytest.mark.asyncio
     async def test_limit_clamped_to_range(self, mock_backend: AsyncMock) -> None:
         """Limit is clamped to 1-1000 range."""
-        captured: dict[str, Any] = {}
-
-        class FakeMCP:
-            """Fake FastMCP that captures tool registrations."""
-
-            def tool(self) -> Any:
-                """Return decorator that captures the function."""
-                def decorator(fn: Any) -> Any:
-                    captured[fn.__name__] = fn
-                    return fn
-                return decorator
-
-        register_search_tools(FakeMCP(), mock_backend)  # type: ignore[arg-type]
+        tools = _make_tool_functions(mock_backend)
         mock_backend.search_documents.return_value = []
         # Over-limit
-        await captured["search_documents"](collection="col", query="test", limit=5000)
+        await tools["search_documents"](collection="col", query="test", limit=5000)
         assert mock_backend.search_documents.call_args.kwargs["limit"] == 1000
         # Under-limit
         mock_backend.search_documents.reset_mock()
         mock_backend.search_documents.return_value = []
-        await captured["search_documents"](collection="col", query="test", limit=-1)
+        await tools["search_documents"](collection="col", query="test", limit=-1)
         assert mock_backend.search_documents.call_args.kwargs["limit"] == 1
 
     @pytest.mark.asyncio
-    async def test_invalid_score_threshold(self, mock_backend: AsyncMock) -> None:
-        """Invalid score_threshold returns error."""
-        captured: dict[str, Any] = {}
-
-        class FakeMCP:
-            """Fake FastMCP that captures tool registrations."""
-
-            def tool(self) -> Any:
-                """Return decorator that captures the function."""
-                def decorator(fn: Any) -> Any:
-                    captured[fn.__name__] = fn
-                    return fn
-                return decorator
-
-        register_search_tools(FakeMCP(), mock_backend)  # type: ignore[arg-type]
-        result = await captured["search_documents"](collection="col", query="test", score_threshold=1.5)
-        assert "error" in result
+    async def test_invalid_score_threshold_raises_value_error(self, mock_backend: AsyncMock) -> None:
+        """Invalid score_threshold raises ValueError."""
+        tools = _make_tool_functions(mock_backend)
+        with pytest.raises(ValueError, match="score_threshold"):
+            await tools["search_documents"](collection="col", query="test", score_threshold=1.5)
 
 
 class TestSearchToolsReadiness:
     """Tests for readiness check in search tools."""
 
     @pytest.mark.asyncio
-    async def test_returns_error_when_not_ready(self, mock_backend: AsyncMock) -> None:
-        """Returns error dict when readiness check fails."""
-        captured: dict[str, Any] = {}
+    async def test_search_documents_not_ready(self, mock_backend: AsyncMock) -> None:
+        """search_documents raises RuntimeError when not ready."""
+        tools = _make_tool_functions(mock_backend, readiness_check=lambda: False)
+        with pytest.raises(RuntimeError, match="(?i)not ready"):
+            await tools["search_documents"](collection="col", query="test")
 
-        class FakeMCP:
-            """Fake FastMCP that captures tool registrations."""
+    @pytest.mark.asyncio
+    async def test_list_collections_not_ready(self, mock_backend: AsyncMock) -> None:
+        """list_collections raises RuntimeError when not ready."""
+        tools = _make_tool_functions(mock_backend, readiness_check=lambda: False)
+        with pytest.raises(RuntimeError, match="(?i)not ready"):
+            await tools["list_collections"]()
 
-            def tool(self) -> Any:
-                """Return decorator that captures the function."""
-                def decorator(fn: Any) -> Any:
-                    captured[fn.__name__] = fn
-                    return fn
-                return decorator
+    @pytest.mark.asyncio
+    async def test_get_collection_info_not_ready(self, mock_backend: AsyncMock) -> None:
+        """get_collection_info raises RuntimeError when not ready."""
+        tools = _make_tool_functions(mock_backend, readiness_check=lambda: False)
+        with pytest.raises(RuntimeError, match="(?i)not ready"):
+            await tools["get_collection_info"](collection="col")
 
-        register_search_tools(FakeMCP(), mock_backend, readiness_check=lambda: False)  # type: ignore[arg-type]
-        result = await captured["search_documents"](collection="col", query="test")
-        assert "error" in result
-        assert "not ready" in result["error"].lower()
+    @pytest.mark.asyncio
+    async def test_get_document_chunks_not_ready(self, mock_backend: AsyncMock) -> None:
+        """get_document_chunks raises RuntimeError when not ready."""
+        tools = _make_tool_functions(mock_backend, readiness_check=lambda: False)
+        with pytest.raises(RuntimeError, match="(?i)not ready"):
+            await tools["get_document_chunks"](collection="col", document_id="doc1")

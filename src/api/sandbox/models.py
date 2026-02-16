@@ -37,7 +37,7 @@ class SandboxState(str, enum.Enum):
         """
         return {
             SandboxState.WARM: {SandboxState.ASSIGNED, SandboxState.DESTROYED},
-            SandboxState.ASSIGNED: {SandboxState.ACTIVE, SandboxState.DESTROYED},
+            SandboxState.ASSIGNED: {SandboxState.ACTIVE, SandboxState.DRAINING, SandboxState.DESTROYED},
             SandboxState.ACTIVE: {SandboxState.DRAINING, SandboxState.DESTROYED},
             SandboxState.DRAINING: {SandboxState.DESTROYED},
             SandboxState.DESTROYED: set(),

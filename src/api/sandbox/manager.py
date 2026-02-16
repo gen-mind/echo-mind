@@ -11,8 +11,10 @@ be decoupled to its own dedicated service for independent scaling.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
+from collections import deque
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -26,6 +28,7 @@ from api.sandbox.models import (
 )
 
 if TYPE_CHECKING:
+    from mcp_gateway.backends.nats_backend import NatsBackend
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("echomind-sandbox")
@@ -50,22 +53,29 @@ class SandboxManager:
         self,
         backend: SandboxBackend,
         settings: SandboxSettings,
+        nats: NatsBackend | None = None,
     ) -> None:
         """Initialize SandboxManager.
 
         Args:
             backend: Container backend (Docker, K8s, etc.).
             settings: Sandbox configuration.
+            nats: Optional NATS backend for lifecycle event publishing.
+                  If None, events are logged but not published (degraded mode).
         """
         self._backend = backend
         self._settings = settings
+        self._nats = nats
 
         # In-memory state
-        self._warm_pool: list[WarmContainer] = []
+        self._warm_pool: deque[WarmContainer] = deque()
         self._assignments: dict[str, SandboxAssignment] = {}  # session_id -> assignment
         self._lock = asyncio.Lock()
+        self._replenish_lock = asyncio.Lock()
         self._reconciliation_task: asyncio.Task[None] | None = None
+        self._background_tasks: set[asyncio.Task[None]] = set()
         self._running = False
+        self._persistence_errors: int = 0
 
     @property
     def warm_pool_size(self) -> int:
@@ -124,6 +134,14 @@ class SandboxManager:
             except asyncio.CancelledError:
                 pass
             self._reconciliation_task = None
+
+        # Cancel all fire-and-forget background tasks
+        for task in self._background_tasks:
+            task.cancel()
+        if self._background_tasks:
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
+        self._background_tasks.clear()
+
         logger.info("🛑 SandboxManager stopped")
 
     async def assign(
@@ -170,7 +188,22 @@ class SandboxManager:
                 if warm is None:
                     raise RuntimeError("No warm containers available and on-demand creation failed")
             else:
-                warm = self._warm_pool.pop(0)
+                warm = self._warm_pool.popleft()
+
+            # Track IMMEDIATELY under lock to prevent TOCTOU race
+            now = datetime.now(timezone.utc)
+            assignment = SandboxAssignment(
+                session_id=session_id,
+                user_id=user_id,
+                chat_session_id=chat_session_id,
+                container_id=warm.container_id,
+                container_name=warm.container_name,
+                state=SandboxState.ASSIGNED,
+                created_at=warm.created_at,
+                assigned_at=now,
+                agent_config=agent_config or {},
+            )
+            self._assignments[session_id] = assignment
 
         # Inject session environment (outside lock to avoid holding it during I/O)
         session_env = {
@@ -184,25 +217,11 @@ class SandboxManager:
             await self._backend.inject_env(warm.container_id, session_env)
         except RuntimeError:
             logger.error(f"❌ Failed to inject env into container {warm.container_id[:12]}")
-            # Try to clean up the container
+            # Rollback: remove placeholder assignment
+            async with self._lock:
+                self._assignments.pop(session_id, None)
             await self._destroy_container(warm.container_id)
             raise
-
-        now = datetime.now(timezone.utc)
-        assignment = SandboxAssignment(
-            session_id=session_id,
-            user_id=user_id,
-            chat_session_id=chat_session_id,
-            container_id=warm.container_id,
-            container_name=warm.container_name,
-            state=SandboxState.ASSIGNED,
-            created_at=warm.created_at,
-            assigned_at=now,
-            agent_config=agent_config or {},
-        )
-
-        async with self._lock:
-            self._assignments[session_id] = assignment
 
         if db:
             await self._persist_assignment(db, assignment)
@@ -214,8 +233,15 @@ class SandboxManager:
             f"📌 Assigned container {warm.container_id[:12]} to session {session_id}"
         )
 
-        # Replenish pool in background
-        asyncio.create_task(self._replenish_pool())
+        await self._publish_lifecycle_event(
+            "assigned", session_id, assignment.container_id, user_id,
+        )
+
+        # Replenish pool in background (prevent GC via strong reference)
+        task = asyncio.create_task(self._replenish_pool())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        task.add_done_callback(self._handle_task_exception)
 
         return assignment
 
@@ -257,6 +283,11 @@ class SandboxManager:
             await self._persist_event(db, assignment, "activated", {})
 
         logger.info(f"✅ Activated sandbox for session {session_id}")
+
+        await self._publish_lifecycle_event(
+            "activated", session_id, assignment.container_id, assignment.user_id,
+        )
+
         return assignment
 
     async def release(
@@ -280,12 +311,21 @@ class SandboxManager:
             if assignment is None:
                 raise KeyError(f"Session {session_id} not found")
 
+            if not assignment.state.can_transition_to(SandboxState.DRAINING):
+                raise ValueError(
+                    f"Cannot release sandbox in state {assignment.state}"
+                )
+
             assignment.state = SandboxState.DRAINING
 
         if db:
             await self._persist_event(db, assignment, "draining", {})
 
         logger.info(f"🔄 Draining sandbox for session {session_id}")
+
+        await self._publish_lifecycle_event(
+            "draining", session_id, assignment.container_id, assignment.user_id,
+        )
 
         # Stop and remove container
         await self._destroy_container(assignment.container_id)
@@ -300,8 +340,15 @@ class SandboxManager:
 
         logger.info(f"🗑️ Destroyed sandbox for session {session_id}")
 
-        # Replenish pool in background
-        asyncio.create_task(self._replenish_pool())
+        await self._publish_lifecycle_event(
+            "destroyed", session_id, assignment.container_id, assignment.user_id,
+        )
+
+        # Replenish pool in background (prevent GC via strong reference)
+        task = asyncio.create_task(self._replenish_pool())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        task.add_done_callback(self._handle_task_exception)
 
     async def get_assignment(self, session_id: str) -> SandboxAssignment | None:
         """Get the assignment for a session.
@@ -321,7 +368,6 @@ class SandboxManager:
             Dict with pool stats, active sessions, etc.
         """
         return {
-            "enabled": self._settings.enabled,
             "running": self._running,
             "warm_pool_size": self.warm_pool_size,
             "active_count": self.active_count,
@@ -329,7 +375,51 @@ class SandboxManager:
             "max_instances": self._settings.max_instances,
             "target_pool_size": self._settings.pool_size,
             "active_sessions": list(self._assignments.keys()),
+            "persistence_errors": self._persistence_errors,
         }
+
+    # ── NATS Publishing ─────────────────────────────────────────
+
+    async def _publish_lifecycle_event(
+        self,
+        event_type: str,
+        session_id: str,
+        container_id: str,
+        user_id: int,
+    ) -> None:
+        """Publish a sandbox lifecycle event to NATS.
+
+        Publishes to ``sandbox.{session_id}.control``. If NATS is not
+        configured or the publish fails, the error is logged and execution
+        continues (degraded mode per resilience.md).
+
+        Args:
+            event_type: Lifecycle event (assigned, activated, draining, destroyed).
+            session_id: Session the event relates to.
+            container_id: Container involved in the event.
+            user_id: Owning user ID.
+        """
+        if self._nats is None:
+            return
+
+        if not self._nats.is_connected:
+            logger.warning(f"⚠️ NATS not connected, skipping {event_type} event for {session_id}")
+            return
+
+        subject = f"sandbox.{session_id}.control"
+        payload = json.dumps({
+            "event_type": event_type,
+            "session_id": session_id,
+            "container_id": container_id,
+            "user_id": user_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }).encode()
+
+        try:
+            await self._nats.publish(subject, payload)
+            logger.debug(f"📤 Published {event_type} event for session {session_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to publish {event_type} event for {session_id}: {e}")
 
     # ── Internal Methods ──────────────────────────────────────────
 
@@ -372,22 +462,39 @@ class SandboxManager:
             return None
 
     async def _replenish_pool(self) -> None:
-        """Fill the warm pool up to the configured pool_size."""
-        async with self._lock:
-            deficit = self._settings.pool_size - self.warm_pool_size
-            headroom = self._settings.max_instances - self.total_count
+        """Fill the warm pool up to the configured pool_size.
 
-        containers_to_create = min(deficit, headroom)
-        if containers_to_create <= 0:
+        Uses a dedicated replenish lock to prevent concurrent replenish
+        operations from over-creating containers.
+        """
+        async with self._replenish_lock:
+            async with self._lock:
+                deficit = self._settings.pool_size - self.warm_pool_size
+                headroom = self._settings.max_instances - self.total_count
+
+            containers_to_create = min(deficit, headroom)
+            if containers_to_create <= 0:
+                return
+
+            logger.info(f"🔄 Replenishing warm pool: creating {containers_to_create} containers")
+
+            for _ in range(containers_to_create):
+                warm = await self._create_warm_container()
+                if warm:
+                    async with self._lock:
+                        self._warm_pool.append(warm)
+
+    def _handle_task_exception(self, task: asyncio.Task[None]) -> None:
+        """Log exceptions from fire-and-forget background tasks.
+
+        Args:
+            task: The completed asyncio task.
+        """
+        if task.cancelled():
             return
-
-        logger.info(f"🔄 Replenishing warm pool: creating {containers_to_create} containers")
-
-        for _ in range(containers_to_create):
-            warm = await self._create_warm_container()
-            if warm:
-                async with self._lock:
-                    self._warm_pool.append(warm)
+        exc = task.exception()
+        if exc:
+            logger.error(f"❌ Background task failed: {exc}")
 
     async def _destroy_container(self, container_id: str) -> None:
         """Stop and remove a container, handling errors gracefully.
@@ -428,6 +535,10 @@ class SandboxManager:
                         container_name=container.name,
                     )
                 )
+            elif container.status == "running":
+                # Orphaned non-warm container from previous API instance
+                logger.warning(f"⚠️ Destroying orphaned container {container.name}")
+                await self._destroy_container(container.container_id)
             elif container.status in ("exited", "dead", "removing"):
                 # Clean up stale containers
                 await self._destroy_container(container.container_id)
@@ -463,7 +574,10 @@ class SandboxManager:
         async with self._lock:
             for session_id, assignment in self._assignments.items():
                 if assignment.state in (SandboxState.ASSIGNED, SandboxState.ACTIVE):
-                    elapsed = (now - assignment.created_at).total_seconds()
+                    if assignment.assigned_at is None:
+                        logger.warning(f"⚠️ Session {session_id} has no assigned_at timestamp, skipping timeout check")
+                        continue
+                    elapsed = (now - assignment.assigned_at).total_seconds()
                     if elapsed > self._settings.session_timeout:
                         sessions_to_release.append(session_id)
                         logger.warning(
@@ -487,7 +601,7 @@ class SandboxManager:
                     expired_warm.append(warm)
                 else:
                     remaining.append(warm)
-            self._warm_pool = remaining
+            self._warm_pool = deque(remaining)
 
         for warm in expired_warm:
             logger.info(f"⏰ Destroying idle warm container {warm.container_id[:12]}")
@@ -512,56 +626,56 @@ class SandboxManager:
         now = datetime.now(timezone.utc)
 
         try:
-            await db.execute(
-                text("""
-                    INSERT INTO sandbox_sessions (
-                        session_id, user_id, chat_session_id,
-                        container_id, container_name, status,
-                        assigned_at, activated_at, destroyed_at,
-                        agent_config, message_count, tool_calls_count,
-                        total_tokens, created_at, updated_at
-                    ) VALUES (
-                        :session_id, :user_id, :chat_session_id,
-                        :container_id, :container_name, :status,
-                        :assigned_at, :activated_at, :destroyed_at,
-                        :agent_config::jsonb, :message_count, :tool_calls_count,
-                        :total_tokens, :created_at, :updated_at
-                    )
-                    ON CONFLICT (session_id) DO UPDATE SET
-                        status = :status,
-                        assigned_at = :assigned_at,
-                        activated_at = :activated_at,
-                        destroyed_at = CASE
-                            WHEN :status = 'destroyed' THEN :updated_at
-                            ELSE sandbox_sessions.destroyed_at
-                        END,
-                        message_count = :message_count,
-                        tool_calls_count = :tool_calls_count,
-                        total_tokens = :total_tokens,
-                        updated_at = :updated_at
-                """),
-                {
-                    "session_id": assignment.session_id,
-                    "user_id": assignment.user_id,
-                    "chat_session_id": assignment.chat_session_id,
-                    "container_id": assignment.container_id,
-                    "container_name": assignment.container_name,
-                    "status": assignment.state.value,
-                    "assigned_at": assignment.assigned_at,
-                    "activated_at": assignment.activated_at,
-                    "destroyed_at": None,
-                    "agent_config": "{}",
-                    "message_count": assignment.message_count,
-                    "tool_calls_count": assignment.tool_calls_count,
-                    "total_tokens": assignment.total_tokens,
-                    "created_at": assignment.created_at,
-                    "updated_at": now,
-                },
-            )
-            await db.commit()
+            async with db.begin_nested():
+                await db.execute(
+                    text("""
+                        INSERT INTO sandbox_sessions (
+                            session_id, user_id, chat_session_id,
+                            container_id, container_name, status,
+                            assigned_at, activated_at, destroyed_at,
+                            agent_config, message_count, tool_calls_count,
+                            total_tokens, created_at, updated_at
+                        ) VALUES (
+                            :session_id, :user_id, :chat_session_id,
+                            :container_id, :container_name, :status,
+                            :assigned_at, :activated_at, :destroyed_at,
+                            :agent_config::jsonb, :message_count, :tool_calls_count,
+                            :total_tokens, :created_at, :updated_at
+                        )
+                        ON CONFLICT (session_id) DO UPDATE SET
+                            status = :status,
+                            assigned_at = :assigned_at,
+                            activated_at = :activated_at,
+                            destroyed_at = CASE
+                                WHEN :status = 'destroyed' THEN :updated_at
+                                ELSE sandbox_sessions.destroyed_at
+                            END,
+                            message_count = :message_count,
+                            tool_calls_count = :tool_calls_count,
+                            total_tokens = :total_tokens,
+                            updated_at = :updated_at
+                    """),
+                    {
+                        "session_id": assignment.session_id,
+                        "user_id": assignment.user_id,
+                        "chat_session_id": assignment.chat_session_id,
+                        "container_id": assignment.container_id,
+                        "container_name": assignment.container_name,
+                        "status": assignment.state.value,
+                        "assigned_at": assignment.assigned_at,
+                        "activated_at": assignment.activated_at,
+                        "destroyed_at": None,
+                        "agent_config": json.dumps(assignment.agent_config),
+                        "message_count": assignment.message_count,
+                        "tool_calls_count": assignment.tool_calls_count,
+                        "total_tokens": assignment.total_tokens,
+                        "created_at": assignment.created_at,
+                        "updated_at": now,
+                    },
+                )
         except Exception as e:
+            self._persistence_errors += 1
             logger.error(f"❌ Failed to persist assignment {assignment.session_id}: {e}")
-            await db.rollback()
 
     async def _persist_event(
         self,
@@ -579,27 +693,26 @@ class SandboxManager:
             event_data: Event payload.
         """
         from sqlalchemy import text
-        import json
 
         try:
-            await db.execute(
-                text("""
-                    INSERT INTO sandbox_events (
-                        sandbox_session_id, event_type, event_data
-                    )
-                    SELECT id, :event_type, :event_data::jsonb
-                    FROM sandbox_sessions
-                    WHERE session_id = :session_id
-                """),
-                {
-                    "session_id": assignment.session_id,
-                    "event_type": event_type,
-                    "event_data": json.dumps(event_data),
-                },
-            )
-            await db.commit()
+            async with db.begin_nested():
+                await db.execute(
+                    text("""
+                        INSERT INTO sandbox_events (
+                            sandbox_session_id, event_type, event_data
+                        )
+                        SELECT id, :event_type, :event_data::jsonb
+                        FROM sandbox_sessions
+                        WHERE session_id = :session_id
+                    """),
+                    {
+                        "session_id": assignment.session_id,
+                        "event_type": event_type,
+                        "event_data": json.dumps(event_data),
+                    },
+                )
         except Exception as e:
+            self._persistence_errors += 1
             logger.error(
                 f"❌ Failed to persist event {event_type} for {assignment.session_id}: {e}"
             )
-            await db.rollback()

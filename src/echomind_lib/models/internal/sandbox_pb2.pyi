@@ -26,6 +26,7 @@ class SandboxEventType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     SANDBOX_EVENT_TYPE_TOOL_CALL: _ClassVar[SandboxEventType]
     SANDBOX_EVENT_TYPE_DRAINING: _ClassVar[SandboxEventType]
     SANDBOX_EVENT_TYPE_DESTROYED: _ClassVar[SandboxEventType]
+    SANDBOX_EVENT_TYPE_ERROR: _ClassVar[SandboxEventType]
 SANDBOX_STATUS_UNSPECIFIED: SandboxStatus
 SANDBOX_STATUS_WARM: SandboxStatus
 SANDBOX_STATUS_ASSIGNED: SandboxStatus
@@ -40,6 +41,7 @@ SANDBOX_EVENT_TYPE_MESSAGE: SandboxEventType
 SANDBOX_EVENT_TYPE_TOOL_CALL: SandboxEventType
 SANDBOX_EVENT_TYPE_DRAINING: SandboxEventType
 SANDBOX_EVENT_TYPE_DESTROYED: SandboxEventType
+SANDBOX_EVENT_TYPE_ERROR: SandboxEventType
 
 class SandboxSession(_message.Message):
     __slots__ = ("id", "session_id", "user_id", "chat_session_id", "container_id", "container_name", "status", "assigned_at", "activated_at", "destroyed_at", "agent_config", "message_count", "tool_calls_count", "total_tokens", "created_at", "updated_at")

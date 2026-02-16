@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -39,6 +40,7 @@ class SessionManager:
         """
         self.sessions_dir = Path(sessions_dir)
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        self._write_lock = threading.Lock()
         logger.info("📂 Session manager initialized: %s", self.sessions_dir)
 
     def create_session(
@@ -248,8 +250,9 @@ class SessionManager:
             OSError: If file cannot be written.
         """
         json_line = json.dumps(entry, ensure_ascii=False, separators=(",", ":"))
-        with open(session_file, "a", encoding="utf-8") as f:
-            f.write(json_line + "\n")
+        with self._write_lock:
+            with open(session_file, "a", encoding="utf-8") as f:
+                f.write(json_line + "\n")
 
     def _get_session_file(self, session_key: str) -> Path:
         """

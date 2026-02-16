@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   sandbox_model.py
-@Time    :   2026-02-16 21:00:53
+@Time    :   2026-02-16 23:16:08
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 
@@ -32,6 +32,7 @@ class SandboxEventType(_Enum):
     SANDBOX_EVENT_TYPE_TOOL_CALL = 5
     SANDBOX_EVENT_TYPE_DRAINING = 6
     SANDBOX_EVENT_TYPE_DESTROYED = 7
+    SANDBOX_EVENT_TYPE_ERROR = 8
 
 
 class SandboxSession(BaseModel):

@@ -36,6 +36,17 @@ def session_key() -> str:
 # ---------------------------------------------------------------------------
 
 
+class TestSessionManagerInit:
+    """Tests for SessionManager initialization."""
+
+    def test_has_write_lock(self, manager: SessionManager) -> None:
+        """SessionManager has a threading.Lock for file write safety."""
+        import threading
+
+        assert hasattr(manager, "_write_lock")
+        assert isinstance(manager._write_lock, type(threading.Lock()))
+
+
 class TestCreateSession:
     """Tests for SessionManager.create_session."""
 
