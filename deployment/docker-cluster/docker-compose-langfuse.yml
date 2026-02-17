@@ -147,7 +147,9 @@ services:
   langfuse-worker:
     image: langfuse/langfuse-worker:3
     container_name: observability-langfuse-worker
-    hostname: langfuse-worker
+    # NOTE: Do NOT set hostname: here — Docker sets HOSTNAME env var from it,
+    # which overrides our HOSTNAME=0.0.0.0 and causes the worker to bind
+    # to the container hostname instead of all interfaces (healthcheck fails).
     profiles: ["langfuse"]
     environment:
       # Database
