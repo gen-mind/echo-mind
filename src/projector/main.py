@@ -10,7 +10,7 @@ from typing import Any
 from nats.aio.msg import Msg
 
 from echomind_lib.db.nats_subscriber import JetStreamSubscriber
-from echomind_lib.helpers.readiness_probe import ReadinessProbe
+from echomind_lib.helpers.readiness_probe import HealthServer
 from echomind_lib.models.internal.projector_pb2 import ProjectorGenerateRequest
 from projector.logic.projector_service import ProjectorService
 from projector.logic.exceptions import ProjectorError, EmptyCollectionError
@@ -45,7 +45,7 @@ class ProjectorWorker:
         )
 
         self.subscriber: JetStreamSubscriber | None = None
-        self.health_server: ReadinessProbe | None = None
+        self.health_server: HealthServer | None = None
 
         # Connection status flags
         self._nats_connected = False
@@ -191,8 +191,8 @@ class ProjectorWorker:
         logger.info("🚀 Starting Projector Worker...")
 
         # Start health server
-        self.health_server = ReadinessProbe(port=8080)
-        threading.Thread(target=self.health_server.start_server, daemon=True).start()
+        self.health_server = HealthServer(port=8080)
+        threading.Thread(target=self.health_server.start, daemon=True).start()
         logger.info("🏥 Health server started on :8080")
 
         # Initialize connections (non-blocking)
