@@ -2,14 +2,24 @@
 tensorflow==2.18.0
 tensorboard==2.18.0
 
-# NumPy (required by TensorFlow)
+# NumPy (required by TensorFlow, constrained by TF compatibility)
 numpy>=1.24.0,<2.0.0
 
 # NATS (message queue)
-nats-py>=2.10.0
+nats-py==2.12.0
 
 # Async support
 aiohttp>=3.11.0
+
+# Protobuf (required by echomind_lib.models)
+protobuf==5.29.5
+protobuf-pydantic-gen==0.1.8
+
+# Data Validation (required by echomind_lib.models)
+pydantic==2.12.5
+
+# Vector Database (required by echomind_lib.db.qdrant)
+qdrant-client==1.16.2
 
 # Local dependencies (installed via COPY in Dockerfile)
 # echomind_lib (local)
