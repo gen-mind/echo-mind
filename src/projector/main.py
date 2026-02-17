@@ -163,7 +163,7 @@ class ProjectorWorker:
         """Initialize Qdrant connection check."""
         try:
             # Test Qdrant connection
-            collections = self.service.qdrant._client.get_collections()
+            collections = await self.service.qdrant._client.get_collections()
             self._qdrant_connected = True
             logger.info(f"✅ Qdrant connected: {self.qdrant_url} ({len(collections.collections)} collections)")
             self._update_readiness()
@@ -178,7 +178,7 @@ class ProjectorWorker:
         while not self._qdrant_connected:
             await asyncio.sleep(30)
             try:
-                collections = self.service.qdrant._client.get_collections()
+                collections = await self.service.qdrant._client.get_collections()
                 self._qdrant_connected = True
                 logger.info(f"✅ Qdrant reconnected: {self.qdrant_url}")
                 self._update_readiness()

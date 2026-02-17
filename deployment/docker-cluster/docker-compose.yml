@@ -41,6 +41,13 @@ volumes:
       o: bind
       device: ${DATA_PATH}/nats
 
+  tensorboard_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH}/tensorboard
+
 services:
   # ===============================================
   # Traefik - Reverse Proxy
@@ -749,6 +756,42 @@ services:
       - "traefik.http.routers.webui.rule=Host(`${DOMAIN}`) || Host(`webui.${DOMAIN}`)"
       - "traefik.http.routers.webui.entrypoints=web"
       - "traefik.http.services.webui.loadbalancer.server.port=8080"
+
+  # ===============================================
+  # Projector Worker - TensorBoard Viz Generator
+  # ===============================================
+  projector:
+    build:
+      context: ../../src
+      dockerfile: projector/Dockerfile
+    container_name: echomind-projector
+    hostname: projector
+    environment:
+      - PROJECTOR_LOG_LEVEL=${PROJECTOR_LOG_LEVEL:-INFO}
+      - PROJECTOR_NATS_URL=nats://nats:4222
+      - PROJECTOR_STREAM_NAME=projector-stream
+      - PROJECTOR_CONSUMER_NAME=projector-worker
+      - PROJECTOR_SUBJECT=projector.generate
+      - PROJECTOR_QDRANT_URL=http://qdrant:6333
+      - PROJECTOR_QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - PROJECTOR_LOG_DIR=/logs
+      - TENSORBOARD_DOMAIN=${TENSORBOARD_DOMAIN:-tensorboard.localhost}
+    volumes:
+      - tensorboard_logs:/logs
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - backend
 
   # ===============================================
   # [DEPRECATED] EchoMind Web - React Frontend
