@@ -19,7 +19,7 @@ This plan transforms EchoMind's agent system from an in-process library into a *
 | Code to delete | ~1,100 LOC (29 of 30 native tools) |
 | Code to write | ~3,000-4,000 LOC (across all phases) |
 | Moltbot skills portable | 27 of 54 directly, 8 adapt, 3 replace (38 total + 4 new EchoMind-native) |
-| Total implementation time | 6 weeks |
+| Total implementation time | 11+ weeks (Phases 1-8) |
 
 ---
 
@@ -606,6 +606,73 @@ Sandbox CANNOT reach:
 
 ---
 
+## Phase 5: Chat Integration (Week 8)
+
+**Goal**: Wire sandboxed agents into the WebSocket chat flow so users can talk to agents with real-time streaming.
+
+**Detailed plan**: [agent_chat-integration.md](agent_chat-integration.md)
+
+**Key deliverables**:
+- Mode-based routing in ChatHandler (`mode: "agent"` → sandbox, default → existing RAG)
+- NATS relay: user messages → `sandbox.{session_id}.input` → agent processes → `sandbox.{session_id}.stream` → WebSocket
+- Token-by-token streaming with AG-UI protocol events (`agent.text.delta`, `agent.tool_call.start/result`)
+- Session lifecycle: assign warm container, activate agent, stream responses, timeout/cleanup
+- Graceful degradation: fallback to non-sandbox RAG if pool exhausted
+- 5 REST endpoints for sandbox management (pool status, session list, release, cancel)
+- ~8 new files, ~7 modified files, ~60 unit tests
+
+---
+
+## Phase 6: Observability (Week 9)
+
+**Goal**: Full observability with Langfuse LLM tracing, Prometheus metrics, and Grafana dashboards.
+
+**Detailed plan**: [agent_observability.md](agent_observability.md)
+
+**Key deliverables**:
+- Langfuse integration: trace LLM calls, tool executions, agent sessions with cost tracking
+- Prometheus metrics per service: sandbox pool utilization, request latency, error rates, NATS throughput
+- Grafana dashboards: system overview, sandbox pool health, agent performance, LLM cost tracking
+- Alerting rules: pool exhaustion, high error rates, latency spikes, container crash loops
+- OpenTelemetry SDK for ephemeral sandbox containers → OTel Collector → Langfuse
+- ~17 new files, ~5 modified files, ~30 unit tests
+
+---
+
+## Phase 7: Skills Migration (Week 10)
+
+**Goal**: Quality audit of existing 42 skills, add EchoMind-native skills, build security framework.
+
+**Detailed plan**: [agent_skills-migration.md](agent_skills-migration.md)
+
+**Key deliverables**:
+- Schema validation sweep across all 42 SKILL.md files
+- New skills: `echomind-admin` (system health), `web-scrape` (URL extraction)
+- Command analyzer with 13 block patterns and 7 warn patterns for dangerous commands
+- Sandbox image hardening: curl, jq, git, gh, ripgrep, tree (~285MB image)
+- Skill testing framework: 61 tests (registry, executor, analyzer, MCP tools, integration)
+- ~1.5-2 weeks implementation
+
+---
+
+## Phase 8: Auth & Security Hardening (Week 11+)
+
+**Goal**: Zero-trust authentication between agent and MCP server, RBAC, rate limiting.
+
+**Detailed plan**: [agent_auth-security.md](agent_auth-security.md)
+
+**Key deliverables**:
+- JWT authentication: API signs short-lived RS256 JWT → sandbox presents to MCP gateway
+- MCP gateway auth middleware stack: Authentication → RBAC → RateLimit → Audit → Error
+- RBAC enforcement: per-tool permissions, per-connector access control (user/team/org scope)
+- Rate limiting: sliding window counter (Redis-backed), per-user/per-tool limits
+- Network security: Docker iptables rules, sandbox isolation (only NATS + MCP gateway)
+- Audit trail: structured JSON security event logging with correlation IDs
+- 3 new DB tables (api_keys, rate_limit_rules, audit_logs) via Alembic
+- ~14 new files, ~8 modified files
+
+---
+
 ## Feasibility Assessment
 
 ### "Will the MCP gateway work for skills and other connections?"
@@ -713,10 +780,11 @@ Current server (8 CPU, 32GB RAM) can support ~4 concurrent agent sessions. A 32-
 | [agent_sandbox-containers.md](agent_sandbox-containers.md) | Container architecture, lifecycle, security, warm pool | Phase 4 |
 | [agent_mcp-gateway.md](agent_mcp-gateway.md) | MCP server design, FastMCP, zero-trust model | Phase 1, 2 |
 | [agent_skills-migration.md](agent_skills-migration.md) | Tool migration analysis, Moltbot skill format | Phase 3 |
-| [agent_observability.md](agent_observability.md) | Langfuse, Prometheus, Grafana dashboards | Reference |
+| [agent_observability.md](agent_observability.md) | Langfuse, Prometheus, Grafana dashboards | Phase 6 |
 | [agent_infrastructure.md](agent_infrastructure.md) | NATS streams, Docker Compose, cluster.sh changes | Phase 4 |
-| [agent_chat-integration.md](agent_chat-integration.md) | WebSocket chat flow, sandbox message relay | Reference |
-| [agent-chat-integration-analysis.md](agent-chat-integration-analysis.md) | Analysis of current chat handler for agent integration | Reference |
+| [agent_chat-integration.md](agent_chat-integration.md) | WebSocket chat flow, sandbox message relay | Phase 5 |
+| [agent-chat-integration-analysis.md](agent-chat-integration-analysis.md) | Analysis of current chat handler for agent integration | Phase 5 |
+| [agent_auth-security.md](agent_auth-security.md) | JWT auth, RBAC, rate limiting, security hardening | Phase 8 |
 | [anthropic-provider-analysis.md](anthropic-provider-analysis.md) | Anthropic LLM provider support, AnthropicClient, provider detection | All (provider-agnostic) |
 | [echomind-vs-moltbot-comparison.md](echomind-vs-moltbot-comparison.md) | Feature comparison, architecture differences | Context |
 
