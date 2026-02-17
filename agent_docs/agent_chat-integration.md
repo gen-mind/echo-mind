@@ -1313,7 +1313,17 @@ tests/unit/
 
 Each step depends on the previous ones. Steps within a group can be partially parallelized.
 
+> **Prerequisite**: See [agent-chat-integration-analysis.md](agent-chat-integration-analysis.md) for the full analysis (current chat architecture, streaming protocol research, AG-UI event taxonomy, UI wireframes).
+
 ```
+Step 0: Fix BasicAgentWrapper.run_stream() CRITICAL BUG (0.5 day)
+  ├─ src/agent/agent.py — run_stream() only yields text, never calls get_final_response()
+  │   Tools NEVER execute in streaming mode. Must iterate ALL content types
+  │   (text, text_reasoning, function_call, function_result, mcp_server_tool_call,
+  │   usage, error) AND call await stream.get_final_response() to finalize.
+  ├─ See analysis: agent-chat-integration-analysis.md §2.3
+  └─ tests/unit/agent/test_agent.py (verify tool execution in streaming mode)
+
 Step 1: Proto + Migration (0.5 day)
   ├─ src/proto/public/chat.proto (add CHAT_MODE_AGENT + WsAgent* messages)
   ├─ Run ./scripts/generate_proto.sh
