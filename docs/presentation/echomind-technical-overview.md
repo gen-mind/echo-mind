@@ -9,6 +9,7 @@
 
 ## Table of Contents
 
+0. [Architecture at a Glance](#architecture-at-a-glance)
 1. [Executive Summary](#1-executive-summary)
 2. [System Architecture](#2-system-architecture)
 3. [Document Ingestion Pipeline](#3-document-ingestion-pipeline)
@@ -19,6 +20,73 @@
 8. [Observability](#8-observability)
 9. [Deployment Models](#9-deployment-models)
 10. [Technology Decisions](#10-technology-decisions)
+
+---
+
+## Architecture at a Glance
+
+```mermaid
+graph TB
+    subgraph CLIENTS["Clients"]
+        WEB["Web App<br/>React"]
+        APIC["API Clients"]
+        BOT["Chat Bot Plugins<br/>Teams / Slack"]
+    end
+
+    subgraph INFRA["Infrastructure"]
+        TRAEFIK["Traefik<br/>Reverse Proxy · TLS"]
+        AUTHENTIK["Authentik<br/>OIDC Provider"]
+    end
+
+    subgraph GATEWAY["API Gateway"]
+        API["echomind-api<br/>FastAPI + WebSocket · :8080"]
+    end
+
+    subgraph QUERY["Query Path · Synchronous"]
+        SEARCH["echomind-search<br/>Semantic Kernel · gRPC :50051"]
+    end
+
+    subgraph INGESTION["Ingestion Path · Asynchronous"]
+        ORCH["Orchestrator<br/>APScheduler"]
+        CONN["Connector<br/>Data Fetcher"]
+        INGEST["Ingestor<br/>nv-ingest"]
+        EMBED["Embedder<br/>gRPC :50051"]
+        GUARDIAN["Guardian<br/>DLQ Monitor"]
+    end
+
+    subgraph DATA["Data Layer"]
+        PG[("PostgreSQL")]
+        QDRANT[("Qdrant<br/>Vector DB")]
+        REDIS[("Redis<br/>Cache")]
+        MINIO[("MinIO<br/>Object Store")]
+        NATS[("NATS JetStream<br/>Message Queue")]
+    end
+
+    subgraph OBS["Observability"]
+        PROM["Prometheus"]
+        GRAF["Grafana"]
+        LANG["Langfuse"]
+    end
+
+    CLIENTS --> TRAEFIK
+    TRAEFIK --> AUTHENTIK
+    TRAEFIK --> API
+    API -->|gRPC| SEARCH
+    API -->|NATS pub| ORCH
+    ORCH -->|NATS| CONN
+    CONN -->|NATS| INGEST
+    INGEST -->|gRPC| EMBED
+    NATS -.->|DLQ| GUARDIAN
+    SEARCH --> QDRANT
+    SEARCH --> PG
+    SEARCH --> REDIS
+    EMBED --> QDRANT
+    API --> PG
+    CONN --> MINIO
+    INGEST --> MINIO
+    OBS -.->|metrics / traces| GATEWAY
+    OBS -.->|metrics / traces| INGESTION
+```
 
 ---
 
@@ -55,58 +123,54 @@ EchoMind is a **Python-based Agentic Retrieval-Augmented Generation (RAG) platfo
 
 EchoMind follows a **microservices architecture** with clear separation between the **query path** (synchronous, latency-sensitive) and the **ingestion path** (asynchronous, throughput-oriented).
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              CLIENTS                                        │
-│    Web App (React)  ·  API Clients  ·  Chat Bot Plugins (Teams/Slack)      │
-└──────────────────────────────┬──────────────────────────────────────────────┘
-                               │ HTTPS / WebSocket
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                        AUTHENTICATION LAYER                                  │
-│                   Authentik (OIDC Provider, self-hosted)                     │
-│                        JWT Token Issuance                                    │
-└──────────────────────────────┬──────────────────────────────────────────────┘
-                               │ JWT
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                           API GATEWAY                                        │
-│              echomind-api  (FastAPI + WebSocket, :8080)                      │
-│         REST endpoints · WebSocket streaming · Prometheus /metrics           │
-└────────┬─────────────────────────────────────────────────────┬──────────────┘
-         │ gRPC                                                │ NATS pub
-         ▼                                                     ▼
-┌────────────────────┐                            ┌──────────────────────────┐
-│   QUERY PATH       │                            │   INGESTION PATH         │
-│   (Synchronous)    │                            │   (Asynchronous)         │
-│                    │                            │                          │
-│ echomind-search    │                            │ echomind-orchestrator    │
-│  Semantic Kernel   │                            │  APScheduler → NATS pub │
-│  gRPC :50051       │                            │                          │
-│  Agent loop        │                            │ echomind-connector       │
-│  Tool execution    │                            │  NATS sub → fetch data  │
-│  Memory mgmt       │                            │                          │
-│                    │                            │ echomind-ingestor        │
-│                    │                            │  NATS sub → extract     │
-│                    │                            │  nv-ingest + chunk      │
-│                    │                            │                          │
-│                    │                            │ echomind-embedder        │
-│                    │                            │  gRPC :50051 → embed    │
-│                    │                            │  → store in Qdrant      │
-│                    │                            │                          │
-│                    │                            │ echomind-guardian        │
-│                    │                            │  DLQ monitor + alerting │
-└────────┬───────────┘                            └──────────┬───────────────┘
-         │                                                   │
-         ▼                                                   ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                           DATA LAYER                                         │
-│                                                                              │
-│  PostgreSQL        Qdrant           Redis          MinIO         NATS        │
-│  (metadata,        (vectors,        (cache,        (files,       JetStream   │
-│   config,          HNSW index,      memory,        documents)    (messaging) │
-│   audit)           rich filtering)  sessions)                                │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph CLIENTS["Clients"]
+        WEB["Web App · React"]
+        APIC["API Clients"]
+        BOT["Bot Plugins · Teams / Slack"]
+    end
+
+    subgraph AUTH["Authentication Layer"]
+        AUTHENTIK["Authentik<br/>OIDC Provider · JWT Issuance"]
+    end
+
+    subgraph APIGW["API Gateway"]
+        API["echomind-api<br/>FastAPI + WebSocket · :8080<br/>REST · Streaming · Prometheus /metrics"]
+    end
+
+    subgraph QUERYPATH["Query Path · Synchronous"]
+        SEARCH["echomind-search<br/>Semantic Kernel · gRPC :50051<br/>Agent loop · Tool execution · Memory"]
+    end
+
+    subgraph INGESTION["Ingestion Path · Asynchronous"]
+        ORCH["echomind-orchestrator<br/>APScheduler → NATS pub"]
+        CONN["echomind-connector<br/>NATS sub → fetch data"]
+        INGEST["echomind-ingestor<br/>nv-ingest · extract + chunk"]
+        EMBED["echomind-embedder<br/>gRPC :50051 · embed → Qdrant"]
+        GUARDIAN["echomind-guardian<br/>DLQ monitor + alerting"]
+        ORCH -->|"NATS: connector.sync.*"| CONN
+        CONN -->|"NATS: document.process"| INGEST
+        INGEST -->|gRPC| EMBED
+    end
+
+    subgraph DATA["Data Layer"]
+        PG[("PostgreSQL<br/>metadata · config · audit")]
+        QDRANT[("Qdrant<br/>vectors · HNSW · filtering")]
+        REDIS[("Redis<br/>cache · memory · sessions")]
+        MINIO[("MinIO<br/>files · documents")]
+        NATS[("NATS JetStream<br/>messaging")]
+    end
+
+    CLIENTS -->|"HTTPS / WebSocket"| AUTH
+    AUTH -->|JWT| API
+    API -->|gRPC| SEARCH
+    API -->|NATS pub| ORCH
+    SEARCH --> PG & QDRANT & REDIS
+    EMBED --> QDRANT
+    CONN --> MINIO & PG
+    INGEST --> MINIO
+    NATS -.->|DLQ| GUARDIAN
 ```
 
 ### 2.2 Service Inventory
@@ -164,18 +228,29 @@ except Exception as e:
 
 The ingestion pipeline converts raw documents from heterogeneous sources into searchable vector embeddings. It is fully asynchronous, event-driven, and designed for horizontal scaling.
 
-```
-Data Sources                    Scheduling         Fetching           Processing           Storage
-─────────────                   ──────────         ────────           ──────────           ───────
+```mermaid
+graph LR
+    subgraph Sources["Data Sources"]
+        FU[File Upload]
+        WU[Web URL]
+        OD[OneDrive]
+        GD[Google Drive]
+        TM[Teams]
+        AU[Audio Files]
+        IM[Images]
+    end
 
-File Upload  ─┐
-Web URL      ─┤
-OneDrive     ─┤──▶ Orchestrator ──▶ Connector ──▶ Ingestor ──▶ Embedder ──▶ Qdrant
-Google Drive ─┤    (APScheduler)    (NATS sub)    (nv-ingest)   (gRPC)     (vectors)
-Teams        ─┤    NATS pub         OAuth          Extract       Encode     HNSW index
-Audio Files  ─┤                     Delta sync     Chunk         Normalize
-Images       ─┘                     MinIO upload   Route by      L2 norm
-                                                   content type  Upsert
+    ORCH["Orchestrator<br/>APScheduler · NATS pub"]
+    CONN["Connector<br/>OAuth · Delta sync<br/>MinIO upload"]
+    ING["Ingestor<br/>nv-ingest · Extract<br/>Chunk · Route by type"]
+    EMB["Embedder<br/>gRPC · Encode<br/>L2 normalize"]
+    QD["Qdrant<br/>Vectors · HNSW index<br/>Upsert"]
+
+    FU & WU & OD & GD & TM & AU & IM --> ORCH
+    ORCH -->|NATS| CONN
+    CONN -->|NATS| ING
+    ING -->|gRPC| EMB
+    EMB -->|upsert| QD
 ```
 
 ### 3.2 Stage-by-Stage Breakdown
@@ -280,27 +355,23 @@ Failed messages (after 5 retry attempts with exponential backoff: 1s, 5s, 30s, 2
 
 ### 3.3 Document Processing State Machine
 
-```
-[New Document]
-      │
-      ▼
-   PENDING ──────────▶ DOWNLOADING ──────────▶ EXTRACTING
-      ▲                     │                      │
-      │                     │                      │
-   (Retry)              (Error)                (Error)
-      │                     │                      │
-      │                     ▼                      ▼
-      ◄──────────────── FAILED ◄──────────────── FAILED
-                                                   │
-                                                   │ (Success)
-                                                   ▼
-                                              CHUNKING
-                                                   │
-                                                   ▼
-                                              EMBEDDING
-                                                   │
-                                                   ▼
-                                              COMPLETE
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING : New Document
+
+    PENDING --> DOWNLOADING : Start fetch
+    DOWNLOADING --> EXTRACTING : Download success
+    DOWNLOADING --> FAILED : Download error
+
+    EXTRACTING --> CHUNKING : Extraction success
+    EXTRACTING --> FAILED : Extraction error
+
+    CHUNKING --> EMBEDDING : Chunking success
+    EMBEDDING --> COMPLETE : Embedding success
+
+    FAILED --> PENDING : Retry
+
+    COMPLETE --> [*]
 ```
 
 ### 3.4 NATS Message Flow (Complete)
@@ -330,14 +401,24 @@ On failure (max retries exceeded):
 
 The primary scaling mechanism is **NATS JetStream queue groups**. Each consumer service registers with a named queue group, and NATS automatically distributes messages across all instances in the group.
 
-```
-                    ┌─ Ingestor Instance 1 ─┐
-                    │                        │
-NATS ──queue──────▶ ├─ Ingestor Instance 2 ─┤ ──gRPC──▶ Embedder Pool
-  (document.process)│                        │
-                    └─ Ingestor Instance N ─┘
+```mermaid
+graph LR
+    NATS["NATS JetStream<br/>document.process"]
 
-Queue Group: "ingestor-workers"
+    subgraph QG["Queue Group: ingestor-workers"]
+        I1["Ingestor Instance 1"]
+        I2["Ingestor Instance 2"]
+        IN["Ingestor Instance N"]
+    end
+
+    EMBED["Embedder Pool<br/>gRPC :50051"]
+
+    NATS -->|one msg → one instance| I1
+    NATS --> I2
+    NATS --> IN
+    I1 -->|gRPC| EMBED
+    I2 -->|gRPC| EMBED
+    IN -->|gRPC| EMBED
 ```
 
 | Service | Queue Group | Scaling Strategy |
@@ -469,60 +550,58 @@ The agent will be an autonomous reasoning loop, not a fixed pipeline. It will de
 
 ### 5.2 Agent Planning Loop
 
-```
-┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-│  THINK   │────▶│   ACT    │────▶│ OBSERVE  │────▶│ REFLECT  │
-│          │     │          │     │          │     │          │
-│ What do  │     │ Retrieve │     │ Evaluate │     │ Is this  │
-│ I need?  │     │ Use tool │     │ results  │     │ enough?  │
-│          │     │ Generate │     │          │     │          │
-└──────────┘     └──────────┘     └──────────┘     └────┬─────┘
-      ▲                                                  │
-      │                    No, need more                 │
-      ◄──────────────────────────────────────────────────┘
-                                                         │
-                                              Yes        │
-                                                         ▼
-                                                ┌──────────────┐
-                                                │   RESPOND    │
-                                                │              │
-                                                │ Generate     │
-                                                │ final answer │
-                                                └──────────────┘
+```mermaid
+graph LR
+    THINK["THINK<br/>Analyze goal &<br/>plan next step"]
+    ACT["ACT<br/>Retrieve ·<br/>Use tool · Generate"]
+    OBSERVE["OBSERVE<br/>Evaluate<br/>results"]
+    REFLECT["REFLECT<br/>Is answer<br/>sufficient?"]
+    RESPOND["RESPOND<br/>Generate<br/>final answer"]
+
+    THINK --> ACT --> OBSERVE --> REFLECT
+    REFLECT -->|"No, need more"| THINK
+    REFLECT -->|"Yes"| RESPOND
 ```
 
 ### 5.3 Agentic Search Flow
 
-```
-User Query (via WebSocket)
-    │
-    ▼
-echomind-api ──gRPC──▶ echomind-search (Semantic Kernel)
-                            │
-                            ├── Load conversation context from Redis
-                            │   (short-term + long-term memory)
-                            │
-                            ├── THINK: What information do I need?
-                            │
-                            ├── ACT: Execute retrieval strategy
-                            │   ├── Query Qdrant (multi-collection)
-                            │   ├── Evaluate: Are results sufficient?
-                            │   └── [Optional] Refined query → Qdrant again
-                            │
-                            ├── ACT: Execute tools (if needed)
-                            │   ├── Calculator
-                            │   ├── Web search
-                            │   ├── Code executor
-                            │   └── External APIs
-                            │
-                            ├── Generate response with context (LLM)
-                            │   └── Stream tokens via LLM Router
-                            │       ├── Private: TGI / vLLM
-                            │       └── Cloud: OpenAI / Anthropic
-                            │
-                            ├── Update memory (Redis)
-                            │
-                            └── Stream response back to API → WebSocket → Client
+```mermaid
+graph TB
+    UserQuery["User Query<br/>(via WebSocket)"]
+    API["echomind-api"]
+    Search["echomind-search<br/>(Semantic Kernel)"]
+    Context["Load conversation context<br/>from Redis"]
+
+    subgraph RETRIEVAL["THINK + ACT: Retrieval"]
+        Think["What information do I need?"]
+        Qdrant["Query Qdrant<br/>(multi-collection)"]
+        Eval{"Results<br/>sufficient?"}
+        Refine["Refined query<br/>→ Qdrant again"]
+    end
+
+    subgraph TOOLS["ACT: Tool Execution"]
+        Calc["Calculator"]
+        WebSrch["Web search"]
+        Code["Code executor"]
+        ExtAPI["External APIs"]
+    end
+
+    subgraph LLM["Generate Response"]
+        Router["LLM Router"]
+        Private["Private: TGI / vLLM"]
+        Cloud["Cloud: OpenAI / Anthropic"]
+    end
+
+    Memory["Update memory (Redis)"]
+    Stream["Stream response<br/>API → WebSocket → Client"]
+
+    UserQuery --> API -->|gRPC| Search --> Context --> Think
+    Think --> Qdrant --> Eval
+    Eval -->|"No"| Refine --> Qdrant
+    Eval -->|"Yes"| TOOLS
+    TOOLS --> Router
+    Router --> Private & Cloud
+    Router --> Memory --> Stream
 ```
 
 ### 5.4 Multi-Agent System
@@ -554,21 +633,21 @@ agents:
 
 The policy engine is a **cascading filter** that narrows which tools an agent can use. Each layer can only *remove* tools, never re-add them. **Deny always wins over allow.** This runs as middleware *before every LLM call*.
 
-```
-All 30+ Tools
-    │
-    ▼ Layer 1: Profile (minimal/coding/full)
-    ▼ Layer 2: Provider Profile (per LLM vendor)
-    ▼ Layer 3: Global Policy (org-wide allow/deny)
-    ▼ Layer 4: Global + Provider (vendor-specific global)
-    ▼ Layer 5: Agent Policy (per-agent allow/deny)
-    ▼ Layer 6: Agent + Provider (per-agent + vendor)
-    ▼ Layer 7: Group/Channel (planned)
-    ▼ Layer 8: Sandbox (denied_tools list)
-    ▼ Layer 9: Subagent (child agent limits)
-    │
-    ▼
-~10-25 Tools Available to LLM
+```mermaid
+graph TB
+    All["All 30+ Tools"]
+    L1["Layer 1: Profile<br/>minimal / coding / full"]
+    L2["Layer 2: Provider Profile<br/>per LLM vendor"]
+    L3["Layer 3: Global Policy<br/>org-wide allow / deny"]
+    L4["Layer 4: Global + Provider<br/>vendor-specific global"]
+    L5["Layer 5: Agent Policy<br/>per-agent allow / deny"]
+    L6["Layer 6: Agent + Provider<br/>per-agent + vendor"]
+    L7["Layer 7: Group / Channel<br/>(planned)"]
+    L8["Layer 8: Sandbox<br/>denied_tools list"]
+    L9["Layer 9: Subagent<br/>child agent limits"]
+    Out["~10–25 Tools Available to LLM"]
+
+    All --> L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7 --> L8 --> L9 --> Out
 ```
 
 **Security invariant:** An agent acting on behalf of a user can never have *more* tool access than the user's role permits.
@@ -593,23 +672,19 @@ Each matched agent gets its own **session key** (e.g., `agent:support:discord:ch
 
 ### 5.7 Memory Architecture
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                        AGENT MEMORY                           │
-│                                                               │
-│  ┌─────────────────────┐    ┌──────────────────────────────┐ │
-│  │   SHORT-TERM        │    │   LONG-TERM                   │ │
-│  │                     │    │                                │ │
-│  │ Conversation Buffer │    │ Episodic Memory               │ │
-│  │  → Redis            │    │  (past interactions) → PG     │ │
-│  │                     │    │                                │ │
-│  │ Working Memory      │    │ Semantic Memory               │ │
-│  │  (current task)     │    │  (learned facts) → Qdrant     │ │
-│  │  → Redis            │    │                                │ │
-│  │                     │    │ Procedural Memory              │ │
-│  └─────────────────────┘    │  (successful patterns) → PG   │ │
-│                              └──────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    subgraph MEMORY["Agent Memory"]
+        subgraph SHORT["Short-Term"]
+            CB["Conversation Buffer<br/>→ Redis"]
+            WM["Working Memory<br/>(current task) → Redis"]
+        end
+        subgraph LONG["Long-Term"]
+            EM["Episodic Memory<br/>(past interactions) → PostgreSQL"]
+            SM["Semantic Memory<br/>(learned facts) → Qdrant"]
+            PM["Procedural Memory<br/>(successful patterns) → PostgreSQL"]
+        end
+    end
 ```
 
 ### 5.8 Tool System
@@ -643,21 +718,20 @@ Agents execute in **ephemeral Docker containers** with strict isolation:
 
 The architecture supports a primary agent **delegating subtasks** to child agents:
 
-```
-Parent Agent (general-assistant)
-    │
-    ├── "What changed in the repo recently?"
-    │
-    ├── sessions_spawn(task="Find latest 10 commits")
-    │       │
-    │       ▼
-    │   Child Agent (research-assistant)
-    │       ├── Own session, own model, restricted tools
-    │       ├── search_documents("recent commits")
-    │       ├── Synthesize findings
-    │       └── Return result to parent
-    │
-    └── Incorporate child's result into response
+```mermaid
+sequenceDiagram
+    actor User
+    participant Parent as Parent Agent<br/>(general-assistant)
+    participant Child as Child Agent<br/>(research-assistant)
+
+    User->>Parent: "What changed in the repo recently?"
+    Parent->>Child: sessions_spawn(task="Find latest 10 commits")
+    note over Child: Own session, own model,<br/>restricted tools
+    Child->>Child: search_documents("recent commits")
+    Child->>Child: Synthesize findings
+    Child-->>Parent: Return result
+    Parent->>Parent: Incorporate child result
+    Parent-->>User: Final response
 ```
 
 **Key constraints:**
@@ -737,14 +811,13 @@ Proto generation (`scripts/generate_proto.sh`) produces:
 
 Three-tier role hierarchy:
 
-```
-echomind-superadmins   (System administrators — full access)
-        │
-        ▼
- echomind-admins       (Team managers — team + shared resource management)
-        │
-        ▼
-echomind-allowed       (Standard users — personal resources only)
+```mermaid
+graph TB
+    SA["echomind-superadmins<br/>System administrators — full access"]
+    AD["echomind-admins<br/>Team managers — team + shared resource management"]
+    US["echomind-allowed<br/>Standard users — personal resources only"]
+
+    SA --> AD --> US
 ```
 
 ### 7.3 Resource Scoping
