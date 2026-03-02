@@ -74,8 +74,8 @@ class MockTokenUser:
     user_name: str = "testuser"
     first_name: str = "Test"
     last_name: str = "User"
-    roles: list[str] = field(default_factory=lambda: ["user"])
-    groups: list[str] = field(default_factory=lambda: ["default"])
+    roles: list[str] = field(default_factory=lambda: ["echomind-allowed"])
+    groups: list[str] = field(default_factory=lambda: ["echomind-allowed"])
     external_id: str = "ext-123"
 
 
@@ -167,6 +167,10 @@ class MockDbSession:
     async def delete(self, obj: Any) -> None:
         self.deleted.append(obj)
 
+    async def commit(self) -> None:
+        """Mock commit."""
+        pass
+
     async def flush(self) -> None:
         pass
 
@@ -220,13 +224,39 @@ class TestDocumentEndpoints:
         return MockDbSession()
 
     @pytest.fixture
+    def mock_qdrant(self):
+        """Create a mock Qdrant client."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        qdrant = MagicMock()
+        qdrant.delete_by_filter = AsyncMock()
+        return qdrant
+
+    @pytest.fixture
+    def mock_minio(self):
+        """Create a mock MinIO client."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        minio = MagicMock()
+        minio.file_exists = AsyncMock(return_value=True)
+        minio.delete_file = AsyncMock()
+        return minio
+
+    @pytest.fixture
     def client(
         self,
         mock_db: MockDbSession,
         mock_user: MockTokenUser,
+        mock_qdrant,
+        mock_minio,
     ) -> TestClient:
         """Create test client with mocked dependencies."""
-        from api.dependencies import get_current_user, get_db_session
+        from api.dependencies import (
+            get_current_user,
+            get_db_session,
+            get_minio_client,
+            get_qdrant_client,
+        )
         from api.middleware.error_handler import setup_error_handlers
         from api.routes.documents import router
 
@@ -240,8 +270,16 @@ class TestDocumentEndpoints:
         async def override_user() -> MockTokenUser:
             return mock_user
 
+        def override_qdrant():
+            return mock_qdrant
+
+        def override_minio():
+            return mock_minio
+
         app.dependency_overrides[get_db_session] = override_db
         app.dependency_overrides[get_current_user] = override_user
+        app.dependency_overrides[get_qdrant_client] = override_qdrant
+        app.dependency_overrides[get_minio_client] = override_minio
 
         return TestClient(app, raise_server_exceptions=False)
 

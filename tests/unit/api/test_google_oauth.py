@@ -117,7 +117,7 @@ def _mock_token_exchange(
     mock_client_cls: MagicMock,
     access_token: str = "test_access_token",
     refresh_token: str | None = "test_refresh_token",
-    scope: str = "https://www.googleapis.com/auth/gmail.readonly",
+    scope: str = "https://www.googleapis.com/auth/gmail.modify",
     status_code: int = 200,
     text: str = "",
 ) -> None:
@@ -278,9 +278,9 @@ class TestGoogleAuthUrl:
         data = response.json()
         assert "url" in data
         assert "accounts.google.com" in data["url"]
-        assert "gmail.readonly" in data["url"]
+        assert "gmail.modify" in data["url"]
         # Should NOT include drive scopes
-        assert "drive.readonly" not in data["url"]
+        assert "auth%2Fdrive" not in data["url"]
 
     def test_generates_url_with_drive_scopes(
         self, client: TestClient, _mock_db: MagicMock
@@ -295,7 +295,7 @@ class TestGoogleAuthUrl:
 
         assert response.status_code == 200
         data = response.json()
-        assert "drive.readonly" in data["url"]
+        assert "auth%2Fdrive" in data["url"] or "auth/drive" in data["url"]
 
     def test_generates_url_with_calendar_scopes(
         self, client: TestClient, _mock_db: MagicMock
@@ -309,7 +309,7 @@ class TestGoogleAuthUrl:
             response = client.get("/google/auth/url?service=calendar")
 
         assert response.status_code == 200
-        assert "calendar.readonly" in response.json()["url"]
+        assert "auth%2Fcalendar" in response.json()["url"] or "auth/calendar" in response.json()["url"]
 
     def test_generates_url_with_contacts_scopes(
         self, client: TestClient, _mock_db: MagicMock
@@ -323,7 +323,7 @@ class TestGoogleAuthUrl:
             response = client.get("/google/auth/url?service=contacts")
 
         assert response.status_code == 200
-        assert "contacts.readonly" in response.json()["url"]
+        assert "auth%2Fcontacts" in response.json()["url"] or "auth/contacts" in response.json()["url"]
 
     def test_requires_service_param(self, client: TestClient) -> None:
         """Test that service parameter is required."""
@@ -555,14 +555,13 @@ class TestGoogleAuthCallback:
         _google_oauth_states["merge_state"] = (1, "gmail", "redirect", time.monotonic())
 
         existing_scopes = [
-            "https://www.googleapis.com/auth/drive.readonly",
-            "https://www.googleapis.com/auth/drive.metadata.readonly",
+            "https://www.googleapis.com/auth/drive",
         ]
         credential = _mock_existing_credential(
             _mock_db, granted_scopes=existing_scopes
         )
 
-        new_scope = "https://www.googleapis.com/auth/gmail.readonly"
+        new_scope = "https://www.googleapis.com/auth/gmail.modify"
 
         with (
             patch("api.routes.google_oauth.get_settings") as mock_settings,
@@ -581,9 +580,8 @@ class TestGoogleAuthCallback:
         # Credential should have merged scopes (drive + gmail)
         merged = credential.granted_scopes
         assert new_scope in merged
-        assert "https://www.googleapis.com/auth/drive.readonly" in merged
-        assert "https://www.googleapis.com/auth/drive.metadata.readonly" in merged
-        assert len(merged) == 3
+        assert "https://www.googleapis.com/auth/drive" in merged
+        assert len(merged) == 2
 
         _google_oauth_states.clear()
 
@@ -660,8 +658,7 @@ class TestGoogleAuthStatus:
         _mock_existing_credential(
             _mock_db,
             granted_scopes=[
-                "https://www.googleapis.com/auth/drive.readonly",
-                "https://www.googleapis.com/auth/drive.metadata.readonly",
+                "https://www.googleapis.com/auth/drive",
             ],
         )
 
@@ -682,10 +679,9 @@ class TestGoogleAuthStatus:
         _mock_existing_credential(
             _mock_db,
             granted_scopes=[
-                "https://www.googleapis.com/auth/drive.readonly",
-                "https://www.googleapis.com/auth/drive.metadata.readonly",
-                "https://www.googleapis.com/auth/gmail.readonly",
-                "https://www.googleapis.com/auth/calendar.readonly",
+                "https://www.googleapis.com/auth/drive",
+                "https://www.googleapis.com/auth/gmail.modify",
+                "https://www.googleapis.com/auth/calendar",
             ],
         )
 

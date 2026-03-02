@@ -536,7 +536,9 @@ class TestConnectorService:
     async def test_trigger_sync_no_nats(
         self, service_no_nats, mock_db, mock_connector, mock_user
     ):
-        """Test triggering sync when NATS is not available."""
+        """Test triggering sync when NATS is not available raises ServiceUnavailableError."""
+        from api.logic.exceptions import ServiceUnavailableError
+
         mock_connector.status = "active"
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_connector
@@ -547,10 +549,11 @@ class TestConnectorService:
             "can_edit_connector",
             return_value=AccessResult(True, "owner"),
         ):
-            success, message = await service_no_nats.trigger_sync(1, mock_user)
+            with pytest.raises(ServiceUnavailableError) as exc_info:
+                await service_no_nats.trigger_sync(1, mock_user)
 
-        assert success is False
-        assert "NATS not available" in message
+        assert "NATS" in str(exc_info.value)
+        assert exc_info.value.status_code == 503
 
     @pytest.mark.asyncio
     async def test_trigger_sync_not_found(self, service, mock_db, mock_user):

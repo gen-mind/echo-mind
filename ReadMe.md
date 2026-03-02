@@ -552,8 +552,6 @@ The infrastructure observability stack provides metrics, logs, and dashboards â€
 
 **Enabling:** Set `ENABLE_OBSERVABILITY=true` in `.env.host`. Access Grafana at `https://grafana.<DOMAIN>`.
 
-> OpenTelemetry compatibility: The stack uses Prometheus exposition format and Loki's log pipeline, both of which are OpenTelemetry-compatible. Services can be instrumented with OTel SDKs to push traces and metrics alongside the pull-based Prometheus scraping.
-
 ---
 
 ## License

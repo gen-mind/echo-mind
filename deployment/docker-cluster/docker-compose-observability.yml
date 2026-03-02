@@ -19,7 +19,6 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=30d"
       - "--web.enable-lifecycle"
-      - "--web.enable-otlp-receiver"   # Future-proof: accept OTLP metrics for Phase 2+
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
       interval: 15s

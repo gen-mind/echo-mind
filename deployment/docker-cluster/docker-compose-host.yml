@@ -8,6 +8,9 @@ networks:
     driver: bridge
   backend:
     driver: bridge
+  sandbox:
+    driver: bridge
+    internal: false
 
 volumes:
   postgres_data:
@@ -314,6 +317,7 @@ services:
     restart: unless-stopped
     networks:
       - backend
+      - sandbox
     labels:
       - "traefik.enable=false"
 
@@ -418,6 +422,23 @@ services:
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_BASE_URL=http://langfuse-web:3000
       - API_RAGAS_SAMPLE_RATE=${RAGAS_SAMPLE_RATE:-0.1}
+      # Sandbox management (always enabled)
+      - SANDBOX_POOL_SIZE=${SANDBOX_POOL_SIZE:-3}
+      - SANDBOX_MAX_INSTANCES=${SANDBOX_MAX_INSTANCES:-15}
+      - SANDBOX_IMAGE=${SANDBOX_IMAGE:-gsantopaolo/echomind-agent-sandbox:0.1.0-beta.1}
+      - SANDBOX_CPU_LIMIT=${SANDBOX_CPU_LIMIT:-2.0}
+      - SANDBOX_MEMORY_LIMIT=${SANDBOX_MEMORY_LIMIT:-2g}
+      - SANDBOX_SESSION_TIMEOUT=${SANDBOX_SESSION_TIMEOUT:-3600}
+      - SANDBOX_NATS_URL=nats://nats:4222
+      - SANDBOX_MCP_URL=http://mcp-gateway:8100
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
     depends_on:
       postgres:
         condition: service_healthy
@@ -435,6 +456,7 @@ services:
     networks:
       - frontend
       - backend
+      - sandbox
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.api.rule=Host(`${API_DOMAIN}`)"
@@ -536,6 +558,12 @@ services:
     environment:
       - ORCHESTRATOR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
       - ORCHESTRATOR_NATS_URL=nats://nats:4222
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     depends_on:
       postgres:
         condition: service_healthy
@@ -571,6 +599,12 @@ services:
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_BASE_URL=http://langfuse-web:3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     depends_on:
       postgres:
         condition: service_healthy
@@ -640,6 +674,59 @@ services:
     restart: unless-stopped
     networks:
       - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind MCP Gateway - MCP Tool Server
+  # ===============================================
+  mcp-gateway:
+    image: gsantopaolo/echomind-mcp-gateway:${MCP_GATEWAY_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: mcp_gateway/Dockerfile
+    container_name: echomind-mcp-gateway
+    hostname: mcp-gateway
+    env_file:
+      - ${CONFIG_PATH}/mcp-gateway/mcp-gateway.env
+    environment:
+      - MCP_GATEWAY_QDRANT_HOST=qdrant
+      - MCP_GATEWAY_QDRANT_PORT=6333
+      - MCP_GATEWAY_EMBEDDER_HOST=embedder
+      - MCP_GATEWAY_EMBEDDER_PORT=50051
+      - MCP_GATEWAY_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - MCP_GATEWAY_NATS_URL=nats://nats:4222
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
+      - GOOGLE_SEARCH_CX=${GOOGLE_SEARCH_CX:-}
+      - MCP_GATEWAY_EMBEDDER_MODEL=${MCP_GATEWAY_EMBEDDER_MODEL:-nvidia/llama-nemotron-embed-1b-v2}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ${CONFIG_PATH}/mcp-gateway/skills:/app/config/skills:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      embedder:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+    restart: unless-stopped
+    networks:
+      - backend
+      - sandbox
     labels:
       - "traefik.enable=false"
 
@@ -775,8 +862,10 @@ services:
   # No Python backend needed - just static files.
   webui:
     image: gsantopaolo/echomind-webui:${WEBUI_VERSION:-0.1.0-beta.1}
+    profiles:
+      - webui
     build:
-      context: ../../../echomind-webui
+      context: ../../../echo-mind-webui
       dockerfile: Dockerfile.nginx
       args:
         - BUILD_HASH=${BUILD_HASH:-dev}

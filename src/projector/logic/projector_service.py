@@ -2,6 +2,7 @@
 
 import logging
 import os
+from urllib.parse import urlparse
 from typing import Any
 
 from echomind_lib.db.qdrant import QdrantDB
@@ -25,11 +26,14 @@ class ProjectorService:
         Initialize projector service.
 
         Args:
-            qdrant_url: Qdrant server URL
+            qdrant_url: Qdrant server URL (e.g. http://qdrant:6333)
             qdrant_api_key: Optional Qdrant API key
             log_base_dir: Base directory for TensorBoard logs
         """
-        self.qdrant = QdrantDB(qdrant_url, qdrant_api_key)
+        parsed = urlparse(qdrant_url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 6333
+        self.qdrant = QdrantDB(host=host, port=port, api_key=qdrant_api_key)
         self.generator = CheckpointGenerator(log_base_dir)
         self.tensorboard_domain = os.getenv("TENSORBOARD_DOMAIN", "tensorboard.echomind.local")
 

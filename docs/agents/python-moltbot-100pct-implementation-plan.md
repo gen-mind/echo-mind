@@ -2927,7 +2927,7 @@ This section documents ALL features deferred to Phase 2+ for future implementati
 
 **Deferred Features:**
 
-1. **OpenTelemetry Integration** (~500 LOC)
+1. **Distributed Tracing Integration** (~500 LOC)
    - Distributed tracing
    - Span creation (policy, routing, tools)
    - Trace export (Jaeger, Zipkin)

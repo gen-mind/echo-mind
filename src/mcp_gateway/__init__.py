@@ -1,0 +1,1 @@
+"""EchoMind MCP Gateway Service."""

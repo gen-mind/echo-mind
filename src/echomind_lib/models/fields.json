@@ -515,6 +515,31 @@
         "dimension": "",
         "model_id": ""
     },
+    "SandboxSession": {
+        "id": "",
+        "session_id": "",
+        "user_id": "",
+        "chat_session_id": "",
+        "container_id": "",
+        "container_name": "",
+        "status": "",
+        "assigned_at": "",
+        "activated_at": "",
+        "destroyed_at": "",
+        "agent_config": "",
+        "message_count": "",
+        "tool_calls_count": "",
+        "total_tokens": "",
+        "created_at": "",
+        "updated_at": ""
+    },
+    "SandboxEvent": {
+        "id": "",
+        "sandbox_session_id": "",
+        "event_type": "",
+        "event_data": "",
+        "created_at": ""
+    },
     "AgentMemory": {
         "id": "",
         "user_id": "",

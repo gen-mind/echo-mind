@@ -47,7 +47,7 @@ class MockTokenUser:
     first_name: str = "Test"
     last_name: str = "User"
     roles: list[str] = field(default_factory=lambda: ["echomind-allowed"])
-    groups: list[str] = field(default_factory=lambda: ["default"])
+    groups: list[str] = field(default_factory=lambda: ["echomind-allowed"])
     external_id: str = "ext-123"
 
 

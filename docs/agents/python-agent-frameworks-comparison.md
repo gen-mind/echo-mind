@@ -36,7 +36,7 @@ This document compares **five Python agent execution frameworks** that share sim
 | **Type Safety** | TypeScript native | Pydantic 100% | Pydantic + type annotations | Basic (type hints) | Runtime validation |
 | **Extension System** | Extension hooks + plugins | Toolsets (composable) | MCP + filters + telemetry | Custom nodes + edges | Tool serialization to Hub |
 | **Security** | Sandbox via executor | No sandboxing | Filters + responsible AI | No sandboxing | AST + 5 sandbox options |
-| **Production Features** | Session management | Validation pipeline | OpenTelemetry + Azure Entra | Durable execution + time-travel | Hub tool sharing |
+| **Production Features** | Session management | Validation pipeline | Observability + Azure Entra | Durable execution + time-travel | Hub tool sharing |
 | **Key Differentiator** | Extension ecosystem | Type-safe validation pipeline | Production-ready multi-agent (AutoGen+SK merger) | Graph-based complex workflows | Code-based agents |
 
 **Sources (2026 Web Research):**
@@ -917,14 +917,14 @@ agent = Agent(
 
 **4. Filters & Observability:**
 ```python
-# Built-in OpenTelemetry instrumentation
+# Built-in observability instrumentation
 agent = Agent(
     client=llm,
     filters=[PromptInjectionFilter(), ContentSafetyFilter()],
     telemetry_enabled=True  # Automatic tracing
 )
 ```
-- **OpenTelemetry:** Zero-code instrumentation
+- **Observability:** Zero-code instrumentation
 - **Filters:** Extensible pre/post processing pipeline
 - **Azure integration:** Optional (but not required for local deployment)
 
@@ -1154,7 +1154,7 @@ tool.push_to_hub("username/tool-name")
 - ✅ You need **multi-agent orchestration** with built-in patterns (sequential, concurrent, handoff, group chat, hierarchical)
 - ✅ You want **rapid prototyping** with minimal boilerplate
 - ✅ You need **100% offline capability** (native Ollama connector)
-- ✅ You're building **production applications** (OpenTelemetry, filters, security features)
+- ✅ You're building **production applications** (observability, filters, security features)
 - ✅ You need **MCP integration** for local tools (filesystem, git, docker, databases)
 - ✅ You want **best-of-both-worlds** (AutoGen's collaboration + Semantic Kernel's enterprise features)
 - ✅ You need **multi-language support** (Python + .NET)
@@ -1250,13 +1250,13 @@ tool.push_to_hub("username/tool-name")
 - ⚠️ **Complexity:** Moderate (~40k LOC across packages)
 
 ### PydanticAI
-- ✅ **Strengths:** 100% type coverage, Pydantic validation, async-first, OpenTelemetry built-in
+- ✅ **Strengths:** 100% type coverage, Pydantic validation, async-first, built-in observability
 - ✅ **Documentation:** Excellent (FastAPI-style docs)
 - ✅ **Tests:** Comprehensive test suite
 - ⚠️ **Dependency:** Requires `pydantic-graph` (adds abstraction layer)
 
 ### Microsoft Agent Framework
-- ✅ **Strengths:** Production-ready merger of AutoGen + Semantic Kernel, 5 multi-agent patterns, OpenTelemetry built-in
+- ✅ **Strengths:** Production-ready merger of AutoGen + Semantic Kernel, 5 multi-agent patterns, built-in observability
 - ✅ **Documentation:** Excellent (Microsoft Learn + migration guides)
 - ✅ **Tests:** Comprehensive (enterprise-grade testing)
 - ✅ **Maturity:** Built on 2+ years of AutoGen/SK development

@@ -33,6 +33,7 @@ from echomind_lib.db.models import (  # noqa: F401
     Connector,
     Document,
     EmbeddingModel,
+    GoogleCredential,
     LLM,
     Team,
     TeamMember,

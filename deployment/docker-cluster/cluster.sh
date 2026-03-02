@@ -160,6 +160,18 @@ if [ "$_langfuse_enabled" = true ]; then
     fi
 fi
 
+# Sandbox compose files (always included)
+SANDBOX_FILES="-f docker-compose-sandbox.yml"
+if [ "$MODE" = "host" ]; then
+    SANDBOX_FILES="$SANDBOX_FILES -f docker-compose-sandbox-host.yml"
+fi
+
+# Check if echomind-webui repo exists (external repo, not always cloned)
+WEBUI_PROFILE=""
+if [ -d "$SCRIPT_DIR/../../../echo-mind-webui" ]; then
+    WEBUI_PROFILE="--profile webui"
+fi
+
 # Functions
 log_info() {
     echo -e "${BLUE}ℹ️  ${NC}$1"
@@ -258,6 +270,11 @@ create_directories() {
         mkdir -p "$PROJECT_ROOT/data/clickhouse-logs"
     fi
 
+    # Sandbox data directories
+    if [ -n "$SANDBOX_FILES" ]; then
+        mkdir -p "$PROJECT_ROOT/data/sandbox"
+    fi
+
     log_success "Data directories created"
 }
 
@@ -276,8 +293,8 @@ start_cluster() {
     cd "$SCRIPT_DIR"
     # Use down + up to ensure env vars from .env are always applied
     # (--force-recreate alone doesn't always work)
-    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE down 2>/dev/null || true
-    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE up -d
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE down 2>/dev/null || true
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE up -d
 
     echo ""
     log_success "Cluster started successfully!"
@@ -432,7 +449,7 @@ stop_cluster() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE down
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE down
 
     echo ""
     log_success "Cluster stopped successfully!"
@@ -450,8 +467,8 @@ restart_cluster() {
     create_directories
 
     cd "$SCRIPT_DIR"
-    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE down
-    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE up -d
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE down
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE up -d
 
     echo ""
     log_success "Cluster restarted successfully!"
@@ -463,10 +480,10 @@ show_logs() {
 
     if [ -z "$1" ]; then
         log_info "Showing logs for all services (Ctrl+C to exit)..."
-        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE logs -f
+        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE logs -f
     else
         log_info "Showing logs for service: $1 (Ctrl+C to exit)..."
-        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE logs -f "$1"
+        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE logs -f "$1"
     fi
 }
 
@@ -480,7 +497,7 @@ show_status() {
     cd "$SCRIPT_DIR"
 
     # Get all containers
-    ALL_CONTAINERS=$(docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE ps --format "{{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null)
+    ALL_CONTAINERS=$(docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE ps --format "{{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null)
 
     # Group containers by prefix
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -517,6 +534,16 @@ show_status() {
         echo ""
     fi
 
+    # Dynamic sandbox containers (created by Docker SDK, not compose)
+    SANDBOX_CONTAINERS=$(docker ps --filter "name=sandbox-" --format "{{.Names}}\t{{.Status}}" 2>/dev/null)
+    if [ -n "$SANDBOX_CONTAINERS" ]; then
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${CYAN}🧪 Sandbox Containers (Dynamic)${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo "$SANDBOX_CONTAINERS" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}'
+        echo ""
+    fi
+
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
     # Summary
@@ -534,7 +561,7 @@ pull_images() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE pull
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE pull
 
     echo ""
     log_success "Images updated successfully!"
@@ -556,16 +583,26 @@ build_services() {
         echo ""
 
         # All services with build contexts
-        local services=("api" "migration" "embedder" "orchestrator" "connector" "ingestor" "guardian" "webui")
+        local services=("api" "migration" "embedder" "orchestrator" "connector" "ingestor" "mcp-gateway" "guardian" "webui")
+
+        # Add sandbox image build if enabled
+        if [ "$_sandbox_enabled" = true ]; then
+            services+=("sandbox")
+        fi
 
         for svc in "${services[@]}"; do
+            # Skip webui if external repo not cloned
+            if [ "$svc" = "webui" ] && [ ! -d "$SCRIPT_DIR/../../../echo-mind-webui" ]; then
+                log_warning "Skipping ${svc} build (echo-mind-webui repo not found at ../../../echo-mind-webui)"
+                continue
+            fi
             log_info "Building ${svc}..."
             # Pass HF_TOKEN as build arg if set (for model pre-download)
             if [ -n "${HF_TOKEN:-}" ]; then
                 log_info "  Using HF_TOKEN for ${svc}"
-                docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build --build-arg HF_TOKEN="$HF_TOKEN" "$svc"
+                docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE build --build-arg HF_TOKEN="$HF_TOKEN" "$svc"
             else
-                docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build "$svc"
+                docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE build "$svc"
             fi
             log_success "${svc} built"
         done
@@ -580,9 +617,9 @@ build_services() {
         # Pass HF_TOKEN as build arg if set (for model pre-download)
         if [ -n "${HF_TOKEN:-}" ]; then
             log_info "Using HF_TOKEN for build"
-            docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
+            docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE build --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
         else
-            docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build "$SERVICE"
+            docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE build "$SERVICE"
         fi
 
         echo ""
@@ -610,11 +647,11 @@ rebuild_service() {
     # Pass HF_TOKEN as build arg if set (for model pre-download)
     if [ -n "${HF_TOKEN:-}" ]; then
         log_info "Using HF_TOKEN for build"
-        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build --no-cache --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
+        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE build --no-cache --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
     else
-        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build --no-cache "$SERVICE"
+        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE build --no-cache "$SERVICE"
     fi
-    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE up -d --force-recreate "$SERVICE"
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE $SANDBOX_FILES $WEBUI_PROFILE up -d --force-recreate "$SERVICE"
 
     echo ""
     log_success "${SERVICE} service rebuilt and restarted!"

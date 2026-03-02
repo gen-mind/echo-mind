@@ -285,7 +285,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/) for automati
 
 **Good commits:**
 ```
-feat(langfuse): add OTLP integration for trace collection
+feat(langfuse): add Langfuse integration for trace collection
 
 Integrates Langfuse v3 for LLM observability with RAGAS evaluation support.
 Configures ClickHouse for trace storage and MinIO for event uploads.

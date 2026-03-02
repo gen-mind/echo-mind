@@ -13,8 +13,6 @@ Creates tables for multi-tenancy support:
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "002_add_teams"
@@ -29,76 +27,56 @@ def upgrade() -> None:
     # ============================================
     # TEAMS TABLE
     # ============================================
-    op.create_table(
-        "teams",
-        sa.Column("id", sa.SmallInteger(), autoincrement=True, nullable=False),
-        sa.Column("name", sa.String(255), nullable=False),
-        sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("leader_id", sa.Integer(), nullable=True),
-        sa.Column("created_by", sa.Integer(), nullable=False),
-        sa.Column(
-            "creation_date",
-            postgresql.TIMESTAMP(),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
-        sa.Column("last_update", postgresql.TIMESTAMP(), nullable=True),
-        sa.Column("user_id_last_update", sa.Integer(), nullable=True),
-        sa.Column("deleted_date", postgresql.TIMESTAMP(), nullable=True),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("name"),
-        sa.ForeignKeyConstraint(["leader_id"], ["users.id"]),
-        sa.ForeignKeyConstraint(["created_by"], ["users.id"]),
-        sa.ForeignKeyConstraint(["user_id_last_update"], ["users.id"]),
-    )
-    op.create_index("ix_teams_name", "teams", ["name"])
-    op.create_index("ix_teams_leader_id", "teams", ["leader_id"])
-    op.create_index("ix_teams_deleted_date", "teams", ["deleted_date"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS teams (
+            id SMALLSERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            description TEXT,
+            leader_id INTEGER REFERENCES users(id),
+            created_by INTEGER NOT NULL REFERENCES users(id),
+            creation_date TIMESTAMP NOT NULL DEFAULT now(),
+            last_update TIMESTAMP,
+            user_id_last_update INTEGER REFERENCES users(id),
+            deleted_date TIMESTAMP
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_teams_name ON teams (name)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_teams_leader_id ON teams (leader_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_teams_deleted_date ON teams (deleted_date)")
 
     # ============================================
     # TEAM_MEMBERS TABLE
     # ============================================
-    op.create_table(
-        "team_members",
-        sa.Column("team_id", sa.SmallInteger(), nullable=False),
-        sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column(
-            "role", sa.String(20), nullable=False, server_default="'member'"
-        ),
-        sa.Column(
-            "added_at",
-            postgresql.TIMESTAMP(),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
-        sa.Column("added_by", sa.Integer(), nullable=False),
-        sa.PrimaryKeyConstraint("team_id", "user_id"),
-        sa.ForeignKeyConstraint(
-            ["team_id"], ["teams.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["user_id"], ["users.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(["added_by"], ["users.id"]),
-    )
-    op.create_index("ix_team_members_user_id", "team_members", ["user_id"])
-    op.create_index("ix_team_members_role", "team_members", ["role"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS team_members (
+            team_id SMALLINT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            role VARCHAR(20) NOT NULL DEFAULT 'member',
+            added_at TIMESTAMP NOT NULL DEFAULT now(),
+            added_by INTEGER NOT NULL REFERENCES users(id),
+            PRIMARY KEY (team_id, user_id)
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_team_members_user_id ON team_members (user_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_team_members_role ON team_members (role)")
 
     # ============================================
     # ADD team_id TO CONNECTORS
     # ============================================
-    op.add_column(
-        "connectors",
-        sa.Column("team_id", sa.SmallInteger(), nullable=True),
-    )
-    op.create_foreign_key(
-        "fk_connectors_team_id",
-        "connectors",
-        "teams",
-        ["team_id"],
-        ["id"],
-    )
-    op.create_index("ix_connectors_team_id", "connectors", ["team_id"])
+    op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'connectors' AND column_name = 'team_id'
+            ) THEN
+                ALTER TABLE connectors ADD COLUMN team_id SMALLINT;
+                ALTER TABLE connectors ADD CONSTRAINT fk_connectors_team_id
+                    FOREIGN KEY (team_id) REFERENCES teams(id);
+            END IF;
+        END $$
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_connectors_team_id ON connectors (team_id)")
 
 
 def downgrade() -> None:

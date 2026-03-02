@@ -21,7 +21,6 @@ import sys
 import threading
 import time
 from concurrent import futures
-from types import ModuleType
 
 import grpc
 
@@ -70,6 +69,33 @@ class EmbedServicer(EmbedServiceServicer):
         self._default_model = default_model
         self._batch_size = batch_size
 
+    def _validate_texts(self, texts: list[str]) -> str | None:
+        """
+        Validate input texts for embedding.
+
+        Args:
+            texts: List of text strings to validate.
+
+        Returns:
+            Error message if validation fails, None if valid.
+        """
+        if not texts:
+            return "texts cannot be empty"
+
+        min_text_length = 50
+        for idx, text in enumerate(texts):
+            if not text:
+                return f"Text at index {idx} is empty"
+            if not text.strip():
+                return f"Text at index {idx} contains only whitespace"
+            if len(text.strip()) < min_text_length:
+                return (
+                    f"Text at index {idx} is too short "
+                    f"({len(text.strip())} chars, minimum {min_text_length})"
+                )
+
+        return None
+
     def Embed(self, request, context) -> EmbedResponse:
         """
         Generate embeddings for input texts.
@@ -88,36 +114,14 @@ class EmbedServicer(EmbedServiceServicer):
         texts_count = len(request.texts)
 
         try:
-            # Validate texts list is not empty
-            if not request.texts:
-                context.abort(
-                    grpc.StatusCode.INVALID_ARGUMENT,
-                    "texts cannot be empty",
-                )
-
-            # Validate each text string
-            MIN_TEXT_LENGTH = 50
-            for idx, text in enumerate(request.texts):
-                # Check for empty strings
-                if not text:
-                    context.abort(
-                        grpc.StatusCode.INVALID_ARGUMENT,
-                        f"Text at index {idx} is empty",
-                    )
-
-                # Check for whitespace-only strings
-                if not text.strip():
-                    context.abort(
-                        grpc.StatusCode.INVALID_ARGUMENT,
-                        f"Text at index {idx} contains only whitespace",
-                    )
-
-                # Check minimum length
-                if len(text.strip()) < MIN_TEXT_LENGTH:
-                    context.abort(
-                        grpc.StatusCode.INVALID_ARGUMENT,
-                        f"Text at index {idx} is too short ({len(text.strip())} chars, minimum {MIN_TEXT_LENGTH})",
-                    )
+            # Validate input — use set_code/set_details instead of abort()
+            # because abort() raises a plain Exception that pollutes error logs
+            validation_error = self._validate_texts(list(request.texts))
+            if validation_error:
+                logger.warning(f"⚠️ Validation failed: {validation_error}")
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                context.set_details(validation_error)
+                return EmbedResponse()
 
             logger.info(f"📨 Embed request: {texts_count} texts")
 
@@ -139,24 +143,19 @@ class EmbedServicer(EmbedServiceServicer):
 
         except ModelNotFoundError as e:
             logger.error(f"❌ Model not found: {e.model_name}")
-            context.abort(
-                grpc.StatusCode.NOT_FOUND,
-                f"Model not found: {e.model_name}",
-            )
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            context.set_details(f"Model not found: {e.model_name}")
+            return EmbedResponse()
         except EncoderError as e:
             logger.error(f"❌ Encoding error: {e}")
-            context.abort(
-                grpc.StatusCode.INTERNAL,
-                str(e),
-            )
-        except grpc.RpcError:
-            raise
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return EmbedResponse()
         except Exception as e:
             logger.exception("❌ Unexpected error")
-            context.abort(
-                grpc.StatusCode.INTERNAL,
-                f"Internal error: {str(e)}",
-            )
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"Internal error: {str(e)}")
+            return EmbedResponse()
         finally:
             elapsed = time.time() - start_time
             logger.info(f"⏰ Embed request completed in {elapsed:.2f}s")
@@ -180,16 +179,14 @@ class EmbedServicer(EmbedServiceServicer):
             )
         except ModelNotFoundError as e:
             logger.error(f"❌ Model not found: {e.model_name}")
-            context.abort(
-                grpc.StatusCode.NOT_FOUND,
-                f"Model not found: {e.model_name}",
-            )
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            context.set_details(f"Model not found: {e.model_name}")
+            return DimensionResponse()
         except Exception as e:
             logger.exception("❌ Unexpected error getting dimension")
-            context.abort(
-                grpc.StatusCode.INTERNAL,
-                f"Internal error: {str(e)}",
-            )
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"Internal error: {str(e)}")
+            return DimensionResponse()
 
 
 def serve() -> None:

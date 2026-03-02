@@ -57,7 +57,7 @@ class TestPermissionCheckerRoles:
         """Create a user with echomind-allowed role."""
         user = MagicMock()
         user.id = 1
-        user.roles = [ROLE_ALLOWED]
+        user.groups = [ROLE_ALLOWED]
         return user
 
     @pytest.fixture
@@ -65,7 +65,7 @@ class TestPermissionCheckerRoles:
         """Create a user with echomind-admins role."""
         user = MagicMock()
         user.id = 2
-        user.roles = [ROLE_ALLOWED, ROLE_ADMIN]
+        user.groups = [ROLE_ALLOWED, ROLE_ADMIN]
         return user
 
     @pytest.fixture
@@ -73,7 +73,7 @@ class TestPermissionCheckerRoles:
         """Create a user with no roles."""
         user = MagicMock()
         user.id = 4
-        user.roles = []
+        user.groups = []
         return user
 
     # =========================================================================
@@ -317,7 +317,7 @@ class TestPermissionCheckerConnectorView:
         """Create an admin user."""
         user = MagicMock()
         user.id = 2
-        user.roles = [ROLE_ALLOWED, ROLE_ADMIN]
+        user.groups = [ROLE_ALLOWED, ROLE_ADMIN]
         return user
 
     @pytest.fixture
@@ -325,7 +325,7 @@ class TestPermissionCheckerConnectorView:
         """Create a regular allowed user."""
         user = MagicMock()
         user.id = 3
-        user.roles = [ROLE_ALLOWED]
+        user.groups = [ROLE_ALLOWED]
         return user
 
     @pytest.fixture
@@ -393,7 +393,7 @@ class TestPermissionCheckerConnectorView:
         """Test non-owner non-admin cannot view user-scoped connector."""
         other_user = MagicMock()
         other_user.id = 999
-        other_user.roles = [ROLE_ALLOWED]
+        other_user.groups = [ROLE_ALLOWED]
         result = await checker.can_view_connector(other_user, user_connector)
 
         assert result.allowed is False
@@ -470,7 +470,7 @@ class TestPermissionCheckerConnectorView:
         """Test user without roles cannot view org-scoped connector."""
         user = MagicMock()
         user.id = 99
-        user.roles = []
+        user.groups = []
 
         result = await checker.can_view_connector(user, org_connector)
 
@@ -498,7 +498,7 @@ class TestPermissionCheckerConnectorEdit:
         """Create an admin user."""
         user = MagicMock()
         user.id = 2
-        user.roles = [ROLE_ALLOWED, ROLE_ADMIN]
+        user.groups = [ROLE_ALLOWED, ROLE_ADMIN]
         return user
 
     @pytest.fixture
@@ -506,7 +506,7 @@ class TestPermissionCheckerConnectorEdit:
         """Create a regular allowed user."""
         user = MagicMock()
         user.id = 3
-        user.roles = [ROLE_ALLOWED]
+        user.groups = [ROLE_ALLOWED]
         return user
 
     @pytest.fixture
@@ -574,7 +574,7 @@ class TestPermissionCheckerConnectorEdit:
         """Test non-owner non-admin cannot edit user-scoped connector."""
         other_user = MagicMock()
         other_user.id = 999
-        other_user.roles = [ROLE_ALLOWED]
+        other_user.groups = [ROLE_ALLOWED]
         result = await checker.can_edit_connector(other_user, user_connector)
 
         assert result.allowed is False
@@ -645,7 +645,7 @@ class TestPermissionCheckerConnectorEdit:
         """Test non-admin cannot edit org-scoped connector."""
         user = MagicMock()
         user.id = 99
-        user.roles = [ROLE_ALLOWED]
+        user.groups = [ROLE_ALLOWED]
         result = await checker.can_edit_connector(user, org_connector)
 
         assert result.allowed is False
@@ -681,7 +681,7 @@ class TestPermissionCheckerConnectorCreate:
         """Create an admin user."""
         user = MagicMock()
         user.id = 2
-        user.roles = [ROLE_ALLOWED, ROLE_ADMIN]
+        user.groups = [ROLE_ALLOWED, ROLE_ADMIN]
         return user
 
     @pytest.fixture
@@ -689,7 +689,7 @@ class TestPermissionCheckerConnectorCreate:
         """Create a regular allowed user."""
         user = MagicMock()
         user.id = 3
-        user.roles = [ROLE_ALLOWED]
+        user.groups = [ROLE_ALLOWED]
         return user
 
     # =========================================================================
@@ -710,7 +710,7 @@ class TestPermissionCheckerConnectorCreate:
         """Test user without roles cannot create connector."""
         user = MagicMock()
         user.id = 99
-        user.roles = []
+        user.groups = []
 
         result = await checker.can_create_connector(user, SCOPE_USER)
 
@@ -811,7 +811,7 @@ class TestPermissionCheckerConnectorDelete:
         """Test can_delete_connector uses same rules as can_edit_connector."""
         user = MagicMock()
         user.id = 1
-        user.roles = [ROLE_ALLOWED]
+        user.groups = [ROLE_ALLOWED]
 
         connector = MagicMock()
         connector.user_id = 1
@@ -841,7 +841,7 @@ class TestPermissionCheckerDocuments:
         """Create a regular allowed user."""
         user = MagicMock()
         user.id = 1
-        user.roles = [ROLE_ALLOWED]
+        user.groups = [ROLE_ALLOWED]
         return user
 
     @pytest.fixture
@@ -891,7 +891,7 @@ class TestPermissionCheckerQueryHelpers:
         """Create a regular allowed user."""
         user = MagicMock()
         user.id = 1
-        user.roles = [ROLE_ALLOWED]
+        user.groups = [ROLE_ALLOWED]
         return user
 
     @pytest.fixture
@@ -899,7 +899,7 @@ class TestPermissionCheckerQueryHelpers:
         """Create an admin user."""
         user = MagicMock()
         user.id = 2
-        user.roles = [ROLE_ALLOWED, ROLE_ADMIN]
+        user.groups = [ROLE_ALLOWED, ROLE_ADMIN]
         return user
 
     # =========================================================================
